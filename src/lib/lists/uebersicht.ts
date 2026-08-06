@@ -1,15 +1,15 @@
 import type { Database } from 'better-sqlite3'
-import { expandToSubtrees, getGroup } from '../db/groups.js'
-import { openDb } from '../db/index.js'
+import { expandToSubtrees, getGroup } from '../db/groups.ts'
+import { openDb } from '../db/index.ts'
 import {
 	listMailingLists,
 	listPosterGroups,
 	listPosterPolicy,
 	listRecipientGroups,
 	listSenderPatterns,
-} from '../db/mailingLists.js'
-import type { MailingListRow, ReplyMode } from '../db/types.js'
-import { listDomain } from '../email/config.js'
+} from '../db/mailingLists.ts'
+import type { MailingListRow, ReplyMode } from '../db/types.ts'
+import { listDomain } from '../email/config.ts'
 
 /**
  * Was ein Mitglied ueber die Verteiler der Klasse sehen darf — zur LAUFZEIT

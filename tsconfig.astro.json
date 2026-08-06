@@ -7,17 +7,7 @@
 	"compilerOptions": {
 		"module": "NodeNext",
 		"moduleResolution": "NodeNext",
-		"noEmit": true,
-		// Erlaubt `./integration.ts` im Import. Vite loest eine ausgeschriebene
-		// `.ts`-Endung garantiert auf; `./integration.js` waere auf Vites
-		// Rueckfall-Verhalten angewiesen, und diese Datei liegt beim Verbraucher
-		// unter node_modules, wo Vite weniger tut.
-		"allowImportingTsExtensions": true,
 		"paths": {
-			"@fws-maschsee/klassen-webseite/klasse/*": ["./src/klasse/*.ts"],
-			"@fws-maschsee/klassen-webseite/lib/*": ["./src/lib/*.ts"],
-			"@fws-maschsee/klassen-webseite/server/*": ["./src/server/*.ts"],
-			"@fws-maschsee/klassen-webseite/remark/*": ["./src/remark/*.ts"],
 			"@levino/shipyard-base": ["./astro/types/shipyard-base.d.ts"],
 			"@levino/shipyard-base/remark": [
 				"./astro/types/shipyard-base-remark.d.ts"
@@ -26,6 +16,9 @@
 			"@levino/shipyard-docs": ["./astro/types/shipyard-docs.d.ts"]
 		}
 	},
+	// `src/**` steht mit drin, weil `astro/` dorthin importiert und tsc die
+	// Zieldateien ohnehin liest. Frueher liefen die Selbstreferenzen ueber
+	// `paths` — die gibt es nicht mehr, es sind gewoehnliche relative Pfade.
 	"include": ["astro/**/*.ts", "astro/**/*.d.ts"],
-	"exclude": ["dist", "node_modules"]
+	"exclude": ["node_modules"]
 }

@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3'
-import { openDb } from './index.js'
-import type { GroupInput, GroupRow } from './types.js'
+import { openDb } from './index.ts'
+import type { GroupInput, GroupRow } from './types.ts'
 
 /**
  * Eine Gruppe inkl. Mitgliederzahlen und Hierarchie:

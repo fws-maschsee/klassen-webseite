@@ -11,8 +11,8 @@ import {
 	SIGNING_VERSION,
 	TIMESTAMP_TOLERANCE_SECONDS,
 	verifyListRequest,
-} from '../../src/lib/lists/signatureEd25519.js'
-import { TESTKLASSE } from '../setup.js'
+} from '../../src/lib/lists/signatureEd25519.ts'
+import { TESTKLASSE } from '../setup.ts'
 
 /**
  * Die Prüfung der Aufrufe des zonenweiten Dispatchers.

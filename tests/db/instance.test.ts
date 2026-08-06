@@ -5,8 +5,8 @@ import {
 	checkInstance,
 	getRecordedInstance,
 	recordInstanceIfEmpty,
-} from '../../src/lib/db/instance.js'
-import { createTestDb } from '../helpers/db.js'
+} from '../../src/lib/db/instance.ts'
+import { createTestDb } from '../helpers/db.ts'
 
 /**
  * Der Schutz gegen "in der falschen Klasse gearbeitet". Wenn der hier bricht,

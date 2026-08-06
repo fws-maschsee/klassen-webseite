@@ -4,7 +4,7 @@ import {
 	resetGrantsConfig,
 	rolesForUser,
 	usersWithRole,
-} from '../../src/server/auth/grants.js'
+} from '../../src/server/auth/grants.ts'
 
 /**
  * Die Berechtigung kommt zur Laufzeit aus ZITADEL, nicht aus einem Token.

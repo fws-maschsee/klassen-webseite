@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { type KlassenConfig, PUBLIC_PATHS } from './config.js'
+import { type KlassenConfig, PUBLIC_PATHS } from './config.ts'
 
 /**
  * Die Kalenderprüfung, die sieben Monate lang gefehlt hat.

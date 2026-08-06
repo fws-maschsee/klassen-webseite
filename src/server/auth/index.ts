@@ -1,5 +1,5 @@
-import type { AuthProvider, AuthResult } from './types.js'
-import { zitadelAuthProvider } from './zitadel.js'
+import type { AuthProvider, AuthResult } from './types.ts'
+import { zitadelAuthProvider } from './zitadel.ts'
 
 export {
 	canEdit,
@@ -7,8 +7,8 @@ export {
 	editDeniedMessage,
 	ROLE_ADMIN,
 	ROLE_MITGLIED,
-} from './roles.js'
-export type { AuthenticatedUser, AuthProvider, AuthResult } from './types.js'
+} from './roles.ts'
+export type { AuthenticatedUser, AuthProvider, AuthResult } from './types.ts'
 
 /**
  * Der aktive Auth-Provider. Hier — und nur hier — wird er ausgetauscht; alles

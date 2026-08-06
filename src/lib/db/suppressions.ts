@@ -1,11 +1,11 @@
 import type { Database } from 'better-sqlite3'
-import { openDb } from './index.js'
-import { normalizeEmail } from './mailingLists.js'
+import { openDb } from './index.ts'
+import { normalizeEmail } from './mailingLists.ts'
 import type {
 	AddressSuppressionRow,
 	ListSuppressionRow,
 	SuppressionSource,
-} from './types.js'
+} from './types.ts'
 
 /**
  * Suppressions — "wer bekommt KEINE Mail".

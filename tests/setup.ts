@@ -1,4 +1,4 @@
-import { defineKlassenConfig, setKlassenConfig } from '../src/klasse/config.js'
+import { defineKlassenConfig, setKlassenConfig } from '../src/klasse/config.ts'
 
 /**
  * Die Testklasse. Bewusst KEINE der echten Klassen: ein Test, der gegen

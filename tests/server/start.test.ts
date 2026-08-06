@@ -4,15 +4,15 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { TESTKLASSE } from '../setup.js'
+import { TESTKLASSE } from '../setup.ts'
 
 /**
  * Der Start einer Klassen-App, so wie ihr `server.ts` ihn macht: Modul
  * importieren, Konfiguration hinterlegen, App starten — und zwar OHNE
  * `PUBLIC_BASE_URL` in der Umgebung.
  *
- * Genau dieser Ablauf war in 0.2.0 unmöglich. `dist/server/app.js` importiert
- * `mcp/handler.js`, und dessen Modulkopf baute die Bearer-Middleware als
+ * Genau dieser Ablauf war einmal unmöglich. `src/server/app.ts` importiert
+ * `mcp/handler.ts`, und dessen Modulkopf baute die Bearer-Middleware als
  * Konstante — mit einem Aufruf von `publicBaseUrl()`, der ohne
  * `PUBLIC_BASE_URL` auf `klassenConfig()` zurückfällt. ESM wertet Importe
  * vollständig aus, bevor der Rumpf des importierenden Moduls läuft; das
@@ -53,7 +53,7 @@ describe('startServer ohne PUBLIC_BASE_URL', () => {
 		// Behauptung. Schlug er fehl, war die Fehlermeldung „Keine KlassenConfig
 		// hinterlegt" — und die soll im Testprotokoll stehen, nicht ein
 		// abstrahiertes `toThrow`.
-		const modul = await import('../../src/server/app.js')
+		const modul = await import('../../src/server/app.ts')
 		expect(typeof modul.startServer).toBe('function')
 	})
 
@@ -73,13 +73,13 @@ describe('startServer ohne PUBLIC_BASE_URL', () => {
 
 		// Reihenfolge wie in `server.ts` einer Klasse: erst der Import des
 		// Packages, DANN die Konfiguration.
-		const { startServer } = await import('../../src/server/app.js')
+		const { startServer } = await import('../../src/server/app.ts')
 		// Aus derselben Modulinstanz wie die, die `app.js` gerade geladen hat —
 		// nach `resetModules()` ist das Register ein anderes Objekt als das aus
 		// `tests/setup.ts`.
-		const { setKlassenConfig } = await import('../../src/klasse/config.js')
-		const { stopQueueWorker } = await import('../../src/server/queue-worker.js')
-		const { closeDb } = await import('../../src/lib/db/index.js')
+		const { setKlassenConfig } = await import('../../src/klasse/config.ts')
+		const { stopQueueWorker } = await import('../../src/server/queue-worker.ts')
+		const { closeDb } = await import('../../src/lib/db/index.ts')
 
 		setKlassenConfig(TESTKLASSE)
 
@@ -159,12 +159,12 @@ describe('alte Kalenderadresse', () => {
 
 		vi.resetModules()
 
-		const { startServer } = await import('../../src/server/app.js')
+		const { startServer } = await import('../../src/server/app.ts')
 		const { defineKlassenConfig, setKlassenConfig } = await import(
-			'../../src/klasse/config.js'
+			'../../src/klasse/config.ts'
 		)
-		const { stopQueueWorker } = await import('../../src/server/queue-worker.js')
-		const { closeDb } = await import('../../src/lib/db/index.js')
+		const { stopQueueWorker } = await import('../../src/server/queue-worker.ts')
+		const { closeDb } = await import('../../src/lib/db/index.ts')
 
 		const config = defineKlassenConfig({
 			slug: 'klasse-beispiel',

@@ -2,11 +2,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { Database } from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { addSubgroup, upsertGroup } from '../../src/lib/db/groups.js'
-import { upsertMailingList } from '../../src/lib/db/mailingLists.js'
-import { upsertMitglied } from '../../src/lib/db/members.js'
-import { verteilerUebersicht } from '../../src/lib/lists/uebersicht.js'
-import { createTestDb } from '../helpers/db.js'
+import { addSubgroup, upsertGroup } from '../../src/lib/db/groups.ts'
+import { upsertMailingList } from '../../src/lib/db/mailingLists.ts'
+import { upsertMitglied } from '../../src/lib/db/members.ts'
+import { verteilerUebersicht } from '../../src/lib/lists/uebersicht.ts'
+import { createTestDb } from '../helpers/db.ts'
 
 /**
  * Die Verteiler-Uebersicht ist die Antwort auf einen echten Fehler: Die

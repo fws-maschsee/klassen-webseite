@@ -1,12 +1,12 @@
 import type { Database } from 'better-sqlite3'
-import { expandToSubtrees, getGroup } from './groups.js'
-import { openDb } from './index.js'
+import { expandToSubtrees, getGroup } from './groups.ts'
+import { openDb } from './index.ts'
 import type {
 	MailingListInput,
 	MailingListRow,
 	MitgliedRow,
 	PosterPolicy,
-} from './types.js'
+} from './types.ts'
 
 /** Normalisiert eine E-Mail-Adresse fuer Vergleiche (trim + lowercase). */
 export const normalizeEmail = (email: string): string =>

@@ -8,7 +8,7 @@ import {
 	removeSubgroup,
 	setSubgroups,
 	upsertGroup,
-} from '../../../lib/db/groups.js'
+} from '../../../lib/db/groups.ts'
 import {
 	addToGroup,
 	bulkAddToGroup,
@@ -17,13 +17,13 @@ import {
 	listMitgliederByGroupEffective,
 	removeFromGroup,
 	setGroupMembers,
-} from '../../../lib/db/members.js'
-import type { McpAuth } from '../guard.js'
+} from '../../../lib/db/members.ts'
+import type { McpAuth } from '../guard.ts'
 import {
 	registerPersonalDataTool,
 	registerReadTool,
 	registerWriteTool,
-} from '../guard.js'
+} from '../guard.ts'
 
 const toJson = (value: unknown): string => JSON.stringify(value, null, 2)
 

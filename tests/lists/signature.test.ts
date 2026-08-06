@@ -3,7 +3,7 @@ import {
 	computeSignature,
 	MAX_SKEW_SECONDS,
 	verifyListSignature,
-} from '../../src/lib/lists/signature.js'
+} from '../../src/lib/lists/signature.ts'
 
 const SECRET = 'test-secret'
 const BODY = Buffer.from('From: a@example.org\r\n\r\nHallo', 'utf-8')

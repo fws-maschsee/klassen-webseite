@@ -1,16 +1,16 @@
 import type { Database } from 'better-sqlite3'
 import { beforeEach, describe, expect, test } from 'vitest'
-import { upsertGroup } from '../../src/lib/db/groups.js'
-import { upsertMailingList } from '../../src/lib/db/mailingLists.js'
-import { upsertMitglied } from '../../src/lib/db/members.js'
-import type { SendInput } from '../../src/lib/email/transport.js'
+import { upsertGroup } from '../../src/lib/db/groups.ts'
+import { upsertMailingList } from '../../src/lib/db/mailingLists.ts'
+import { upsertMitglied } from '../../src/lib/db/members.ts'
+import type { SendInput } from '../../src/lib/email/transport.ts'
 import {
 	checkListSender,
 	handleIncomingListMail,
 	statusForResult,
-} from '../../src/lib/lists/incoming.js'
-import { processListBatch } from '../../src/lib/lists/queue.js'
-import { createTestDb } from '../helpers/db.js'
+} from '../../src/lib/lists/incoming.ts'
+import { processListBatch } from '../../src/lib/lists/queue.ts'
+import { createTestDb } from '../helpers/db.ts'
 
 /**
  * Der Weg vom Cloudflare-Worker bis zum SMTP-Aufruf: rohe Mail rein,

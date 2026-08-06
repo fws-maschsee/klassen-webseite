@@ -9,13 +9,13 @@ import type {
 	ZodRawShapeCompat,
 } from '@modelcontextprotocol/sdk/server/zod-compat.js'
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js'
-import { rolesForUser } from '../auth/grants.js'
+import { rolesForUser } from '../auth/grants.ts'
 import {
 	type Capability,
 	deniedMessage,
 	may,
 	ROLE_ADMIN,
-} from '../auth/roles.js'
+} from '../auth/roles.ts'
 
 /**
  * Wer spricht gerade mit dem MCP-Server, und was darf er?

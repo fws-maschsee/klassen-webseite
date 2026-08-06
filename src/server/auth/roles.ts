@@ -18,7 +18,7 @@
  * umgehbar zu machen.
  */
 
-import { zustaendigkeit } from '../../klasse/config.js'
+import { zustaendigkeit } from '../../klasse/config.ts'
 
 /** Lesen und Empfangen: die Klassenseite sehen, auf Listen stehen. */
 export const ROLE_MITGLIED = 'mitglied'

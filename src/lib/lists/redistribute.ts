@@ -2,9 +2,9 @@ import type {
 	ListAttachmentRow,
 	ListMessageRow,
 	MailingListRow,
-} from '../db/types.js'
-import { listDomain, listEnvelopeFrom, mailReplyTo } from '../email/config.js'
-import type { SendInput } from '../email/transport.js'
+} from '../db/types.ts'
+import { listDomain, listEnvelopeFrom, mailReplyTo } from '../email/config.ts'
+import type { SendInput } from '../email/transport.ts'
 
 /** Vollstaendige Adresse einer Liste, z.B. `eltern@fws-maschsee-test.de`. */
 export const listAddressFull = (list: MailingListRow): string =>

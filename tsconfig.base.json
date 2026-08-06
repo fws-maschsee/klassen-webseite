@@ -14,18 +14,21 @@
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
 		"baseUrl": ".",
-		// Selbstreferenz: die geteilten Seiten und die Integration importieren das
-		// Package unter seinem eigenen Namen, weil beim Verbraucher nur `dist/`
-		// liegt und ein relativer Pfad in `src/` dort ins Leere zeigte. Fuer die
-		// Typpruefung IN diesem Repo muss der Name auf die Quellen zeigen — sonst
-		// prueft tsc gegen einen Build, der beim ersten Lauf noch nicht existiert.
-		"paths": {
-			"@fws-maschsee/klassen-webseite": ["./astro/index.ts"],
-			"@fws-maschsee/klassen-webseite/klasse/*": ["./src/klasse/*.ts"],
-			"@fws-maschsee/klassen-webseite/lib/*": ["./src/lib/*.ts"],
-			"@fws-maschsee/klassen-webseite/server/*": ["./src/server/*.ts"],
-			"@fws-maschsee/klassen-webseite/remark/*": ["./src/remark/*.ts"],
-			"@fws-maschsee/klassen-webseite/migrations": ["./src/migrations.ts"]
-		}
+		// Dieser Code wird nicht mehr kompiliert, sondern von
+		// `node --experimental-strip-types` gelesen. Node loescht Typen und
+		// schreibt KEINE Specifier um: die Dateien heissen `.ts`, also muss im
+		// Import `.ts` stehen. Genau das erlaubt diese Option — und `noEmit`
+		// unten ist ihre Voraussetzung.
+		"allowImportingTsExtensions": true,
+		"noEmit": true,
+		// Der Waechter fuer strip-types. Node loescht Typen, es fuehrt keine
+		// Transformation aus: `enum`, `namespace` mit Laufzeitinhalt,
+		// Parameter-Properties und Decorators braeuchten erzeugten Code und
+		// scheitern zur Laufzeit. Ohne diese Option faellt so etwas erst beim
+		// Start einer Klasse auf, nicht in der Typpruefung hier.
+		//
+		// Die beiden `namespace App` in `astro/env.d.ts` sind davon nicht
+		// betroffen: sie stehen in `declare global` und sind reiner Typ.
+		"erasableSyntaxOnly": true
 	}
 }

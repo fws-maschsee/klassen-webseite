@@ -1,15 +1,15 @@
 import path from 'node:path'
 import type { Database } from 'better-sqlite3'
 import { beforeEach, describe, expect, test } from 'vitest'
-import { upsertMitglied } from '../../src/lib/db/members.js'
-import { renderForRecipient } from '../../src/lib/email/render.js'
+import { upsertMitglied } from '../../src/lib/db/members.ts'
+import { renderForRecipient } from '../../src/lib/email/render.ts'
 import {
 	listEmailSlugs,
 	loadAllEmails,
 	loadEmail,
-} from '../../src/lib/emails/loader.js'
-import { resolveRecipients } from '../../src/lib/emails/recipients.js'
-import { createTestDb } from '../helpers/db.js'
+} from '../../src/lib/emails/loader.ts'
+import { resolveRecipients } from '../../src/lib/emails/recipients.ts'
+import { createTestDb } from '../helpers/db.ts'
 
 const FIXTURES = path.join(process.cwd(), 'tests', 'fixtures', 'emails')
 

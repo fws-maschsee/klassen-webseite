@@ -4,8 +4,16 @@ Der geteilte Code der Klassen-Webseiten der Freien Waldorfschule
 Hannover-Maschsee: Astro-Integration, Anmeldung gegen ZITADEL, Mailinglisten,
 MCP-Server und das Datenbankschema.
 
-Eine Klassen-App bindet das Package ein und besteht danach aus ihren Inhalten,
-ihrer Konfiguration und vier Dreizeilern.
+Eine Klassen-App bindet dieses Repository als **git submodule** unter
+`geteilt/` ein und besteht danach aus ihren Inhalten, ihrer Konfiguration und
+vier Dreizeilern.
+
+Kein npm-Package, kein `dist/`, kein Publish, keine Registry-Auth — die
+Begründung steht in
+[Submodule statt Package](#submodule-statt-package) und ist keine
+Geschmacksfrage: `node --experimental-strip-types` verweigert
+Type-Stripping in `node_modules` grundsätzlich
+(`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`).
 
 ## Warum es das gibt
 
@@ -32,7 +40,7 @@ dreimal.
 
 ## Was drin ist und was bewusst nicht
 
-| im Package | im Klassen-Repo |
+| im geteilten Code (`geteilt/`) | im Klassen-Repo |
 | --- | --- |
 | `src/lib/**` — Datenbank, Mailversand, Mailinglisten | `src/content/**` — Protokolle, Berichte, Unterlagen |
 | `src/server/**` — Anmeldung, MCP-Server, OAuth-Provider, Express-App | `src/site.config.ts` — die `KlassenConfig` |
@@ -44,118 +52,127 @@ dreimal.
 
 **Die Inhalte bleiben in den Klassen-Repos, und zwar aus einem Grund, der sich
 nicht wegorganisieren lässt: Rechte gelten bei GitHub pro Repository.** Wer
-Zugriff auf das Package hat, hätte Zugriff auf alles, was darin liegt. In
+Zugriff auf dieses Repository hat, hätte Zugriff auf alles, was darin liegt. In
 `src/content/blog/` liegen Elternabend-Protokolle mit Namen von Kindern und
 Eltern, in `src/content/docs/` stehen private Mailadressen von
 Ansprechpartnerinnen. Ein Elternteil der einen Klasse hat in den Unterlagen der
 anderen nichts zu suchen, und ein künftiger Mitwirkender am geteilten Code hat
-in keiner von beiden etwas zu suchen. Deshalb: ein Package für den Code, ein
-privates Repository je Klasse für ihre Inhalte.
+in keiner von beiden etwas zu suchen. Deshalb: ein Repository für den Code, ein
+privates Repository je Klasse für ihre Inhalte. Das Submodule ändert daran
+nichts — es verweist auf einen Commit, es kopiert keine Inhalte.
 
 Aus demselben Grund beginnt die Historie dieses Repositorys frisch — siehe
 [Entscheidungen](#entscheidungen).
 
 ## Einbinden
 
-### `.npmrc` im Klassen-Repo
-
-GitHub Packages ist eine eigene Registry, und sie muss für den Scope
-eingetragen sein:
-
-```
-@fws-maschsee:registry=https://npm.pkg.github.com
-```
-
-**Lokal** braucht es dazu einmal ein Token mit `read:packages`
-(GitHub → Settings → Developer settings → Personal access tokens). Auch für ein
-öffentliches Package verlangt npm.pkg.github.com eine Authentifizierung — hier
-ist es ohnehin privat. Das Token gehört **nicht** in die `.npmrc` des Projekts,
-sondern in die des Benutzers (`~/.npmrc`):
-
-```
-//npm.pkg.github.com/:_authToken=<token mit read:packages>
-```
-
-**In der CI** genügt der Token des Workflow-Laufs; ein PAT wäre dort ein
-zusätzliches Geheimnis mit Ablaufdatum, das jemand rotieren müsste:
-
-```yaml
-permissions:
-  contents: read
-  packages: read
-steps:
-  - uses: actions/setup-node@v4
-    with:
-      node-version: 22
-      registry-url: https://npm.pkg.github.com
-      scope: '@fws-maschsee'
-  - run: npm ci
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
-### Der Docker-Build braucht das Token auch
-
-**Solange dieses Package privat ist, kann das `npm ci` IM Image nicht ohne
-Registry-Auth laufen.** Der Docker-Build sieht die `~/.npmrc` des Benutzers nicht
-und die Env des Workflows nicht — er sieht nur den Build-Kontext. Beide Umzüge
-(`klasse-wiesen#91`, `klasse-christophers#45`) sind darüber gestolpert, mit einem
-`npm error code E401` aus einer Schicht, in der niemand ein Token vermutet.
-
-Das Token gehört als **Build-Secret** hinein und nicht als `ARG`: ein `ARG` steht
-in der Image-Historie (`docker history`) und wäre damit mit dem Image gepusht, in
-eine Registry, die mehr Leute lesen als das Repository. Und die Zugangszeile darf
-in keiner `.npmrc` landen, die `COPY`t wird — die eingecheckte `.npmrc` enthält
-nur die Registry-Zeile für den Scope.
-
-`Dockerfile`, in **jeder** Stage mit `npm ci`:
-
-```dockerfile
-COPY package.json package-lock.json .npmrc ./
-
-# Die Zugangszeile entsteht AUSSERHALB des Image-Dateisystems und verschwindet
-# mit der Schicht: eine Zeile in `/app/.npmrc` wäre dauerhaft im Image.
-RUN --mount=type=secret,id=npm_token \
-    printf '//npm.pkg.github.com/:_authToken=%s\n' "$(cat /run/secrets/npm_token)" > /tmp/npmrc \
-    && NPM_CONFIG_USERCONFIG=/tmp/npmrc npm ci \
-    && rm -f /tmp/npmrc
-```
-
-Workflow — an **jeden** `docker/build-push-action`-Schritt, auch an den, der nur
-ein Zwischen-Image baut:
-
-```yaml
-permissions:
-  contents: read
-  packages: write   # write enthält read
-steps:
-  - uses: docker/build-push-action@v6
-    with:
-      secrets: |
-        npm_token=${{ secrets.GITHUB_TOKEN }}
-```
-
-Lokal und in `docker-compose.yaml` entsprechend:
+### Das Submodule anlegen
 
 ```bash
-docker build --secret id=npm_token,env=NODE_AUTH_TOKEN .
+git submodule add https://github.com/fws-maschsee/klassen-webseite.git geteilt
+git commit -m "Geteilten Code als Submodule geteilt/ einbinden"
 ```
 
-Alternativ lässt sich die fertige `~/.npmrc` direkt einhängen
-(`--mount=type=secret,id=npmrc,target=/root/.npmrc`). Das ist lokal kürzer,
-verlangt in der CI aber, dass der Workflow erst eine `.npmrc` schreibt — und
-hängt beim Entwickeln jedes andere Token aus dieser Datei in den Build.
+Ein Submodule zeigt auf **einen Commit**, nicht auf einen Branch. Genau das ist
+die Eigenschaft, die vorher eine Versionsnummer hatte: eine Klasse zieht den
+geteilten Code nachweislich absichtlich nach, und `git log geteilt` sagt, worauf
+sie steht.
 
-Fällt das Package einmal auf öffentlich, geht das trotzdem nicht weg:
-npm.pkg.github.com verlangt auch für öffentliche Packages eine
-Authentifizierung. Weg wäre es erst mit einem Wechsel der Registry.
+Klonen und aktualisieren brauchen deshalb je ein Wort mehr — ohne das ist
+`geteilt/` ein leeres Verzeichnis, und der Build scheitert an fehlenden Dateien
+statt an einer verständlichen Meldung:
+
+```bash
+git clone --recurse-submodules <klassen-repo>   # frisch
+git submodule update --init --recursive         # in einem bestehenden Klon
+```
+
+Nachziehen auf den neuesten `main` des geteilten Codes:
+
+```bash
+git submodule update --remote geteilt
+git add geteilt && git commit -m "Geteilten Code nachgezogen"
+```
+
+### Die Importe: `imports` in `package.json`
+
+Node liest die `paths` einer `tsconfig.json` **nicht** — die kennt nur TypeScript.
+Was Node nativ kennt, sind Subpath-Imports, und die stehen in der
+`package.json` der Klasse:
+
+```json
+{
+  "imports": {
+    "#geteilt/*": "./geteilt/src/*",
+    "#geteilt-astro/*": "./geteilt/astro/*"
+  }
+}
+```
+
+Damit heißt `@fws-maschsee/klassen-webseite/server/auth/roles` künftig
+`#geteilt/server/auth/roles.ts`. Zwei Eigenschaften sind wichtig:
+
+- **Die Endung `.ts` gehört in den Specifier.** Node löscht Typen, es schreibt
+  keine Specifier um: die Datei heißt `roles.ts`, also muss im Import `roles.ts`
+  stehen. `roles.js` gäbe es nirgends. Damit `tsc` bzw. `astro check` das
+  akzeptiert, braucht die Klasse `"allowImportingTsExtensions": true`.
+- **`#geteilt/*` zeigt in den Baum der Klasse, nicht in `node_modules`.** Das ist
+  der ganze Punkt des Umbaus (siehe
+  [Submodule statt Package](#submodule-statt-package)).
+
+### Der Start: `node --experimental-strip-types`
+
+```json
+{
+  "scripts": {
+    "start": "node --experimental-strip-types server.ts"
+  }
+}
+```
+
+`tsx` braucht es dafür nicht mehr. Node ab 22.6 löscht die Typen selbst; ab
+22.18 ist das nicht mehr hinter einem Flag, das Flag bleibt aber harmlos.
+
+### Was dabei alles wegfällt
+
+Es gibt **keine Registry mehr**, also auch nichts zu authentifizieren:
+
+- keine `.npmrc` im Klassen-Repo,
+- kein lokales PAT mit `read:packages`,
+- kein `registry-url` / `scope` in `actions/setup-node`,
+- kein `NODE_AUTH_TOKEN` und kein `permissions: packages: read` in den Workflows,
+- kein BuildKit-Secret im `Dockerfile` und kein `secrets:` an
+  `docker/build-push-action`.
+
+`npm ci` läuft in einer Klasse jetzt **ohne jeden Token** durch — lokal, in der
+CI und im Docker-Build. Beide Umzüge (`klasse-wiesen#91`,
+`klasse-christophers#45`) waren an genau dieser Auth gescheitert, mit einem
+`npm error code E401` aus einer Schicht, in der niemand ein Token vermutet.
+
+Was die Workflows **stattdessen** brauchen, ist eine Zeile am Checkout — ohne sie
+ist `geteilt/` leer:
+
+```yaml
+- uses: actions/checkout@v5
+  with:
+    submodules: recursive
+```
+
+Und im `Dockerfile` ist `geteilt/` ein gewöhnliches Verzeichnis im
+Build-Kontext. Es muss in die Stages kopiert werden, die es brauchen, und
+`.dockerignore` darf es nicht ausschließen. Die Runner-Stage braucht die
+**Quellen** — es gibt kein `dist/` mehr:
+
+```dockerfile
+COPY --from=builder /app/geteilt ./geteilt
+```
 
 ### Die vier Dreizeiler
 
 `astro.config.mjs`:
 
 ```js
-import { fwsKlasse } from '@fws-maschsee/klassen-webseite'
+import { fwsKlasse } from '#geteilt-astro/index.ts'
 import { defineConfig } from 'astro/config'
 import { siteConfig } from './src/site.config'
 
@@ -167,7 +184,7 @@ export default defineConfig({
 `src/middleware.ts`:
 
 ```ts
-import { createKlassenMiddleware } from '@fws-maschsee/klassen-webseite/middleware'
+import { createKlassenMiddleware } from '#geteilt/klasse/middleware.ts'
 import { siteConfig } from './site.config'
 
 export const onRequest = createKlassenMiddleware(siteConfig)
@@ -176,33 +193,33 @@ export const onRequest = createKlassenMiddleware(siteConfig)
 `src/content.config.ts`:
 
 ```ts
-export { collections } from '@fws-maschsee/klassen-webseite/content.config'
+export { collections } from '#geteilt-astro/content.config.ts'
 ```
 
 `server.ts`:
 
 ```ts
-import { startServer } from '@fws-maschsee/klassen-webseite/server-app'
+import { startServer } from '#geteilt/server/app.ts'
 import { siteConfig } from './src/site.config'
 
 await startServer({ config: siteConfig })
 ```
 
 Statischer Import, und `PUBLIC_BASE_URL` muss **nicht** gesetzt sein: kein Modul
-dieses Packages liest die Konfiguration beim Import, und `tests/server/` hält das
-fest. In 0.2.0 war das anders — dort baute `mcp/handler.ts` seine
-Bearer-Middleware im Modulkopf, und jeder Start ohne `PUBLIC_BASE_URL` starb mit
-„Keine KlassenConfig hinterlegt". Wer deswegen einen dynamischen `import()` oder
-ein `ENV PUBLIC_BASE_URL` im `Dockerfile` stehen hat, kann beides ab 0.2.1
-entfernen.
+des geteilten Codes liest die Konfiguration beim Import, und
+`tests/server/importzeit.test.ts` hält das für **jedes** Modul unter `src/` fest.
+Einmal war es anders — `mcp/handler.ts` baute seine Bearer-Middleware im
+Modulkopf, und jeder Start ohne `PUBLIC_BASE_URL` starb mit „Keine KlassenConfig
+hinterlegt". Das war nie eine Eigenschaft von npm, sondern die
+Auswertungsreihenfolge von ESM-Importen: sie gilt per Submodule unverändert.
 
 Dazu `tailwind.config.mjs` — die einzige Datei, deren Fehler kein Build meldet:
 ein fehlendes Content-Muster oder ein fehlendes Plugin lässt `astro build`
 durchlaufen und die Seite kaputt aussehen. Deshalb kommt sie vollständig aus dem
-Package und wird nicht abgeschrieben:
+geteilten Code und wird nicht abgeschrieben:
 
 ```js
-import { tailwindVorgabe } from '@fws-maschsee/klassen-webseite/tailwind'
+import { tailwindVorgabe } from '#geteilt/klasse/tailwind.ts'
 
 export default tailwindVorgabe()
 ```
@@ -225,11 +242,13 @@ export default tailwindVorgabe({
 Wer die Teile einzeln braucht, bekommt sie einzeln: `tailwindContent()`,
 `tailwindPlugins()`, `footerVolleBreite()`.
 
-Und `src/env.d.ts`, damit `Astro.locals.user` und das virtuelle Konfigurationsmodul typisiert sind:
+Und `src/env.d.ts`, damit `Astro.locals.user` und das virtuelle
+Konfigurationsmodul typisiert sind. Über einen **Pfad**, nicht über `types=`:
+`types=` sucht in `node_modules`, und dort liegt der geteilte Code nicht mehr.
 
 ```ts
 /// <reference types="astro/client" />
-/// <reference path="../node_modules/@fws-maschsee/klassen-webseite/astro/env.d.ts" />
+/// <reference path="../geteilt/astro/env.d.ts" />
 ```
 
 ## Der Konfigurationsvertrag `KlassenConfig`
@@ -251,7 +270,7 @@ Vorfall geschrieben, nicht gegen eine Möglichkeit.
 #### `domain` ist die technische Adresse, nicht die historische
 
 **In `domain` gehört der Host, den der Ingress heute ausliefert — nie der Name,
-unter dem die Klasse einmal bekannt war.** Aus `domain` leitet das Package
+unter dem die Klasse einmal bekannt war.** Aus `domain` leitet der geteilte Code
 `siteUrl` ab, aus `siteUrl` die `redirect_uri` der Anmeldung. Steht dort eine
 abgelöste Adresse, die nur noch `301` liefert, dann schickt die App eine
 `redirect_uri` an ZITADEL, die am OIDC-Client nicht hinterlegt ist: die Anmeldung
@@ -306,28 +325,37 @@ Umgebungsvariablen schlagen die Konfiguration, wo es eine gibt
 als das Repository — bei einem Umzug ist zuerst die Env richtig. Alle Variablen
 mit Begründung: `.env.example`.
 
-## Exporte
+## Einstiegspunkte
 
-| Subpfad | Inhalt |
-| --- | --- |
-| `.` | `fwsKlasse()` — die Integration. **Nur für `astro.config.mjs`** |
-| `./config` | `defineKlassenConfig`, `setKlassenConfig`, `klassenConfig`, `zustaendigkeit`, `PUBLIC_PATHS`, die Typen |
-| `./middleware` | `createKlassenMiddleware(config)` |
-| `./content.config` | die Content-Collections |
-| `./server-app` | `startServer({ config })` |
-| `./migrations` | `packageMigrations()`, `packageMigrationsDir()`, `alleMigrations()`, `runMigrations()` |
-| `./kalender` | `pruefeKalender(projektWurzel, config)`, `webcalUrl(config)` |
-| `./tailwind` | `tailwindVorgabe()` — die ganze `tailwind.config.mjs`; dazu `tailwindContent()`, `tailwindPlugins()`, `footerVolleBreite()` einzeln |
-| `./lib/*`, `./server/*`, `./remark/*` | der geteilte Code, einzeln |
-| `./klasse/*` | Interna der Integration (`config`, `routes`, `locals`) |
+Es gibt keine `exports`-Karte mehr, die Namen auf Dateien abbildet — der Pfad
+**ist** der Name. Die Karte hier sagt, was früher welcher Subpfad war:
 
-Der Nodeteil (`lib/`, `server/`, `middleware`, `migrations`) ist mit `tsc` nach
-`dist/` gebaut, ESM mit Declarations. Der Astro-Teil (`astro/`) wird als
-TypeScript-**Quelle** ausgeliefert: `.astro`-Dateien kann `tsc` nicht, und die
-Integration *muss* Quelle bleiben — `@levino/shipyard-*` liefert selbst rohes
-TypeScript aus, und vite-node inlined nur, was Node nicht laden könnte. Als
-kompiliertes JavaScript würde die Integration externalisiert, und Node scheiterte
-am `import` von shipyards `.ts`-Datei.
+| Specifier | früher | Inhalt |
+| --- | --- | --- |
+| `#geteilt-astro/index.ts` | `.` | `fwsKlasse()` — die Integration. **Nur für `astro.config.mjs`** |
+| `#geteilt/klasse/config.ts` | `./config` | `defineKlassenConfig`, `setKlassenConfig`, `klassenConfig`, `zustaendigkeit`, `PUBLIC_PATHS`, die Typen |
+| `#geteilt/klasse/middleware.ts` | `./middleware` | `createKlassenMiddleware(config)` |
+| `#geteilt-astro/content.config.ts` | `./content.config` | die Content-Collections |
+| `#geteilt/server/app.ts` | `./server-app` | `startServer({ config })` |
+| `#geteilt/migrations.ts` | `./migrations` | `packageMigrations()`, `packageMigrationsDir()`, `alleMigrations()`, `runMigrations()` |
+| `#geteilt/klasse/kalender.ts` | `./kalender` | `pruefeKalender(projektWurzel, config)`, `webcalUrl(config)` |
+| `#geteilt/klasse/tailwind.ts` | `./tailwind` | `tailwindVorgabe()` — die ganze `tailwind.config.mjs`; dazu `tailwindContent()`, `tailwindPlugins()`, `footerVolleBreite()` einzeln |
+| `#geteilt/lib/…`, `#geteilt/server/…`, `#geteilt/remark/…` | `./lib/*`, … | der geteilte Code, einzeln |
+| `#geteilt/klasse/…` | `./klasse/*` | Interna der Integration (`config`, `routes`, `locals`) |
+
+**Alles ist Quelle.** Der Nodeteil (`src/lib/`, `src/server/`, `src/migrations.ts`)
+lag früher als `tsc`-Ausgabe in `dist/`; das ist entfallen, weil Node die Typen
+selbst löscht. Der Astro-Teil (`astro/`) war schon vorher Quelle und musste es
+sein — `@levino/shipyard-*` liefert selbst rohes TypeScript aus, und vite-node
+inlined nur, was Node nicht laden könnte. Als kompiliertes JavaScript würde die
+Integration externalisiert, und Node scheiterte am `import` von shipyards
+`.ts`-Datei.
+
+`tsc` bleibt, aber nur noch als **Typprüfung** (`npm run typecheck`, `noEmit`).
+Dazu steht `erasableSyntaxOnly: true` in `tsconfig.base.json` — der Wächter für
+strip-types: `enum`, `namespace` mit Laufzeitinhalt, Parameter-Properties und
+Decorators bräuchten erzeugten Code und scheiterten sonst erst beim Start einer
+Klasse.
 
 ## Die Peer-Bereiche von `@levino/shipyard-*`
 
@@ -353,35 +381,41 @@ Deshalb reicht der Bereich hier nach oben — `klasse-christophers` musste für
 
 ## Ein neues Feature ausrollen
 
-1. **PR gegen `main`.** Die CI prüft `build`, `typecheck`, `test`, `check`.
-2. **Version in `package.json` heben** und mergen.
-3. **Tag setzen:** `git tag v0.2.0 && git push origin v0.2.0`. Der
-   Publish-Workflow prüft alles noch einmal, vergleicht Tag und
-   `package.json` und veröffentlicht nach GitHub Packages.
-4. **In jeder Klasse ein Bump-PR:** `npm i @fws-maschsee/klassen-webseite@0.2.0`.
-   Die CI der Klasse baut; danach mergen und deployen.
+1. **PR gegen `main`.** Die CI prüft `typecheck`, `test`, `check`. Es gibt
+   keinen `build`-Schritt mehr und keinen Tag, keine Version und kein Publish.
+2. **In jeder Klasse ein Nachzieh-PR:**
+
+   ```bash
+   git submodule update --remote geteilt
+   git add geteilt && git commit -m "Geteilten Code nachgezogen"
+   ```
+
+   Die CI der Klasse baut; danach mergen und deployen. Der Diff eines solchen
+   PRs ist genau eine Zeile — der Commit-Hash im Submodule-Zeiger.
 
 Eine neue geteilte Seite braucht dabei **keine Datei in einem Klassen-Repo**:
-Datei unter `astro/pages/` anlegen, Eintrag in `src/klasse/routes.ts`, Tag,
-Bump — und die Seite ist in allen Klassen da. Dasselbe für eine
-Schema-Änderung: SQL-Datei unter `db/migrations/`, Tag, Bump; `startServer()`
+Datei unter `astro/pages/` anlegen, Eintrag in `src/klasse/routes.ts`,
+nachziehen — und die Seite ist in allen Klassen da. Dasselbe für eine
+Schema-Änderung: SQL-Datei unter `db/migrations/`, nachziehen; `startServer()`
 wendet sie beim nächsten Start an.
 
 ## Entwickeln
 
 ```bash
 npm ci
-npm run build       # tsc -> dist/ (ESM + Declarations)
-npm run typecheck   # zwei Projekte: Nodeteil (NodeNext) und Astro-Teil
+npm run typecheck   # zwei Projekte: Nodeteil (NodeNext) und Astro-Teil, beide noEmit
 npm test            # vitest
 npm run check       # Biome
 npm run lint:fix
 ```
 
+Kein `npm run build`: es gibt nichts zu bauen. Damit ist `typecheck` die einzige
+Stelle, an der ein Typfehler auffällt — vorher deckte der Build ihn mit ab.
+
 Die Tests laufen gegen eine **erfundene** Klasse (`tests/setup.ts`). Das ist
 Absicht: ein Test, der gegen `klasse-wiesen` grün ist, sagt nichts darüber, ob
 derselbe Code in `klasse-christophers` läuft — und genau das ist die Frage, die
-dieses Package beantworten muss.
+dieses Repository beantworten muss.
 
 Ohne hinterlegte Konfiguration wirft `klassenConfig()`. Auch das ist Absicht:
 eine erfundene Vorgabe wäre ein Klassenname, und ein falscher Klassenname
@@ -389,25 +423,71 @@ bedeutet Versand an die falsche Elternschaft.
 
 ## Entscheidungen
 
-### Package statt Monorepo
+### Submodule statt Package
+
+Der geteilte Code lag als `@fws-maschsee/klassen-webseite` in GitHub Packages.
+Ausgelöst hat den Umbau ein Ziel, das damit unerreichbar war: `server.ts` einer
+Klasse soll mit `node --experimental-strip-types` laufen statt mit `tsx`.
+
+Der Grund ist eine harte Regel und keine Feineinstellung. Node **löscht** Typen,
+es transformiert nicht — und in `node_modules` verweigert es das Löschen
+grundsätzlich:
+
+```
+ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING
+```
+
+Rohes TypeScript als Abhängigkeit ist damit ausgeschlossen. Rohes TypeScript im
+**eigenen** Baum ist genau der vorgesehene Fall. Ein Package hätte also nur mit
+`dist/` funktioniert — und `dist/` ist der Grund, warum es diese Regel überhaupt
+zu umgehen gälte.
+
+Was der Umbau nebenbei erledigt hat, ist der eigentliche Ertrag:
+
+- **kein `dist/`, kein `exports`, kein `prepack`.** Der Pfad ist der Name.
+- **kein Publish und kein Tag.** Zwei Versionen (0.2.2 und 0.2.3) waren wegen
+  einer Störung der GitHub Actions nie veröffentlicht — getaggt, aber nicht
+  installierbar. Ein Submodule-Zeiger kann diesen Zustand nicht haben.
+- **keine Registry-Auth.** Kein lokales PAT, kein `NODE_AUTH_TOKEN` in der CI,
+  kein BuildKit-Secret im Docker-Build. Das war nicht eine Konfiguration,
+  sondern drei — an drei Orten, mit drei Fehlerbildern, und beide Umzugs-PRs
+  sind daran gescheitert.
+- **`npm ci` in einer Klasse läuft ohne jeden Token.**
+
+Der Preis: ein Submodule ist unbequemer als eine Zeile in `package.json`. Wer
+`--recurse-submodules` vergisst, bekommt ein leeres `geteilt/` und einen Build,
+der über fehlende Dateien klagt statt über eine fehlende Abhängigkeit. Dafür
+stehen die beiden Befehle im Abschnitt [Einbinden](#einbinden) und `submodules:
+recursive` an jedem Checkout in den Workflows.
+
+Und ein Vorteil, der vorher fehlte: eine Änderung am geteilten Code lässt sich in
+einer Klasse **ausprobieren**, ohne sie zu veröffentlichen — `geteilt/` ist ein
+normaler Checkout, in dem man einen Branch auschecken kann.
+
+### Ein Repository für den Code statt eines Monorepos
 
 Ein Monorepo wäre bequemer — ein Checkout, ein Lockfile, atomare Änderungen über
-Code und Inhalte hinweg. Es geht hier nicht, weil GitHub Rechte **pro
+Code und Inhalte hinweg. Ein Submodule sieht wie der halbe Weg dorthin aus, ist
+aber gerade nicht derselbe: es holt einen **fremden** Commit in den Baum, ohne
+die Repository-Grenze aufzulösen. Und die muss bleiben, weil GitHub Rechte **pro
 Repository** vergibt. Die Inhalte sind pro Klasse privat: Protokolle mit Namen
 von Kindern, Mailadressen von Eltern. In einem Monorepo hätte jeder Zugriff auf
 den Code auch Zugriff auf beide Klassen. Die Grenze zwischen „Code, den alle
 teilen" und „Inhalte, die niemand teilen darf" ist genau die Grenze, die GitHub
-durchsetzen kann — also verläuft sie zwischen Repositories.
+durchsetzen kann — also verläuft sie zwischen Repositories. Ein Submodule
+respektiert sie: der Zeiger geht in eine Richtung, und wer nur das geteilte Repo
+lesen darf, sieht keine Klasse.
 
 ### `injectRoute` statt einer Seite pro Klasse
 
-Die Alternative wäre gewesen, das Package nur als Bibliothek zu bauen und die
+Die Alternative wäre gewesen, den geteilten Code nur als Bibliothek zu halten
+und die
 Seiten in jeder Klasse als dünne Wrapper anzulegen. Dann kostet eine neue Seite
 n Pull Requests in n Klassen, und die n+1-te Klasse hat sie nicht. Genau so sind
-die Unterschiede entstanden, die dieses Package auflöst — das Admonition-Plugin
-in nur einer Klasse, die veraltete Verteiler-Adresse in nur einer Klasse. Mit
-`injectRoute` gibt es die Datei einmal, und der einzige Weg, in einer Klasse eine
-andere Fassung zu haben, ist ein anderer Versionsstand.
+die Unterschiede entstanden, die dieser geteilte Code auflöst — das
+Admonition-Plugin in nur einer Klasse, die veraltete Verteiler-Adresse in nur
+einer Klasse. Mit `injectRoute` gibt es die Datei einmal, und der einzige Weg, in
+einer Klasse eine andere Fassung zu haben, ist ein anderer Submodule-Stand.
 
 ### Die Migrationen kommen mit
 
@@ -416,8 +496,8 @@ in einer Klasse nicht, läuft er dort gegen ein Schema, das es nicht gibt. Blieb
 die Migrationen in den Klassen, wäre jedes Feature mit Schema-Änderung wieder
 Handarbeit pro Klasse — und ein vergessener Handgriff wäre ein Ausfall statt
 eines Schönheitsfehlers. Die Reihenfolge ist deshalb festgelegt: erst alle
-Migrationen des Packages, dann die klassen-eigenen. Klassen-Migrationen dürfen
-auf dem Package-Schema aufbauen, umgekehrt nie.
+Migrationen des geteilten Codes, dann die klassen-eigenen. Klassen-Migrationen
+dürfen auf dem geteilten Schema aufbauen, umgekehrt nie.
 
 Gebucht wird in `schema_migrations` mit den Versionen, die auch dbmate schreibt.
 Damit sind `dbmate up` im Container und `runMigrations()` beim Start

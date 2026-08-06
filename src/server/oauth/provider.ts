@@ -21,7 +21,7 @@ import {
 	revokeToken,
 	rotateRefreshToken,
 	verifyAccessToken,
-} from '../../lib/db/oauth.js'
+} from '../../lib/db/oauth.ts'
 
 const toClientInfo = (
 	c: ReturnType<typeof getClient> extends infer R ? NonNullable<R> : never,
@@ -124,7 +124,7 @@ export const mcpOAuthProvider: OAuthServerProvider = {
 	): Promise<string> {
 		// Wir können den Code peeken (nicht consume!), um das Challenge zu liefern.
 		// Der eigentliche Consume passiert in exchangeAuthorizationCode.
-		const { peekAuthCode } = await import('../../lib/db/oauth.js')
+		const { peekAuthCode } = await import('../../lib/db/oauth.ts')
 		const row = peekAuthCode(authorizationCode)
 		if (!row) throw new Error('invalid_grant: code not found')
 		return row.code_challenge

@@ -1,4 +1,4 @@
-import { listKeyIdFromPem } from '../lib/lists/signatureEd25519.js'
+import { listKeyIdFromPem } from '../lib/lists/signatureEd25519.ts'
 
 /**
  * Der Konfigurationsvertrag zwischen diesem Package und einer Klassen-App.

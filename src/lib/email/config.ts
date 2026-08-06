@@ -1,5 +1,5 @@
-import { klassenConfig } from '../../klasse/config.js'
-import { instanceName } from '../db/instance.js'
+import { klassenConfig } from '../../klasse/config.ts'
+import { instanceName } from '../db/instance.ts'
 
 /**
  * Zentrale Absender-/Domainkonfiguration fuer alles, was diese Instanz

@@ -1,28 +1,28 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { upsertEmailMeta } from '../../../lib/db/emails.js'
+import { upsertEmailMeta } from '../../../lib/db/emails.ts'
 import {
 	countByStatus,
 	listSendLog,
 	requeueErrors,
-} from '../../../lib/db/sendLog.js'
-import { enqueueEmailToRecipients } from '../../../lib/email/queue.js'
-import { renderForRecipient } from '../../../lib/email/render.js'
+} from '../../../lib/db/sendLog.ts'
+import { enqueueEmailToRecipients } from '../../../lib/email/queue.ts'
+import { renderForRecipient } from '../../../lib/email/render.ts'
 import {
 	listEmailSlugs,
 	loadAllEmails,
 	loadEmail,
-} from '../../../lib/emails/loader.js'
+} from '../../../lib/emails/loader.ts'
 import {
 	isUnreachable,
 	resolveRecipients,
-} from '../../../lib/emails/recipients.js'
-import type { McpAuth } from '../guard.js'
+} from '../../../lib/emails/recipients.ts'
+import type { McpAuth } from '../guard.ts'
 import {
 	registerPersonalDataTool,
 	registerReadTool,
 	registerWriteTool,
-} from '../guard.js'
+} from '../guard.ts'
 
 const toJson = (value: unknown): string => JSON.stringify(value, null, 2)
 

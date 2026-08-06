@@ -1,4 +1,4 @@
-import { klassenConfig } from '../klasse/config.js'
+import { klassenConfig } from '../klasse/config.ts'
 
 /**
  * Oeffentliche Basis-URL dieser Instanz. Der OAuth-Issuer und die

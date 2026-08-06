@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3'
-import { openDb } from '../db/index.js'
+import { openDb } from '../db/index.ts'
 import {
 	claimListOutbound,
 	completeListOutbound,
@@ -7,13 +7,13 @@ import {
 	getListAttachments,
 	getListMessage,
 	peekListOutbound,
-} from '../db/listQueue.js'
-import { getMailingList } from '../db/mailingLists.js'
-import { countSentInLastHour } from '../db/sendLog.js'
-import type { ListOutboundRow } from '../db/types.js'
-import type { EmailTransport } from '../email/transport.js'
-import { sesTransport } from '../email/transport.js'
-import { buildListSendInput } from './redistribute.js'
+} from '../db/listQueue.ts'
+import { getMailingList } from '../db/mailingLists.ts'
+import { countSentInLastHour } from '../db/sendLog.ts'
+import type { ListOutboundRow } from '../db/types.ts'
+import type { EmailTransport } from '../email/transport.ts'
+import { sesTransport } from '../email/transport.ts'
+import { buildListSendInput } from './redistribute.ts'
 
 const DEFAULT_HOURLY_CAP = 250
 const DEFAULT_PARALLEL_BURST = 25

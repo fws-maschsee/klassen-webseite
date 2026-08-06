@@ -7,7 +7,7 @@ import type { Config, PluginCreator } from 'tailwindcss/types/config.js'
  *
  * Ohne diesen Eintrag in der `tailwind.config.mjs` der Klasse baut die Seite
  * durch, sieht aber kaputt aus: Tailwind scannt standardmäßig nur `./src/**`
- * der Klasse, und die geteilten Seiten liegen unter `node_modules`. Jede
+ * der Klasse, und die geteilten Seiten liegen unter `geteilt/astro/`. Jede
  * Utility-Klasse, die nur dort vorkommt, fehlt dann im CSS. Das ist ein Fehler,
  * den kein Build meldet — deshalb als Funktion mit absoluten Pfaden statt als
  * dokumentierter String, den jede Klasse abschreibt.
@@ -95,19 +95,19 @@ export const footerVolleBreite = (): { handler: PluginCreator } => ({
 })
 
 // `createRequire`, weil `daisyui` und `@tailwindcss/typography` CommonJS sind und
-// dieses Package ESM ist. Aufgelöst wird ab DIESER Datei, also beim Verbraucher
-// ab `node_modules/@fws-maschsee/klassen-webseite/dist/klasse/` — Node läuft von
-// dort nach oben und findet die Peers im `node_modules` der Klasse.
+// dieser Code ESM ist. Aufgelöst wird ab DIESER Datei, also bei der Klasse ab
+// `geteilt/src/klasse/` — Node läuft von dort nach oben und findet die Pakete im
+// `node_modules` der Klasse. Das Submodule hat kein eigenes.
 const anfordern = createRequire(import.meta.url)
 
 /**
  * Die Tailwind-Plugins, die jede Klasse braucht: in der Reihenfolge, in der
  * beide bestehenden Klassen sie hatten, plus dem Footer-Ausgleich.
  *
- * `daisyui` und `@tailwindcss/typography` sind Peers dieses Packages und liegen
- * damit im `node_modules` der Klasse. Sie hier zu laden statt sie zu
- * dokumentieren ist derselbe Grund wie bei `tailwindContent()`: ein fehlendes
- * Plugin meldet kein Build, es sieht nur kaputt aus.
+ * `daisyui` und `@tailwindcss/typography` muss die Klasse in ihrer
+ * `package.json` haben — das Submodule installiert nichts. Sie hier zu laden
+ * statt sie zu dokumentieren ist derselbe Grund wie bei `tailwindContent()`:
+ * ein fehlendes Plugin meldet kein Build, es sieht nur kaputt aus.
  */
 export const tailwindPlugins = (): NonNullable<Config['plugins']> => [
 	// biome-ignore lint/suspicious/noExplicitAny: CJS-Plugins ohne Typdeklaration

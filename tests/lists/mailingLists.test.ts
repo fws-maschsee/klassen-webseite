@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3'
 import { beforeEach, describe, expect, test } from 'vitest'
-import { addSubgroup, upsertGroup } from '../../src/lib/db/groups.js'
+import { addSubgroup, upsertGroup } from '../../src/lib/db/groups.ts'
 import {
 	getMailingList,
 	isSenderAllowed,
@@ -9,15 +9,15 @@ import {
 	resolveListRecipients,
 	setListPosterRules,
 	upsertMailingList,
-} from '../../src/lib/db/mailingLists.js'
-import { addToGroup, upsertMitglied } from '../../src/lib/db/members.js'
+} from '../../src/lib/db/mailingLists.ts'
+import { addToGroup, upsertMitglied } from '../../src/lib/db/members.ts'
 import {
 	suppressAddress,
 	suppressListRecipient,
 	unsuppressAddress,
 	unsuppressListRecipient,
-} from '../../src/lib/db/suppressions.js'
-import { createTestDb } from '../helpers/db.js'
+} from '../../src/lib/db/suppressions.ts'
+import { createTestDb } from '../helpers/db.ts'
 
 /** Alle Namen und Adressen sind frei erfunden. */
 

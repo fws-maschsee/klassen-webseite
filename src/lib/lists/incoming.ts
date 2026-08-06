@@ -1,12 +1,12 @@
 import type { Database } from 'better-sqlite3'
 import { simpleParser } from 'mailparser'
-import { enqueueListMessage } from '../db/listQueue.js'
+import { enqueueListMessage } from '../db/listQueue.ts'
 import {
 	getMailingList,
 	isSenderAllowed,
 	normalizeEmail,
 	resolveListRecipients,
-} from '../db/mailingLists.js'
+} from '../db/mailingLists.ts'
 
 /**
  * Ergebnis der Eingangsverarbeitung. Die vier Fälle sind bewusst unterschieden,

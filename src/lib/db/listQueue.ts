@@ -1,10 +1,10 @@
 import type { Database } from 'better-sqlite3'
-import { openDb } from './index.js'
+import { openDb } from './index.ts'
 import type {
 	ListAttachmentRow,
 	ListMessageRow,
 	ListOutboundRow,
-} from './types.js'
+} from './types.ts'
 
 export type IncomingAttachment = {
 	filename: string | null

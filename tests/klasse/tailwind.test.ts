@@ -8,7 +8,7 @@ import {
 	tailwindContent,
 	tailwindPlugins,
 	tailwindVorgabe,
-} from '../../src/klasse/tailwind.js'
+} from '../../src/klasse/tailwind.ts'
 
 /**
  * Die Tailwind-Vorgabe ist der einzige Teil des Packages, dessen Fehler kein

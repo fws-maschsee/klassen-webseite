@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { Email, LoadedEmail } from './types.js'
+import type { Email, LoadedEmail } from './types.ts'
 
 const DEFAULT_DIR = path.join(process.cwd(), 'emails')
 

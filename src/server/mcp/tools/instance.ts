@@ -1,18 +1,18 @@
 import path from 'node:path'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { listGroups } from '../../../lib/db/groups.js'
-import { dbPath } from '../../../lib/db/index.js'
+import { listGroups } from '../../../lib/db/groups.ts'
+import { dbPath } from '../../../lib/db/index.ts'
 import {
 	checkInstance,
 	instanceLabel,
 	instanceName,
-} from '../../../lib/db/instance.js'
-import { listMailingLists } from '../../../lib/db/mailingLists.js'
-import { listMitglieder } from '../../../lib/db/members.js'
-import { listDomain, mailFrom } from '../../../lib/email/config.js'
-import { authProvider } from '../../auth/index.js'
-import { canEdit, canSeePersonalData } from '../../auth/roles.js'
-import { type McpAuth, registerReadTool, rolesFor } from '../guard.js'
+} from '../../../lib/db/instance.ts'
+import { listMailingLists } from '../../../lib/db/mailingLists.ts'
+import { listMitglieder } from '../../../lib/db/members.ts'
+import { listDomain, mailFrom } from '../../../lib/email/config.ts'
+import { authProvider } from '../../auth/index.ts'
+import { canEdit, canSeePersonalData } from '../../auth/roles.ts'
+import { type McpAuth, registerReadTool, rolesFor } from '../guard.ts'
 
 const toJson = (value: unknown): string => JSON.stringify(value, null, 2)
 

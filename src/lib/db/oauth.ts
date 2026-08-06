@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
-import { openDb } from './index.js'
+import { openDb } from './index.ts'
 
 export type OAuthClient = {
 	client_id: string

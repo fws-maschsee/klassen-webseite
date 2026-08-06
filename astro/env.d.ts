@@ -1,13 +1,15 @@
 /// <reference types="astro/client" />
 
-import type { KlassenConfig } from '@fws-maschsee/klassen-webseite/klasse/config'
-import type { Session } from '@fws-maschsee/klassen-webseite/server/auth/oidc'
+import type { KlassenConfig } from '../src/klasse/config.ts'
+import type { Session } from '../src/server/auth/oidc.ts'
 
 /**
  * Die Typen, die die geteilten Seiten brauchen. Eine Klassen-App holt sie mit
- * einer Zeile in ihrer `src/env.d.ts` ab:
+ * einer Zeile in ihrer `src/env.d.ts` ab — über einen PFAD, nicht über
+ * `types=`: `types=` sucht in `node_modules`, und dort liegt der geteilte Code
+ * nicht mehr.
  *
- *     /// <reference types="@fws-maschsee/klassen-webseite/env" />
+ *     /// <reference path="../geteilt/astro/env.d.ts" />
  */
 
 declare global {

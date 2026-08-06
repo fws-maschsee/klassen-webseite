@@ -1,12 +1,12 @@
 import type { Database } from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { upsertGroup } from '../../src/lib/db/groups.js'
+import { upsertGroup } from '../../src/lib/db/groups.ts'
 import {
 	resolveListRecipients,
 	upsertMailingList,
-} from '../../src/lib/db/mailingLists.js'
-import { upsertMitglied } from '../../src/lib/db/members.js'
-import { createTestDb } from '../helpers/db.js'
+} from '../../src/lib/db/mailingLists.ts'
+import { upsertMitglied } from '../../src/lib/db/members.ts'
+import { createTestDb } from '../helpers/db.ts'
 
 /**
  * Das Sicherheitsventil fuer die Erprobung. Seit die Empfaenger aus den

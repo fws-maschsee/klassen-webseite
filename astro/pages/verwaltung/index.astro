@@ -1,34 +1,34 @@
 ---
 import Layout from '@levino/shipyard-base/layouts/Page.astro'
-import { listGroups } from '@fws-maschsee/klassen-webseite/lib/db/groups'
-import { instanceLabel } from '@fws-maschsee/klassen-webseite/lib/db/instance'
+import { listGroups } from '../../../src/lib/db/groups.ts'
+import { instanceLabel } from '../../../src/lib/db/instance.ts'
 import {
   listMailingLists,
   listPosterGroups,
   listRecipientGroups,
   listSenderPatterns,
   setListPosterRules,
-} from '@fws-maschsee/klassen-webseite/lib/db/mailingLists'
+} from '../../../src/lib/db/mailingLists.ts'
 import {
   deleteMitglied,
   getMitgliedGroups,
   listMitglieder,
   upsertMitglied,
-} from '@fws-maschsee/klassen-webseite/lib/db/members'
+} from '../../../src/lib/db/members.ts'
 import {
   listClientUsage,
   revokeAllTokensForClientAndUser,
-} from '@fws-maschsee/klassen-webseite/lib/db/oauth'
-import type { PosterPolicy } from '@fws-maschsee/klassen-webseite/lib/db/types'
-import { listDomain } from '@fws-maschsee/klassen-webseite/lib/email/config'
+} from '../../../src/lib/db/oauth.ts'
+import type { PosterPolicy } from '../../../src/lib/db/types.ts'
+import { listDomain } from '../../../src/lib/email/config.ts'
 import {
   canEdit,
   canSeePersonalData,
   deniedMessage,
   ROLE_ADMIN,
   ROLE_MITGLIED,
-} from '@fws-maschsee/klassen-webseite/server/auth/roles'
-import { publicBaseUrl } from '@fws-maschsee/klassen-webseite/server/config'
+} from '../../../src/server/auth/roles.ts'
+import { publicBaseUrl } from '../../../src/server/config.ts'
 
 export const prerender = false
 

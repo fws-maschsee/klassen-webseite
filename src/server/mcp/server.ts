@@ -1,11 +1,11 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { instanceLabel, instanceName } from '../../lib/db/instance.js'
-import type { McpAuth } from './guard.js'
-import { registerEmailTools } from './tools/emails.js'
-import { registerGroupTools } from './tools/groups.js'
-import { registerInstanceTools } from './tools/instance.js'
-import { registerMailingListTools } from './tools/mailingLists.js'
-import { registerMitgliederTools } from './tools/members.js'
+import { instanceLabel, instanceName } from '../../lib/db/instance.ts'
+import type { McpAuth } from './guard.ts'
+import { registerEmailTools } from './tools/emails.ts'
+import { registerGroupTools } from './tools/groups.ts'
+import { registerInstanceTools } from './tools/instance.ts'
+import { registerMailingListTools } from './tools/mailingLists.ts'
+import { registerMitgliederTools } from './tools/members.ts'
 
 /**
  * Baut den MCP-Server. Name und Titel kommen aus `MCP_INSTANCE_NAME` bzw.

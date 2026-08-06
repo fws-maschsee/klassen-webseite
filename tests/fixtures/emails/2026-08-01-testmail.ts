@@ -1,4 +1,4 @@
-import type { Email } from '../../../src/lib/emails/types.js'
+import type { Email } from '../../../src/lib/emails/types.ts'
 
 /** Test-Fixture. Erfundene Inhalte, keine echten Daten. */
 const email: Email = {

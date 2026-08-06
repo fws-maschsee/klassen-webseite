@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3'
 import { beforeEach, describe, expect, test } from 'vitest'
-import { upsertGroup } from '../../src/lib/db/groups.js'
+import { upsertGroup } from '../../src/lib/db/groups.ts'
 import {
 	addToGroup,
 	bulkAddToGroup,
@@ -16,8 +16,8 @@ import {
 	setGroupMembers,
 	uniqueMemberId,
 	upsertMitglied,
-} from '../../src/lib/db/members.js'
-import { createTestDb } from '../helpers/db.js'
+} from '../../src/lib/db/members.ts'
+import { createTestDb } from '../helpers/db.ts'
 
 /** Alle Namen und Adressen in diesen Tests sind frei erfunden. */
 

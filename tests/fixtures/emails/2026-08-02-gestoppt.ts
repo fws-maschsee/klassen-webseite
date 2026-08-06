@@ -1,4 +1,4 @@
-import type { Email } from '../../../src/lib/emails/types.js'
+import type { Email } from '../../../src/lib/emails/types.ts'
 
 /** Mail mit hartem Stopp — darf nie eingereiht werden. */
 const email: Email = {

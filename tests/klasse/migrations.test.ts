@@ -8,7 +8,7 @@ import {
 	packageMigrations,
 	packageMigrationsDir,
 	runMigrations,
-} from '../../src/migrations.js'
+} from '../../src/migrations.ts'
 
 /**
  * Die Migrationen sind der Grund, warum ein Feature mit Schema-Änderung nicht

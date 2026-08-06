@@ -1,5 +1,5 @@
-import { klassenConfig } from '../../klasse/config.js'
-import { instanceName } from '../db/instance.js'
+import { klassenConfig } from '../../klasse/config.ts'
+import { instanceName } from '../db/instance.ts'
 import {
 	HEADER_CLASS,
 	HEADER_ENVELOPE_FROM,
@@ -10,8 +10,8 @@ import {
 	HEADER_SIGNATURE,
 	HEADER_TIMESTAMP,
 	verifyListSignature,
-} from './signature.js'
-import { verifyListRequest } from './signatureEd25519.js'
+} from './signature.ts'
+import { verifyListRequest } from './signatureEd25519.ts'
 
 /**
  * Wer darf `/api/lists/incoming` aufrufen? — die eine Stelle, die das

@@ -1,9 +1,9 @@
 import type { Database } from 'better-sqlite3'
-import { klassenConfig } from '../../klasse/config.js'
-import { upsertGroup } from '../../lib/db/groups.js'
-import { openDb } from '../../lib/db/index.js'
-import { slugify, uniqueMemberId } from '../../lib/db/members.js'
-import { clearGrantsCache, type GrantedUser, usersWithRole } from './grants.js'
+import { klassenConfig } from '../../klasse/config.ts'
+import { upsertGroup } from '../../lib/db/groups.ts'
+import { openDb } from '../../lib/db/index.ts'
+import { slugify, uniqueMemberId } from '../../lib/db/members.ts'
+import { clearGrantsCache, type GrantedUser, usersWithRole } from './grants.ts'
 
 /**
  * Die Empfaenger einer Klassenliste kommen aus ZITADEL.

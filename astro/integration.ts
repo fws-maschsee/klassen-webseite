@@ -1,14 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import node from '@astrojs/node'
 import tailwind from '@astrojs/tailwind'
-import {
-	defineKlassenConfig,
-	type KlassenConfig,
-	type KlassenConfigInput,
-} from '@fws-maschsee/klassen-webseite/klasse/config'
-import { GETEILTE_ROUTEN } from '@fws-maschsee/klassen-webseite/klasse/routes'
-import { remarkAdmonitionLabels } from '@fws-maschsee/klassen-webseite/remark/admonitionLabels'
 import shipyard from '@levino/shipyard-base'
 import {
 	remarkAdmonitions,
@@ -17,19 +11,27 @@ import {
 import shipyardBlog from '@levino/shipyard-blog'
 import shipyardDocs from '@levino/shipyard-docs'
 import type { AstroIntegration } from 'astro'
+import {
+	defineKlassenConfig,
+	type KlassenConfig,
+	type KlassenConfigInput,
+} from '../src/klasse/config.ts'
+import { GETEILTE_ROUTEN } from '../src/klasse/routes.ts'
+import { remarkAdmonitionLabels } from '../src/remark/admonitionLabels.ts'
 
 /**
- * Diese Datei wird bewusst als TypeScript-QUELLE ausgeliefert und nicht nach
- * `dist/` kompiliert.
+ * Diese Datei ist TypeScript und bleibt es — es gibt hier nichts mehr, was
+ * kompiliert würde.
  *
- * Grund: `@levino/shipyard-*` hat `"main": "src/index.ts"`, liefert also selbst
- * rohes TypeScript. Astro lädt `astro.config.mjs` über vite-node, und vite-node
- * inlined genau die Abhängigkeiten, die Node nicht selbst laden könnte — `.ts`
- * gehört dazu. Wäre diese Datei kompiliertes JavaScript, würde vite-node sie
- * als „von Node ladbar" einstufen, externalisieren und Node am `import` von
- * shipyards `.ts`-Datei scheitern lassen. Der Nodeteil des Packages (`lib/`,
- * `server/`, `middleware`, `migrations`) ist deshalb kompiliert, der
- * Astro-Teil nicht.
+ * Das war früher eine Ausnahme mit Begründung: `@levino/shipyard-*` hat
+ * `"main": "src/index.ts"`, liefert also selbst rohes TypeScript, und vite-node
+ * inlined nur die Abhängigkeiten, die Node nicht selbst laden könnte.
+ * Kompiliertes JavaScript hätte vite-node hier externalisiert und Node am
+ * `import` von shipyards `.ts`-Datei scheitern lassen. Seit der geteilte Code
+ * als Submodule und nicht als Package kommt, gilt das für den ganzen Baum:
+ * `node --experimental-strip-types` lädt `.ts` direkt, und in `node_modules`
+ * verweigert es das grundsätzlich — ein Package hätte den Weg also selbst
+ * verbaut.
  */
 
 export type FwsKlasseOptions = {
@@ -191,18 +193,32 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 }
 
 /**
+ * Absoluter Pfad auf `src/klasse/config.ts` des geteilten Codes.
+ *
+ * Absolut und nicht relativ, weil der einzige Verbraucher das virtuelle Modul
+ * unten ist: dessen Modul-ID (`virtual:fws-klasse/config`) hat kein
+ * Verzeichnis, gegen das Vite einen relativen Specifier auflösen könnte. Ein
+ * `#geteilt/...` ginge aus demselben Grund nicht — Subpath-Imports werden
+ * gegen die nächstgelegene `package.json` DES IMPORTEURS aufgelöst, und ein
+ * virtuelles Modul hat keine.
+ */
+const CONFIG_MODUL = fileURLToPath(
+	new URL('../src/klasse/config.ts', import.meta.url),
+)
+
+/**
  * Das virtuelle Modul. Es hat zwei Aufgaben, und die zweite ist die wichtigere:
  *
  *  1. Die geteilten Seiten bekommen die Klassenwerte über einen normalen
- *     Import, ohne dass das Package die Klasse kennt.
- *  2. Der Import hinterlegt die Konfiguration im Register des Packages. Die
- *     `dist/`-Module (`lib/`, `server/`) werden von Vite externalisiert und
- *     laufen deshalb als eine einzige Node-Instanz — wer das virtuelle Modul
+ *     Import, ohne dass der geteilte Code die Klasse kennt.
+ *  2. Der Import hinterlegt die Konfiguration im Register des geteilten Codes.
+ *     Der Nodeteil (`lib/`, `server/`) wird von Vite externalisiert und läuft
+ *     deshalb als eine einzige Node-Instanz — wer das virtuelle Modul
  *     importiert, versorgt damit auch sie.
  */
 const virtuellesModul = (config: KlassenConfig): string =>
 	[
-		"import { setKlassenConfig } from '@fws-maschsee/klassen-webseite/klasse/config'",
+		`import { setKlassenConfig } from ${JSON.stringify(CONFIG_MODUL)}`,
 		`export const klasse = ${JSON.stringify(config)}`,
 		'setKlassenConfig(klasse)',
 		'export default klasse',

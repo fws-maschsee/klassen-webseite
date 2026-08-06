@@ -32,9 +32,9 @@ import {
 	jwtDecrypt,
 	jwtVerify,
 } from 'jose'
-import { klassenConfig } from '../../klasse/config.js'
-import { rolesForUser } from './grants.js'
-import { canRead } from './roles.js'
+import { klassenConfig } from '../../klasse/config.ts'
+import { rolesForUser } from './grants.ts'
+import { canRead } from './roles.ts'
 
 // --- Konstanten ------------------------------------------------------------
 

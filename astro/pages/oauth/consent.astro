@@ -5,10 +5,10 @@ import {
 	deletePendingAuthorization,
 	getClient,
 	getPendingAuthorization,
-} from '@fws-maschsee/klassen-webseite/lib/db/oauth'
-import { instanceLabel } from '@fws-maschsee/klassen-webseite/lib/db/instance'
-import { canEdit } from '@fws-maschsee/klassen-webseite/server/auth/roles'
-import { verifyRequest } from '@fws-maschsee/klassen-webseite/server/auth/index'
+} from '../../../src/lib/db/oauth.ts'
+import { instanceLabel } from '../../../src/lib/db/instance.ts'
+import { canEdit } from '../../../src/server/auth/roles.ts'
+import { verifyRequest } from '../../../src/server/auth/index.ts'
 
 export const prerender = false
 

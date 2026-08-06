@@ -1,5 +1,5 @@
-import type { Block, EmailTemplate } from '../emails/types.js'
-import { className, mailReplyTo, siteUrl } from './config.js'
+import type { Block, EmailTemplate } from '../emails/types.ts'
+import { className, mailReplyTo, siteUrl } from './config.ts'
 
 // Zurueckhaltende, warme Palette. Bewusst kein Corporate-Design-Klotz: Das
 // hier sind Elternmails einer Schulklasse, keine Werbung.

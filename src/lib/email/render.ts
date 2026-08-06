@@ -1,8 +1,8 @@
-import type { MitgliedRow } from '../db/types.js'
-import type { Block, Email, EmailTemplate } from '../emails/types.js'
-import { personalizedAnrede } from './anrede.js'
-import { compile } from './compile.js'
-import { template } from './template.js'
+import type { MitgliedRow } from '../db/types.ts'
+import type { Block, Email, EmailTemplate } from '../emails/types.ts'
+import { personalizedAnrede } from './anrede.ts'
+import { compile } from './compile.ts'
+import { template } from './template.ts'
 
 /**
  * Personalisierungs-Marker, die in jedem Textfeld einer Rundmail ersetzt

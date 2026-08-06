@@ -1,10 +1,10 @@
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
-import { publicBaseUrl } from '../config.js'
-import { mcpOAuthProvider } from '../oauth/provider.js'
-import { authFromInfo } from './guard.js'
-import { buildMcpServer } from './server.js'
+import { publicBaseUrl } from '../config.ts'
+import { mcpOAuthProvider } from '../oauth/provider.ts'
+import { authFromInfo } from './guard.ts'
+import { buildMcpServer } from './server.ts'
 
 /**
  * Baut die Bearer-Auth fuer `/mcp`: prueft den Authorization-Header gegen

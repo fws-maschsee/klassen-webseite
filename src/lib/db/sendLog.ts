@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3'
-import { openDb } from './index.js'
-import type { SendLogInsert, SendLogRow, SendStatus } from './types.js'
+import { openDb } from './index.ts'
+import type { SendLogInsert, SendLogRow, SendStatus } from './types.ts'
 
 export type SendCounts = {
 	sent: number

@@ -1,16 +1,16 @@
 import type { MiddlewareHandler } from 'astro'
-import './locals.js'
+import './locals.ts'
 import {
 	GrantsConfigError,
 	GrantsUnavailableError,
-} from '../server/auth/grants.js'
-import { authenticate, OidcConfigError } from '../server/auth/oidc.js'
+} from '../server/auth/grants.ts'
+import { authenticate, OidcConfigError } from '../server/auth/oidc.ts'
 import {
 	type KlassenConfig,
 	klassenConfig,
 	PUBLIC_PATHS,
 	setKlassenConfig,
-} from './config.js'
+} from './config.ts'
 
 /**
  * Die Anmelde-Middleware. Sie stand in beiden Klassen-Repos als eigene Datei
@@ -24,7 +24,8 @@ import {
  * `astro:middleware`: `astro:middleware` ist ein virtuelles Modul und existiert
  * nur innerhalb einer Astro-Kompilierung. `defineMiddleware` ist zur Laufzeit
  * die Identität, sein einziger Nutzen ist die Typisierung — und die liefert der
- * Typ direkt. So lässt sich diese Datei mit `tsc` nach `dist/` bauen.
+ * Typ direkt. So bleibt diese Datei auch ohne Astro ladbar, und `tsc` prueft
+ * sie im Nodeteil mit.
  */
 
 /**

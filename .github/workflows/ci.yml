@@ -20,10 +20,11 @@ jobs:
 
       - run: npm ci
 
-      # `build` vor den Tests: die Routentests pruefen Pfade nach `dist/`, und
-      # `astro/` wird ohnehin nur ausgeliefert, wenn der Nodeteil kompiliert.
-      - run: npm run build
-
+      # Kein `npm run build` mehr davor: es gibt nichts zu bauen. Die Klassen
+      # lesen diesen Baum als Submodule und Node loescht die Typen beim Laden
+      # (`--experimental-strip-types`). `typecheck` ist damit die einzige
+      # Stelle, an der ein Typfehler auffaellt — vorher deckte der Build ihn
+      # mit ab.
       - run: npm run typecheck
 
       - run: npm test

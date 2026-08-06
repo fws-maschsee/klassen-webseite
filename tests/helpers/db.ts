@@ -1,5 +1,5 @@
 import Database, { type Database as DatabaseType } from 'better-sqlite3'
-import { runMigrations } from '../../src/migrations.js'
+import { runMigrations } from '../../src/migrations.ts'
 
 /**
  * Frische In-Memory-Datenbank mit dem echten Schema, eingespielt über

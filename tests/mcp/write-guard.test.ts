@@ -5,7 +5,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import Database from 'better-sqlite3'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { runMigrations } from '../../src/migrations.js'
+import { runMigrations } from '../../src/migrations.ts'
 
 /**
  * Der Kern der Autorisierung, gegen den echten MCP-Server gemessen: ein Zugang
@@ -56,7 +56,7 @@ const textOf = (result: unknown): string => {
 
 beforeAll(async () => {
 	applyMigrations()
-	buildMcpServer = (await import('../../src/server/mcp/server.js'))
+	buildMcpServer = (await import('../../src/server/mcp/server.ts'))
 		.buildMcpServer
 })
 

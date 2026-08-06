@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { pruefeKalender, webcalUrl } from '../../src/klasse/kalender.js'
+import { pruefeKalender, webcalUrl } from '../../src/klasse/kalender.ts'
 
 /**
  * Die Prüfung, die in `klasse-christophers` sieben Monate lang gefehlt hat.

@@ -12,12 +12,12 @@ import { glob } from 'astro/loaders'
  * Projektwurzel der KLASSE, und Astro liest sie dort. Das ist der ganze Trick
  * an dieser Datei — geteiltes Schema, private Inhalte.
  *
- * Ausgeliefert als TypeScript-Quelle, weil `astro:content` ein virtuelles
- * Modul ist und nur innerhalb einer Astro-Kompilierung existiert.
+ * Bleibt TypeScript-Quelle, weil `astro:content` ein virtuelles Modul ist und
+ * nur innerhalb einer Astro-Kompilierung existiert.
  *
  * In der Klassen-App steht `src/content.config.ts` und enthält eine Zeile:
  *
- *     export { collections } from '@fws-maschsee/klassen-webseite/content.config'
+ *     export { collections } from '#geteilt-astro/content.config.ts'
  */
 
 const docs = defineCollection(createDocsCollection('./src/content/docs'))

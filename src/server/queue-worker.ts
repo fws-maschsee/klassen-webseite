@@ -1,7 +1,7 @@
-import { cleanupStuckListOutbound } from '../lib/db/listQueue.js'
-import { cleanupStuckByTimeout, cleanupStuckOnBoot } from '../lib/db/sendLog.js'
-import { processBatch } from '../lib/email/queue.js'
-import { processListBatch } from '../lib/lists/queue.js'
+import { cleanupStuckListOutbound } from '../lib/db/listQueue.ts'
+import { cleanupStuckByTimeout, cleanupStuckOnBoot } from '../lib/db/sendLog.ts'
+import { processBatch } from '../lib/email/queue.ts'
+import { processListBatch } from '../lib/lists/queue.ts'
 
 /**
  * Hintergrund-Worker fuer beide Warteschlangen (Rundmails und Listenmails).

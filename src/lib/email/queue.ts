@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3'
-import { openDb } from '../db/index.js'
-import { getMitglied } from '../db/members.js'
+import { openDb } from '../db/index.ts'
+import { getMitglied } from '../db/members.ts'
 import {
 	claimQueued,
 	completeQueued,
@@ -8,15 +8,15 @@ import {
 	oldestSentInLastHour,
 	peekQueued,
 	recordSend,
-} from '../db/sendLog.js'
-import { globallySuppressedAddresses } from '../db/suppressions.js'
-import type { SendLogRow } from '../db/types.js'
-import { loadEmail } from '../emails/loader.js'
-import { isEmailRecipient, resolveRecipients } from '../emails/recipients.js'
-import { mailFrom, mailFromName, mailReplyTo } from './config.js'
-import { renderForRecipient } from './render.js'
-import type { EmailTransport } from './transport.js'
-import { sesTransport } from './transport.js'
+} from '../db/sendLog.ts'
+import { globallySuppressedAddresses } from '../db/suppressions.ts'
+import type { SendLogRow } from '../db/types.ts'
+import { loadEmail } from '../emails/loader.ts'
+import { isEmailRecipient, resolveRecipients } from '../emails/recipients.ts'
+import { mailFrom, mailFromName, mailReplyTo } from './config.ts'
+import { renderForRecipient } from './render.ts'
+import type { EmailTransport } from './transport.ts'
+import { sesTransport } from './transport.ts'
 
 /**
  * Versand-Engine fuer Rundmails. Zwei Phasen, bewusst getrennt:

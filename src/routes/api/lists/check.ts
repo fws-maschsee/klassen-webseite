@@ -1,10 +1,10 @@
 import type { APIRoute } from 'astro'
-import { checkListSender } from '../../../lib/lists/incoming.js'
+import { checkListSender } from '../../../lib/lists/incoming.ts'
 import {
 	HEADER_SIGNATURE,
 	HEADER_TIMESTAMP,
 	verifyListSignature,
-} from '../../../lib/lists/signature.js'
+} from '../../../lib/lists/signature.ts'
 
 export const prerender = false
 

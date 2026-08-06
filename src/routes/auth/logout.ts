@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro'
-import { handleLogout } from '../../server/auth/oidc.js'
+import { handleLogout } from '../../server/auth/oidc.ts'
 
 /**
  * Abmelden: Sitzungs-Cookie löschen und die Sitzung auch beim IdP beenden.

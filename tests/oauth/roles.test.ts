@@ -7,8 +7,8 @@ import {
 	registerClient,
 	rotateRefreshToken,
 	verifyAccessToken,
-} from '../../src/lib/db/oauth.js'
-import { createTestDb } from '../helpers/db.js'
+} from '../../src/lib/db/oauth.ts'
+import { createTestDb } from '../helpers/db.ts'
 
 /**
  * Ein MCP-Client bringt kein Sitzungs-Cookie mit, sondern ein Bearer-Token.

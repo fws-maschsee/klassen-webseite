@@ -2,9 +2,9 @@ import type { Database } from 'better-sqlite3'
 import {
 	getMitgliederByIds,
 	listMitgliederByGroupEffective,
-} from '../db/members.js'
-import type { MitgliedRow } from '../db/types.js'
-import type { Recipients } from './types.js'
+} from '../db/members.ts'
+import type { MitgliedRow } from '../db/types.ts'
+import type { Recipients } from './types.ts'
 
 /**
  * Loest die Empfaenger-Spec einer Rundmail zu konkreten Personen auf.

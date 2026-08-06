@@ -14,20 +14,20 @@ import {
 	subtreeGroupKeys,
 	upsertGroup,
 	wouldCreateCycle,
-} from '../../src/lib/db/groups.js'
+} from '../../src/lib/db/groups.ts'
 import {
 	resolveListRecipients,
 	upsertMailingList,
-} from '../../src/lib/db/mailingLists.js'
+} from '../../src/lib/db/mailingLists.ts'
 import {
 	addToGroup,
 	listMitgliederByGroup,
 	listMitgliederByGroupEffective,
 	searchMitglieder,
 	upsertMitglied,
-} from '../../src/lib/db/members.js'
-import { resolveRecipients } from '../../src/lib/emails/recipients.js'
-import { createTestDb } from '../helpers/db.js'
+} from '../../src/lib/db/members.ts'
+import { resolveRecipients } from '../../src/lib/emails/recipients.ts'
+import { createTestDb } from '../helpers/db.ts'
 
 /**
  * Die rekursive Gruppenaufloesung und die Zykluspruefung sind die Stellen, an

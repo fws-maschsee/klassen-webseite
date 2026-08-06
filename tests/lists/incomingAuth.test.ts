@@ -4,16 +4,16 @@ import {
 	sign as signEd25519,
 } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { setKlassenConfig } from '../../src/klasse/config.js'
-import { instanceName } from '../../src/lib/db/instance.js'
-import { authenticateListRequest } from '../../src/lib/lists/incomingAuth.js'
-import { computeSignature } from '../../src/lib/lists/signature.js'
+import { setKlassenConfig } from '../../src/klasse/config.ts'
+import { instanceName } from '../../src/lib/db/instance.ts'
+import { authenticateListRequest } from '../../src/lib/lists/incomingAuth.ts'
+import { computeSignature } from '../../src/lib/lists/signature.ts'
 import {
 	buildSigningInput,
 	type ListRequestFields,
 	listKeyIdFromPem,
-} from '../../src/lib/lists/signatureEd25519.js'
-import { TESTKLASSE } from '../setup.js'
+} from '../../src/lib/lists/signatureEd25519.ts'
+import { TESTKLASSE } from '../setup.ts'
 
 /**
  * Die Fallunterscheidung am Eingang: `X-List-Key-Id` vorhanden -> Ed25519 (neuer

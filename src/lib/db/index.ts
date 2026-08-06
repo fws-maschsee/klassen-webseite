@@ -1,5 +1,5 @@
 import Database, { type Database as DatabaseType } from 'better-sqlite3'
-import { klassenConfig } from '../../klasse/config.js'
+import { klassenConfig } from '../../klasse/config.ts'
 
 let cached: DatabaseType | null = null
 

@@ -6,13 +6,13 @@ import {
 	defineKlassenConfig,
 	setKlassenConfig,
 	zustaendigkeit,
-} from '../../src/klasse/config.js'
-import { notAMemberPage } from '../../src/server/auth/oidc.js'
+} from '../../src/klasse/config.ts'
+import { notAMemberPage } from '../../src/server/auth/oidc.ts'
 import {
 	deniedMessage,
 	editDeniedMessage,
-} from '../../src/server/auth/roles.js'
-import { TESTKLASSE } from '../setup.js'
+} from '../../src/server/auth/roles.ts'
+import { TESTKLASSE } from '../setup.ts'
 
 /**
  * Wer Freigaben vergibt und Abmeldungen eintraegt — und warum das kein Text

@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3'
-import { klassenConfig } from '../../klasse/config.js'
-import { openDb } from './index.js'
+import { klassenConfig } from '../../klasse/config.ts'
+import { openDb } from './index.ts'
 
 /**
  * Instanz-Identitaet: welche KLASSE ist das hier?

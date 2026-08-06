@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import { GETEILTE_ROUTEN } from '../../src/klasse/routes.js'
+import { GETEILTE_ROUTEN } from '../../src/klasse/routes.ts'
 
 /**
  * Die Routenliste ist der Kern des Packages: was hier steht, erscheint in jeder
@@ -40,7 +40,7 @@ describe('GETEILTE_ROUTEN', () => {
 		}
 	})
 
-	test('die .astro-Quellen liegen wirklich im Package', () => {
+	test('die .astro-Quellen liegen wirklich hier', () => {
 		for (const route of GETEILTE_ROUTEN.filter((r) =>
 			r.entrypoint.endsWith('.astro'),
 		)) {
@@ -48,14 +48,17 @@ describe('GETEILTE_ROUTEN', () => {
 		}
 	})
 
-	test('die kompilierten Routen zeigen nach dist/', () => {
-		// Nicht auf Existenz pruefen: `npm test` laeuft auch ohne vorherigen Build.
-		// Der Build selbst wird in der CI vor den Tests ausgefuehrt.
+	test('die .ts-Routen zeigen auf Quellen, die es gibt', () => {
+		// Vorher stand hier `/dist/routes/` und `.js`, und Existenz liess sich
+		// nicht pruefen, weil `npm test` ohne vorherigen Build lief. Es gibt kein
+		// `dist/` mehr — Vite kompiliert die Routen aus dem Baum der Klasse.
+		// Damit ist die schaerfere Aussage moeglich: die Datei ist da.
 		for (const route of GETEILTE_ROUTEN.filter(
 			(r) => !r.entrypoint.endsWith('.astro'),
 		)) {
-			expect(route.entrypoint).toContain('/dist/routes/')
-			expect(route.entrypoint.endsWith('.js')).toBe(true)
+			expect(route.entrypoint).toContain('/src/routes/')
+			expect(route.entrypoint.endsWith('.ts')).toBe(true)
+			expect(fs.existsSync(route.entrypoint), route.entrypoint).toBe(true)
 		}
 	})
 })

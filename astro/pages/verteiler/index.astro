@@ -1,9 +1,9 @@
 ---
 import Layout from '@levino/shipyard-base/layouts/Page.astro'
-import { klassenConfig } from '@fws-maschsee/klassen-webseite/config'
-import { instanceLabel } from '@fws-maschsee/klassen-webseite/lib/db/instance'
-import { verteilerUebersicht } from '@fws-maschsee/klassen-webseite/lib/lists/uebersicht'
-import { canSeePersonalData } from '@fws-maschsee/klassen-webseite/server/auth/roles'
+import { klassenConfig } from '../../../src/klasse/config.ts'
+import { instanceLabel } from '../../../src/lib/db/instance.ts'
+import { verteilerUebersicht } from '../../../src/lib/lists/uebersicht.ts'
+import { canSeePersonalData } from '../../../src/server/auth/roles.ts'
 
 export const prerender = false
 

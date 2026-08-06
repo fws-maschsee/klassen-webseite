@@ -2,9 +2,9 @@ import type { APIRoute } from 'astro'
 import {
 	handleIncomingListMail,
 	statusForResult,
-} from '../../../lib/lists/incoming.js'
-import { authenticateListRequest } from '../../../lib/lists/incomingAuth.js'
-import { syncMembersFromZitadel } from '../../../server/auth/mirror.js'
+} from '../../../lib/lists/incoming.ts'
+import { authenticateListRequest } from '../../../lib/lists/incomingAuth.ts'
+import { syncMembersFromZitadel } from '../../../server/auth/mirror.ts'
 
 export const prerender = false
 

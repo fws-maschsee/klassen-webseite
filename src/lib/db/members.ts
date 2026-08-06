@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3'
-import { openDb } from './index.js'
-import type { MitgliedInput, MitgliedRow } from './types.js'
+import { openDb } from './index.ts'
+import type { MitgliedInput, MitgliedRow } from './types.ts'
 
 /** System-Group: die Elternschaft der Klasse (siehe Migration `create_groups`). */
 export const GROUP_ELTERN = 'eltern'

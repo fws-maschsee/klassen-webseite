@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro'
-import { startLogin } from '../../server/auth/oidc.js'
+import { startLogin } from '../../server/auth/oidc.ts'
 
 /**
  * Anmeldung anstoßen. `?rd=/pfad` merkt sich, wohin es danach zurückgehen

@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { getGroup } from '../../../lib/db/groups.js'
+import { getGroup } from '../../../lib/db/groups.ts'
 import {
 	bulkUpsertMitglieder,
 	deleteMitglied,
@@ -9,11 +9,11 @@ import {
 	listMitglieder,
 	searchMitglieder,
 	upsertMitglied,
-} from '../../../lib/db/members.js'
-import type { MitgliedRow } from '../../../lib/db/types.js'
-import { syncMembersFromZitadel } from '../../auth/mirror.js'
-import type { McpAuth } from '../guard.js'
-import { registerPersonalDataTool, registerWriteTool } from '../guard.js'
+} from '../../../lib/db/members.ts'
+import type { MitgliedRow } from '../../../lib/db/types.ts'
+import { syncMembersFromZitadel } from '../../auth/mirror.ts'
+import type { McpAuth } from '../guard.ts'
+import { registerPersonalDataTool, registerWriteTool } from '../guard.ts'
 
 /**
  * Das Adressbuch speichert bewusst nur Name und E-Mail — mehr braucht der

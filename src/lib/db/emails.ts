@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3'
-import { openDb } from './index.js'
-import type { EmailRecipientsKind, EmailRow } from './types.js'
+import { openDb } from './index.ts'
+import type { EmailRecipientsKind, EmailRow } from './types.ts'
 
 export type EmailMetaInput = {
 	slug: string

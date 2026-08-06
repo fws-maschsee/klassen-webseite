@@ -7,7 +7,7 @@ import {
 	resolveAllowedSenders,
 	resolveListRecipients,
 	upsertMailingList,
-} from '../../../lib/db/mailingLists.js'
+} from '../../../lib/db/mailingLists.ts'
 import {
 	GLOBAL_SUPPRESSION,
 	listAddressSuppressions,
@@ -17,14 +17,14 @@ import {
 	suppressListRecipient,
 	unsuppressAddress,
 	unsuppressListRecipient,
-} from '../../../lib/db/suppressions.js'
-import { listDomain } from '../../../lib/email/config.js'
-import type { McpAuth } from '../guard.js'
+} from '../../../lib/db/suppressions.ts'
+import { listDomain } from '../../../lib/email/config.ts'
+import type { McpAuth } from '../guard.ts'
 import {
 	registerPersonalDataTool,
 	registerReadTool,
 	registerWriteTool,
-} from '../guard.js'
+} from '../guard.ts'
 
 const toJson = (value: unknown): string => JSON.stringify(value, null, 2)
 

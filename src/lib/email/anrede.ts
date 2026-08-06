@@ -1,4 +1,4 @@
-import type { MitgliedRow } from '../db/types.js'
+import type { MitgliedRow } from '../db/types.ts'
 
 /**
  * Persoenliche Ansprache fuer einen Adressbuch-Eintrag: "Hallo Anna,".

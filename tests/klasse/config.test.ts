@@ -1,7 +1,7 @@
 import { generateKeyPairSync } from 'node:crypto'
 import { describe, expect, test } from 'vitest'
-import { defineKlassenConfig, PUBLIC_PATHS } from '../../src/klasse/config.js'
-import { listKeyIdFromPem } from '../../src/lib/lists/signatureEd25519.js'
+import { defineKlassenConfig, PUBLIC_PATHS } from '../../src/klasse/config.ts'
+import { listKeyIdFromPem } from '../../src/lib/lists/signatureEd25519.ts'
 
 /**
  * Der Konfigurationsvertrag ist die einzige Stelle, an der sich zwei Klassen

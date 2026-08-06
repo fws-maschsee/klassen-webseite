@@ -1,20 +1,20 @@
 import path from 'node:path'
 import type { Database } from 'better-sqlite3'
 import { beforeEach, describe, expect, test } from 'vitest'
-import { upsertEmailMeta } from '../../src/lib/db/emails.js'
-import { upsertMitglied } from '../../src/lib/db/members.js'
+import { upsertEmailMeta } from '../../src/lib/db/emails.ts'
+import { upsertMitglied } from '../../src/lib/db/members.ts'
 import {
 	countByStatus,
 	listSendLog,
 	requeueErrors,
-} from '../../src/lib/db/sendLog.js'
-import { suppressAddress } from '../../src/lib/db/suppressions.js'
+} from '../../src/lib/db/sendLog.ts'
+import { suppressAddress } from '../../src/lib/db/suppressions.ts'
 import {
 	enqueueEmailToRecipients,
 	processBatch,
-} from '../../src/lib/email/queue.js'
-import type { SendInput } from '../../src/lib/email/transport.js'
-import { createTestDb } from '../helpers/db.js'
+} from '../../src/lib/email/queue.ts'
+import type { SendInput } from '../../src/lib/email/transport.ts'
+import { createTestDb } from '../helpers/db.ts'
 
 /**
  * Die Idempotenz des Versands ist die teuerste Stelle im System: Ein Fehler

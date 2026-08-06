@@ -12,7 +12,7 @@ import {
 	HEADER_RECIPIENT,
 	HEADER_SIGNATURE,
 	HEADER_TIMESTAMP,
-} from './signature.js'
+} from './signature.ts'
 
 /**
  * Ed25519-Prüfung der Aufrufe des zonenweiten Dispatchers (`fwslist.v2`).

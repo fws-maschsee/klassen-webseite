@@ -1,5 +1,5 @@
-import { resolveSession } from './oidc.js'
-import type { AuthProvider, AuthResult } from './types.js'
+import { resolveSession } from './oidc.ts'
+import type { AuthProvider, AuthResult } from './types.ts'
 
 /**
  * ZITADEL-Implementierung der Auth-Abstraktion.

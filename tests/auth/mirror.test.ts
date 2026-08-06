@@ -1,9 +1,9 @@
 import type { Database } from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { listMitglieder, upsertMitglied } from '../../src/lib/db/members.js'
-import { resetGrantsConfig } from '../../src/server/auth/grants.js'
-import { syncMembersFromZitadel } from '../../src/server/auth/mirror.js'
-import { createTestDb } from '../helpers/db.js'
+import { listMitglieder, upsertMitglied } from '../../src/lib/db/members.ts'
+import { resetGrantsConfig } from '../../src/server/auth/grants.ts'
+import { syncMembersFromZitadel } from '../../src/server/auth/mirror.ts'
+import { createTestDb } from '../helpers/db.ts'
 
 /**
  * Der Abgleich ist die Stelle, an der aus einem ZITADEL-Grant ein Empfaenger

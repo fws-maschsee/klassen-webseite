@@ -3,14 +3,14 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js'
 import express from 'express'
-import { type KlassenConfig, setKlassenConfig } from '../klasse/config.js'
-import { openDb } from '../lib/db/index.js'
-import { assertInstanceMatches, instanceLabel } from '../lib/db/instance.js'
-import { runMigrations } from '../migrations.js'
-import { port, publicBaseUrl } from './config.js'
-import { mcpAuthMiddleware, mcpRequestHandler } from './mcp/handler.js'
-import { mcpOAuthProvider } from './oauth/provider.js'
-import { startQueueWorker } from './queue-worker.js'
+import { type KlassenConfig, setKlassenConfig } from '../klasse/config.ts'
+import { openDb } from '../lib/db/index.ts'
+import { assertInstanceMatches, instanceLabel } from '../lib/db/instance.ts'
+import { runMigrations } from '../migrations.ts'
+import { port, publicBaseUrl } from './config.ts'
+import { mcpAuthMiddleware, mcpRequestHandler } from './mcp/handler.ts'
+import { mcpOAuthProvider } from './oauth/provider.ts'
+import { startQueueWorker } from './queue-worker.ts'
 
 /**
  * Produktions-Entrypoint. Express umschliesst den Astro-SSR-Handler, weil zwei
@@ -24,18 +24,19 @@ import { startQueueWorker } from './queue-worker.js'
  * Alles andere — Seiten, Content, die Anmeldung — laeuft durch die
  * Astro-Middleware.
  *
- * Diese Datei liegt im Package und nicht in der Klasse, weil sie in beiden
- * Klassen-Repos zeichengleich war (`diff -wB` = 0 Zeilen). In der Klasse bleibt
- * ein `server.ts` mit drei Zeilen — es muss dort bleiben, weil der Pfad zum
- * Astro-Build (`./dist/server/entry.mjs`) relativ zum Arbeitsverzeichnis der
- * KLASSE gilt.
+ * Diese Datei liegt im geteilten Code und nicht in der Klasse, weil sie in
+ * beiden Klassen-Repos zeichengleich war (`diff -wB` = 0 Zeilen). In der Klasse
+ * bleibt ein `server.ts` mit drei Zeilen — es muss dort bleiben, weil der Pfad
+ * zum Astro-Build (`./dist/server/entry.mjs`) relativ zum Arbeitsverzeichnis
+ * der KLASSE gilt. Gestartet wird es mit
+ * `node --experimental-strip-types server.ts`.
  */
 
 export type StartServerOptions = {
 	config: KlassenConfig
 	/**
-	 * Zusätzliche Migrationsverzeichnisse der Klasse. Die des Packages laufen
-	 * immer zuerst; klassen-eigene dürfen darauf aufbauen, nie umgekehrt.
+	 * Zusätzliche Migrationsverzeichnisse der Klasse. Die des geteilten Codes
+	 * laufen immer zuerst; klassen-eigene dürfen darauf aufbauen, nie umgekehrt.
 	 */
 	migrationsDirs?: readonly string[]
 	/**
@@ -132,12 +133,12 @@ export const startServer = async (
 	// Quellbaum gar nicht existiert.
 	//
 	// `pathToFileURL(resolve(...))` und nicht der relative String: dieses Modul
-	// liegt beim Verbraucher unter `node_modules/.../dist/server/`, und ein
-	// relativer `import()` wird dagegen aufgeloest, nicht gegen das
-	// Arbeitsverzeichnis. Der Build der Klasse liegt aber neben ihrer
-	// `package.json`. Ohne diese Zeile sucht Node
-	// `node_modules/.../dist/server/dist/server/entry.mjs` — hier passiert,
-	// gemessen, nicht vermutet.
+	// liegt bei der Klasse unter `geteilt/src/server/`, und ein relativer
+	// `import()` wird gegen den Ort des IMPORTIERENDEN Moduls aufgeloest, nicht
+	// gegen das Arbeitsverzeichnis. Der Astro-Build der Klasse liegt aber neben
+	// ihrer `package.json`. Ohne diese Zeile sucht Node
+	// `geteilt/src/server/dist/server/entry.mjs` — dasselbe Fehlerbild wie
+	// vorher unter `node_modules`, nur mit anderem Pfad.
 	const astroEntry = pathToFileURL(
 		path.resolve(options.astroEntry ?? './dist/server/entry.mjs'),
 	).href

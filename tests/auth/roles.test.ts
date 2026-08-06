@@ -6,7 +6,7 @@ import {
 	may,
 	ROLE_ADMIN,
 	ROLE_MITGLIED,
-} from '../../src/server/auth/roles.js'
+} from '../../src/server/auth/roles.ts'
 
 /**
  * Die Rollenlogik ist winzig und trotzdem die Stelle, an der eine
