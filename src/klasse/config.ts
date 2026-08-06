@@ -143,6 +143,27 @@ export type KlassenConfigInput = {
 	 */
 	calendarPath: string | null
 
+	/**
+	 * Eine frühere Adresse des Kalenders, die dauerhaft auf `calendarPath`
+	 * umgeleitet wird. Vorgabe `null` — die meisten Klassen haben keine.
+	 *
+	 * `klasse-christophers` hat eine: Zwischen der Astro-Umstellung und deren
+	 * Korrektur lag die Datei sieben Monate unter `/christophers.ics`. Wer in
+	 * diesem Zeitraum abonniert hat, hängt an dieser Adresse und darf nicht ein
+	 * zweites Mal stillschweigend herausfallen.
+	 *
+	 * Die Umleitung trägt bewusst NUR diese Seite. Der Pfad mit den echten Abos
+	 * (`calendarPath`) wird direkt als Datei ausgeliefert, ohne Umleitung: Ein
+	 * 301 ist für Kalender-Clients kein sicherer Weg — Apples Kalender quittiert
+	 * Umleitungen dokumentiert mit Fehler -1007, und Googles Importer scheitert
+	 * an ihnen ebenfalls. Ein 301 auf dem Pfad mit den echten Abos wäre also
+	 * genau der Ausfall, den er verhindern soll.
+	 *
+	 * `startServer` mountet die Umleitung VOR `express.static`, damit sie auch
+	 * dann greift, wenn wieder eine Datei an der alten Stelle landet.
+	 */
+	calendarLegacyPath?: string | null
+
 	/** Vorgabe: `https://${domain}`. */
 	siteUrl?: string
 	/**
@@ -194,9 +215,10 @@ export type KlassenConfigInput = {
 
 /** Aufgelöste Konfiguration: keine Vorgaben mehr offen. */
 export type KlassenConfig = Required<
-	Omit<KlassenConfigInput, 'calendarPath' | 'farben'>
+	Omit<KlassenConfigInput, 'calendarPath' | 'calendarLegacyPath' | 'farben'>
 > & {
 	calendarPath: string | null
+	calendarLegacyPath: string | null
 	farben: KlassenFarben
 }
 
@@ -239,6 +261,24 @@ export const defineKlassenConfig = (
 		)
 	}
 
+	const calendarLegacyPath = input.calendarLegacyPath ?? null
+	if (calendarLegacyPath !== null) {
+		// Eine Umleitung braucht ein Ziel. Ohne `calendarPath` zeigte sie ins
+		// Leere — und zwar fuer genau die Abos, die sie retten soll.
+		if (input.calendarPath === null) {
+			fehler.push(
+				`calendarLegacyPath "${calendarLegacyPath}" ist gesetzt, calendarPath aber null — eine Umleitung ohne Ziel`,
+			)
+		}
+		// Ein Pfad, der auf sich selbst umleitet, ist eine Endlosschleife und
+		// keine Rettung.
+		if (calendarLegacyPath === input.calendarPath) {
+			fehler.push(
+				`calendarLegacyPath "${calendarLegacyPath}" ist derselbe Pfad wie calendarPath — das leitet auf sich selbst um`,
+			)
+		}
+	}
+
 	const listPublicKeyPem =
 		input.listPublicKeyPem ?? SCHUL_VORGABEN.listPublicKeyPem
 	const listKeyIds = input.listKeyIds ?? SCHUL_VORGABEN.listKeyIds
@@ -279,6 +319,7 @@ export const defineKlassenConfig = (
 		contactMail: input.contactMail,
 		contactName: input.contactName ?? '',
 		calendarPath: input.calendarPath,
+		calendarLegacyPath,
 		siteUrl: input.siteUrl ?? `https://${input.domain}`,
 		analyticsDomain: input.analyticsDomain ?? input.domain,
 		authRole: input.authRole ?? SCHUL_VORGABEN.authRole,

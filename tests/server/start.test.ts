@@ -129,5 +129,76 @@ describe('startServer ohne PUBLIC_BASE_URL', () => {
 		// echten Astro-Builds.
 		const seite = await fetch(`${basis}/irgendwas`)
 		expect(await seite.text()).toBe('astro-fixture')
+
+		// Ohne `calendarLegacyPath` gibt es keine Umleitung: der Pfad landet beim
+		// Astro-Handler wie jeder andere. Sonst bekäme jede Klasse eine Route, die
+		// sie nie bestellt hat.
+		const ohneAlt = await fetch(`${basis}/beispiel.ics`, { redirect: 'manual' })
+		expect(ohneAlt.status).not.toBe(301)
+	})
+})
+
+/**
+ * Die alte Kalenderadresse. In `klasse-christophers` lag die Datei sieben
+ * Monate unter einem anderen Pfad; wer in diesem Zeitraum abonniert hat, hängt
+ * daran und darf nicht ein zweites Mal stillschweigend herausfallen.
+ *
+ * Geprüft wird am laufenden Server und nicht an der Konfiguration: dass der
+ * Wert im Objekt steht, sagt nichts darüber, ob eine Kalender-App eine
+ * Weiterleitung bekommt.
+ */
+describe('alte Kalenderadresse', () => {
+	test('antwortet mit 301 auf den heutigen Pfad', async () => {
+		const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'start-server-alt-'))
+		aufraeumen.push(() => fs.rmSync(tmp, { recursive: true, force: true }))
+
+		vi.stubEnv('PUBLIC_BASE_URL', undefined)
+		vi.stubEnv('PORT', '0')
+		vi.stubEnv('DB_PATH', path.join(tmp, 'klasse-beispiel.db'))
+		vi.stubEnv('MCP_INSTANCE_NAME', undefined)
+
+		vi.resetModules()
+
+		const { startServer } = await import('../../src/server/app.js')
+		const { defineKlassenConfig, setKlassenConfig } = await import(
+			'../../src/klasse/config.js'
+		)
+		const { stopQueueWorker } = await import('../../src/server/queue-worker.js')
+		const { closeDb } = await import('../../src/lib/db/index.js')
+
+		const config = defineKlassenConfig({
+			slug: 'klasse-beispiel',
+			label: 'Klasse Beispiel',
+			domain: 'klasse-beispiel.example.org',
+			repoUrl: 'https://github.com/fws-maschsee/klasse-beispiel',
+			contactMail: 'verwaltung@example.org',
+			calendarPath: '/public/beispiel.ics',
+			calendarLegacyPath: '/beispiel.ics',
+		})
+		setKlassenConfig(config)
+
+		const server: Server = await startServer({
+			config,
+			astroEntry: ENTRY_FIXTURE,
+		})
+		aufraeumen.push(() => {
+			stopQueueWorker()
+			server.close()
+			closeDb()
+		})
+
+		const adresse = server.address()
+		if (adresse === null || typeof adresse === 'string') {
+			throw new Error('Server hat keinen TCP-Port belegt')
+		}
+
+		// `redirect: 'manual'` — sonst folgt fetch der Umleitung und der Test
+		// prüfte am Ende den Astro-Handler statt der Weiterleitung.
+		const antwort = await fetch(
+			`http://127.0.0.1:${adresse.port}/beispiel.ics`,
+			{ redirect: 'manual' },
+		)
+		expect(antwort.status).toBe(301)
+		expect(antwort.headers.get('location')).toBe('/public/beispiel.ics')
 	})
 })

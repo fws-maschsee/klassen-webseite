@@ -295,6 +295,7 @@ export const siteConfig = defineKlassenConfig({
 | `listPublicKeyPem` | der Ed25519-Schlüssel des Dispatchers (eingecheckt, **kein** Geheimnis) | nur mit einem eigenen Dispatcher — oder in Tests, die selbst ein Schlüsselpaar erzeugen |
 | `listKeyIds` | `['bf2226d575ece8c8']` | zusammen mit `listPublicKeyPem`; die Id des Schlüssels muss enthalten sein, sonst lehnt `defineKlassenConfig` ab |
 | `contactName` | keiner — die Texte nennen dann nur `contactMail` | wenn eine Person und nicht eine Funktionsadresse zuständig ist. Erscheint in der Ablehnungsmeldung („… kann sie vergeben") und auf der Verteiler-Seite |
+| `calendarLegacyPath` | `null` | wenn der Kalender einmal unter einer anderen Adresse lag und dort noch Abos hängen. `startServer` leitet sie dauerhaft (301) auf `calendarPath` um, **vor** `express.static`. Nur die alte Adresse leitet um — der Pfad mit den echten Abos wird direkt ausgeliefert, weil Kalender-Clients Umleitungen nicht zuverlässig folgen (Apple: Fehler -1007) |
 | `tagline` | `Unterlagen und Berichte` | nach Geschmack |
 | `feedbackUrl` | `${repoUrl}/issues` | `klasse-christophers` zeigt auf `/discussions` |
 | `farben` | keine | eigene daisyUI-Farben (`primary`, `secondary`, `accent`, `neutral`) |

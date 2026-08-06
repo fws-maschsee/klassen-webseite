@@ -64,6 +64,38 @@ describe('defineKlassenConfig', () => {
 		).toBeNull()
 	})
 
+	test('hat ohne Angabe keine alte Kalenderadresse', () => {
+		expect(defineKlassenConfig(gueltig).calendarLegacyPath).toBeNull()
+	})
+
+	test('nimmt eine alte Kalenderadresse auf', () => {
+		// `klasse-christophers`: Wer zwischen der Astro-Umstellung und deren
+		// Korrektur abonniert hat, haengt an `/beispiel.ics`.
+		expect(
+			defineKlassenConfig({ ...gueltig, calendarLegacyPath: '/beispiel.ics' })
+				.calendarLegacyPath,
+		).toBe('/beispiel.ics')
+	})
+
+	test('lehnt eine alte Kalenderadresse ohne Ziel ab', () => {
+		expect(() =>
+			defineKlassenConfig({
+				...gueltig,
+				calendarPath: null,
+				calendarLegacyPath: '/beispiel.ics',
+			}),
+		).toThrow(/Umleitung ohne Ziel/)
+	})
+
+	test('lehnt eine Umleitung auf sich selbst ab', () => {
+		expect(() =>
+			defineKlassenConfig({
+				...gueltig,
+				calendarLegacyPath: gueltig.calendarPath,
+			}),
+		).toThrow(/auf sich selbst/)
+	})
+
 	test('lehnt einen slug ab, der als Maildomain nicht funktioniert', () => {
 		// Der Slug wird Teil von `<liste>@<slug>.lists...` und eines Dateinamens.
 		expect(() =>

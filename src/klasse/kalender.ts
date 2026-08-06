@@ -32,12 +32,27 @@ export type KalenderBefund = {
 
 export const pruefeKalender = (
 	projektWurzel: string,
-	config: Pick<KlassenConfig, 'calendarPath'>,
+	config: Pick<KlassenConfig, 'calendarPath'> &
+		Partial<Pick<KlassenConfig, 'calendarLegacyPath'>>,
 ): KalenderBefund => {
 	const statisch = path.join(projektWurzel, 'public')
 	const gefundeneDateien = icsDateien(statisch, projektWurzel)
 	const fehler: string[] = []
 	const { calendarPath } = config
+	const calendarLegacyPath = config.calendarLegacyPath ?? null
+
+	// Unter der alten Adresse darf KEINE Datei liegen. Läge dort eine, lieferte
+	// `express.static` sie aus, bevor die Umleitung greift — und das Repository
+	// hätte zwei Kalender, die auseinanderlaufen, sobald jemand einen Termin nur
+	// in einem davon nachträgt. Genau der Zustand, aus dem der Ausfall entstand.
+	if (calendarLegacyPath !== null) {
+		const alt = path.join(statisch, calendarLegacyPath)
+		if (fs.existsSync(alt)) {
+			fehler.push(
+				`Unter der alten Adresse ${calendarLegacyPath} liegt eine Datei (${path.relative(projektWurzel, alt)}). Sie verdeckt die Umleitung auf ${calendarPath} — die alte Adresse soll umleiten und nicht ausliefern.`,
+			)
+		}
+	}
 
 	if (calendarPath === null) {
 		if (gefundeneDateien.length > 0) {

@@ -1,6 +1,6 @@
 {
 	"name": "@fws-maschsee/klassen-webseite",
-	"version": "0.2.2",
+	"version": "0.2.3",
 	"description": "Geteilter Code der Klassen-Webseiten der Freien Waldorfschule Hannover-Maschsee: Astro-Integration, Anmeldung, Mailinglisten, MCP-Server, Datenbankschema.",
 	"license": "UNLICENSED",
 	"private": false,

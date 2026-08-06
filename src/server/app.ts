@@ -105,6 +105,26 @@ export const startServer = async (
 	// MCP-Endpunkt mit eigenem Bearer-Auth-Layer.
 	app.use('/mcp', express.json(), mcpAuthMiddleware, mcpRequestHandler)
 
+	// Eine frueher benutzte Kalenderadresse dauerhaft auf die heutige umleiten.
+	// Nur `klasse-christophers` hat eine: Dort lag die Datei sieben Monate unter
+	// einem anderen Pfad, und wer in diesem Zeitraum abonniert hat, haengt daran.
+	//
+	// Die Umleitung traegt bewusst nur DIESE Seite — der Pfad mit den echten Abos
+	// wird direkt als Datei ausgeliefert. Ein 301 ist fuer Kalender-Clients kein
+	// sicherer Weg: Apples Kalender quittiert Umleitungen dokumentiert mit Fehler
+	// -1007, Googles Importer scheitert an ihnen ebenfalls.
+	//
+	// Sie steht VOR `express.static`, damit sie auch dann greift, wenn wieder
+	// eine Datei an der alten Stelle landet. `pruefeKalender` laesst das ohnehin
+	// nicht durch die Tests, aber die Reihenfolge hier kostet nichts und macht
+	// den Fall unmoeglich statt unwahrscheinlich.
+	const { calendarLegacyPath, calendarPath } = options.config
+	if (calendarLegacyPath !== null && calendarPath !== null) {
+		app.get(calendarLegacyPath, (_req, res) => {
+			res.redirect(301, calendarPath)
+		})
+	}
+
 	app.use(express.static('dist/client'))
 
 	// Der Astro-SSR-Entry entsteht erst beim Build, der Pfad liegt deshalb in

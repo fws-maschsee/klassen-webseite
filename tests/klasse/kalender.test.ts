@@ -68,6 +68,31 @@ describe('pruefeKalender', () => {
 			pruefeKalender(wurzel, { calendarPath: null }).fehler.join(' '),
 		).toMatch(/calendarPath ist null/)
 	})
+
+	test('meldet nichts, wenn unter der alten Adresse keine Datei liegt', () => {
+		// Der Normalfall in `klasse-christophers`: die alte Adresse leitet um, die
+		// Datei liegt nur an der neuen Stelle.
+		fs.writeFileSync(path.join(wurzel, 'public/public/k.ics'), ICS)
+		expect(
+			pruefeKalender(wurzel, {
+				calendarPath: '/public/k.ics',
+				calendarLegacyPath: '/k.ics',
+			}).fehler,
+		).toEqual([])
+	})
+
+	test('faengt eine Datei, die die Umleitung der alten Adresse verdeckt', () => {
+		// `express.static` liefert eine vorhandene Datei aus, bevor die Umleitung
+		// greift. Dann haette das Repository zwei Kalender — der Zustand, aus dem
+		// der Ausfall entstanden ist.
+		fs.writeFileSync(path.join(wurzel, 'public/public/k.ics'), ICS)
+		fs.writeFileSync(path.join(wurzel, 'public/k.ics'), ICS)
+		const befund = pruefeKalender(wurzel, {
+			calendarPath: '/public/k.ics',
+			calendarLegacyPath: '/k.ics',
+		})
+		expect(befund.fehler.join(' ')).toMatch(/verdeckt die Umleitung/)
+	})
 })
 
 describe('webcalUrl', () => {
