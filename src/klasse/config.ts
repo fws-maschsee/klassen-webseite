@@ -119,6 +119,19 @@ export type KlassenConfigInput = {
 	/** Adresse für Eltern, die angemeldet, aber noch nicht freigeschaltet sind. */
 	contactMail: string
 	/**
+	 * Name der Person hinter `contactMail` — wer Freigaben vergibt und
+	 * Abmeldungen einträgt. Optional; ohne ihn nennen die Texte nur die Adresse.
+	 *
+	 * Steht neben `contactMail` und nicht im geteilten Code, weil das eine
+	 * Zuständigkeit ist und keine Eigenschaft der Software: Sie wechselt, wenn
+	 * jemand anderes die Klasse übernimmt, und sie kann je Klasse verschieden
+	 * sein. Beide bestehenden Klassen tragen heute denselben Wert ein — genau
+	 * das ist der Grund, den Namen NICHT fest zu verdrahten: sonst nennt die
+	 * dritte Klasse den Namen der ersten neben der eigenen Adresse, und niemand
+	 * bemerkt es, weil die Adresse ja stimmt.
+	 */
+	contactName?: string
+	/**
 	 * Pfad des Klassenkalenders unterhalb von `public/`, z.B.
 	 * `/public/poellmann.ics`; `null`, wenn die Klasse keinen Kalender anbietet.
 	 *
@@ -264,6 +277,7 @@ export const defineKlassenConfig = (
 		domain: input.domain,
 		repoUrl: input.repoUrl,
 		contactMail: input.contactMail,
+		contactName: input.contactName ?? '',
 		calendarPath: input.calendarPath,
 		siteUrl: input.siteUrl ?? `https://${input.domain}`,
 		analyticsDomain: input.analyticsDomain ?? input.domain,
@@ -317,4 +331,22 @@ export const klassenConfig = (): KlassenConfig => {
 		)
 	}
 	return angemeldet
+}
+
+/**
+ * Wer für Freigaben und Abmeldungen zuständig ist, als Klartext für
+ * Fehlermeldungen: `Name (adresse)`, oder nur die Adresse, wenn kein Name
+ * hinterlegt ist.
+ *
+ * Eine Funktion und keine Konstante, weil die Konfiguration erst zur Laufzeit
+ * im Register liegt — eine Modulkonstante würde jeden Import dieses Packages
+ * an eine hinterlegte Config binden (siehe `tests/server/importzeit.test.ts`).
+ *
+ * Für Oberflächen, die einen `mailto:`-Link setzen wollen, ist sie das falsche
+ * Werkzeug: die lesen `contactName` und `contactMail` einzeln aus
+ * `klassenConfig()`, sonst steckt die Adresse im Linktext statt im Ziel.
+ */
+export const zustaendigkeit = (): string => {
+	const { contactName, contactMail } = klassenConfig()
+	return contactName ? `${contactName} (${contactMail})` : contactMail
 }

@@ -4,7 +4,7 @@ import { zitadelAuthProvider } from './zitadel.js'
 export {
 	canEdit,
 	canRead,
-	EDIT_DENIED_MESSAGE,
+	editDeniedMessage,
 	ROLE_ADMIN,
 	ROLE_MITGLIED,
 } from './roles.js'

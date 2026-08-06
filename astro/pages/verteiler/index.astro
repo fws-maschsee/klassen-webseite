@@ -1,5 +1,6 @@
 ---
 import Layout from '@levino/shipyard-base/layouts/Page.astro'
+import { klassenConfig } from '@fws-maschsee/klassen-webseite/config'
 import { instanceLabel } from '@fws-maschsee/klassen-webseite/lib/db/instance'
 import { verteilerUebersicht } from '@fws-maschsee/klassen-webseite/lib/lists/uebersicht'
 import { canSeePersonalData } from '@fws-maschsee/klassen-webseite/server/auth/roles'
@@ -23,6 +24,11 @@ export const prerender = false
 
 const roles = Astro.locals.user?.roles ?? []
 const verteiler = verteilerUebersicht(canSeePersonalData(roles))
+
+// Wer Abmeldungen eintraegt, kommt aus der KlassenConfig und steht nicht hier:
+// das ist eine Absprache in der Klasse und keine Eigenschaft der Software.
+// Name und Adresse getrennt, damit die Adresse im mailto-Ziel steht.
+const { contactName, contactMail } = klassenConfig()
 ---
 
 <Layout title="Mailverteiler">
@@ -122,8 +128,9 @@ const verteiler = verteilerUebersicht(canSeePersonalData(roles))
     <h2 class="text-xl font-bold mt-8 mb-3">Keine Post mehr von einem Verteiler?</h2>
     <p class="mb-6">
       Es gibt keine Selbstverwaltung mit eigenem Passwort mehr. Wer von einem
-      Verteiler abgemeldet werden möchte, wendet sich an die
-      Klassenelternvertretung; sie trägt den Wunsch ein. Wer einen Zugang mit
+      Verteiler abgemeldet werden möchte, schreibt an{' '}
+      {contactName ? `${contactName} (` : ''}<a class="link link-primary" href={`mailto:${contactMail}`}>{contactMail}</a>{contactName ? ')' : ''};
+      dort wird der Wunsch eingetragen. Wer einen Zugang mit
       der Rolle <code>admin</code> hat, findet die Verteiler unter
       <a class="link link-primary" href="/verwaltung">Verwaltung</a>.
     </p>

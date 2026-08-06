@@ -18,6 +18,8 @@
  * umgehbar zu machen.
  */
 
+import { zustaendigkeit } from '../../klasse/config.js'
+
 /** Lesen und Empfangen: die Klassenseite sehen, auf Listen stehen. */
 export const ROLE_MITGLIED = 'mitglied'
 
@@ -91,6 +93,12 @@ export const canEdit = (roles: readonly string[]): boolean =>
  * Weboberflaeche und MCP — wer sie liest, soll wissen, was ihm fehlt und wer
  * es geben kann. Und sie benennt den Unterschied, sonst klingt eine
  * abgelehnte Leseanfrage nach einem Fehler des Servers.
+ *
+ * Der letzte Satz nennt die Zustaendigkeit aus der `KlassenConfig` und keine
+ * feste Stelle: Wer die Rolle vergeben kann, ist eine Absprache in der Klasse
+ * und aendert sich, ohne dass sich dieses Package aendert. Ein hier
+ * eingetragener Name waere in der naechsten Klasse falsch — und zwar
+ * unbemerkt, weil die Meldung ja weiterhin plausibel klingt.
  */
 export const deniedMessage = (capability: Capability): string => {
 	const was =
@@ -100,9 +108,17 @@ export const deniedMessage = (capability: Capability): string => {
 	return (
 		`Dieser Zugang darf die Verteiler sehen, aber nicht ${was}. ` +
 		`Dafuer braucht es die Rolle "${ROLE_ADMIN}" im ZITADEL-Projekt dieser Klasse. ` +
-		'Die Klassenelternvertretung kann sie vergeben.'
+		`${zustaendigkeit()} kann sie vergeben.`
 	)
 }
 
-/** Der haeufigste Fall, als Konstante fuer Oberflaechentexte. */
-export const EDIT_DENIED_MESSAGE = deniedMessage('bearbeiten')
+/**
+ * Der haeufigste Fall, fuer Oberflaechentexte.
+ *
+ * Eine Funktion und keine Konstante: als Konstante haette sie die
+ * `KlassenConfig` beim IMPORT dieses Moduls gelesen und damit jeden Start ohne
+ * hinterlegte Config abgebrochen — die Regel aus
+ * `tests/server/importzeit.test.ts`, und `roles.ts` erreicht ueber
+ * `server/auth/index.ts` jedes `server.ts`.
+ */
+export const editDeniedMessage = (): string => deniedMessage('bearbeiten')

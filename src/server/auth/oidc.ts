@@ -401,7 +401,7 @@ export const notAMemberPage = (
 		`<h1>Du bist angemeldet, aber noch nicht freigeschaltet</h1>
      <p>Du bist mit der E-Mail-Adresse <code>${escapeHtml(email)}</code> angemeldet,
         hast für ${escapeHtml(className)} aber noch keine Freigabe.</p>
-     <p>Bitte melde Dich bei der Klassenelternvertretung oder schreibe an
+     <p>Bitte schreibe an
         <a href="mailto:${escapeHtml(contactMail)}">${escapeHtml(contactMail)}</a>,
         damit Du freigeschaltet wirst. Gib dabei bitte die oben genannte
         E-Mail-Adresse an.</p>

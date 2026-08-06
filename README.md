@@ -294,6 +294,7 @@ export const siteConfig = defineKlassenConfig({
 | `dbPath` | `./data/${slug}.db` | wenn das Volume anders eingehängt ist |
 | `listPublicKeyPem` | der Ed25519-Schlüssel des Dispatchers (eingecheckt, **kein** Geheimnis) | nur mit einem eigenen Dispatcher — oder in Tests, die selbst ein Schlüsselpaar erzeugen |
 | `listKeyIds` | `['bf2226d575ece8c8']` | zusammen mit `listPublicKeyPem`; die Id des Schlüssels muss enthalten sein, sonst lehnt `defineKlassenConfig` ab |
+| `contactName` | keiner — die Texte nennen dann nur `contactMail` | wenn eine Person und nicht eine Funktionsadresse zuständig ist. Erscheint in der Ablehnungsmeldung („… kann sie vergeben") und auf der Verteiler-Seite |
 | `tagline` | `Unterlagen und Berichte` | nach Geschmack |
 | `feedbackUrl` | `${repoUrl}/issues` | `klasse-christophers` zeigt auf `/discussions` |
 | `farben` | keine | eigene daisyUI-Farben (`primary`, `secondary`, `accent`, `neutral`) |
@@ -309,7 +310,7 @@ mit Begründung: `.env.example`.
 | Subpfad | Inhalt |
 | --- | --- |
 | `.` | `fwsKlasse()` — die Integration. **Nur für `astro.config.mjs`** |
-| `./config` | `defineKlassenConfig`, `setKlassenConfig`, `klassenConfig`, `PUBLIC_PATHS`, die Typen |
+| `./config` | `defineKlassenConfig`, `setKlassenConfig`, `klassenConfig`, `zustaendigkeit`, `PUBLIC_PATHS`, die Typen |
 | `./middleware` | `createKlassenMiddleware(config)` |
 | `./content.config` | die Content-Collections |
 | `./server-app` | `startServer({ config })` |
