@@ -43,6 +43,12 @@ type CheckBody = {
  *     401 Signatur fehlt/ungueltig
  *
  * Die Antwort nennt bewusst KEINE Empfaengeradressen, nur ihre Anzahl.
+ *
+ * Dieser Endpunkt bleibt beim HMAC-Verfahren, waehrend `/incoming` beide
+ * Verfahren annimmt: Der zonenweite Dispatcher ruft ihn nicht auf, und die
+ * kanonische Zeichenkette von `fwslist.v2` beschreibt eine Mail (Klasse, Liste,
+ * Empfaenger, Envelope-Absender) und nicht diese Frage. Ein zweites v2-Format
+ * dafuer zu erfinden, ohne Gegenstelle, waere ein Vertrag mit niemandem.
  */
 export const POST: APIRoute = async ({ request }) => {
 	const rawBody = Buffer.from(await request.arrayBuffer())

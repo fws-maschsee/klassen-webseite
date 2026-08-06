@@ -1,5 +1,7 @@
+import { generateKeyPairSync } from 'node:crypto'
 import { describe, expect, test } from 'vitest'
 import { defineKlassenConfig, PUBLIC_PATHS } from '../../src/klasse/config.js'
+import { listKeyIdFromPem } from '../../src/lib/lists/signatureEd25519.js'
 
 /**
  * Der Konfigurationsvertrag ist die einzige Stelle, an der sich zwei Klassen
@@ -74,6 +76,45 @@ describe('defineKlassenConfig', () => {
 				domain: 'https://klasse-beispiel.example.org',
 			}),
 		).toThrow(/keine URL/)
+	})
+
+	test('bringt den Schluessel des Dispatchers als Vorgabe mit', () => {
+		// Kein Geheimnis, derselbe Wert fuer alle Klassen — und die Id dazu ist
+		// nachgerechnet, nicht abgeschrieben.
+		const config = defineKlassenConfig(gueltig)
+		expect(config.listPublicKeyPem).toContain('BEGIN PUBLIC KEY')
+		expect([...config.listKeyIds]).toEqual([
+			listKeyIdFromPem(config.listPublicKeyPem),
+		])
+	})
+
+	test('lehnt eine Key-Id ab, die nicht zum Schluessel passt', () => {
+		// Der Fehler, gegen den das geschrieben ist: ein neuer Schluessel
+		// eingecheckt, die Id dazu vergessen. Jede Elternmail bliebe mit
+		// "Unbekannte Key-Id" beim absendenden Server haengen — tagelang, ohne
+		// Meldung an irgendjemanden.
+		const pem = generateKeyPairSync('ed25519')
+			.publicKey.export({ format: 'pem', type: 'spki' })
+			.toString()
+		expect(() =>
+			defineKlassenConfig({ ...gueltig, listPublicKeyPem: pem }),
+		).toThrow(/listKeyIds/)
+		expect(
+			defineKlassenConfig({
+				...gueltig,
+				listPublicKeyPem: pem,
+				listKeyIds: [listKeyIdFromPem(pem)],
+			}).listKeyIds,
+		).toHaveLength(1)
+	})
+
+	test('lehnt eine leere Key-Id-Liste und ein kaputtes PEM ab', () => {
+		expect(() => defineKlassenConfig({ ...gueltig, listKeyIds: [] })).toThrow(
+			/listKeyIds ist leer/,
+		)
+		expect(() =>
+			defineKlassenConfig({ ...gueltig, listPublicKeyPem: 'kein PEM' }),
+		).toThrow(/listPublicKeyPem/)
 	})
 
 	test('nennt alle Fehler auf einmal', () => {

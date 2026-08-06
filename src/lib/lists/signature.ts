@@ -3,9 +3,22 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 /**
  * Shared-Secret-Authentifizierung zwischen Cloudflare-Email-Worker und App.
  *
+ * DAS ÄLTERE DER ZWEI VERFAHREN. Es gilt für die Worker JE KLASSE, die über
+ * literale Email-Routing-Regeln getriggert werden. Der neue zonenweite
+ * Dispatcher signiert stattdessen mit Ed25519 (`signatureEd25519.ts`) und
+ * schickt dabei `X-List-Key-Id` mit; welcher Pfad greift, entscheidet allein
+ * dieser Header (`authenticateListRequest` in `incomingAuth.ts`). Solange beide
+ * Worker-Generationen gleichzeitig einliefern, bleibt dieses Verfahren scharf —
+ * abgeschaltet wird es erst, wenn die letzte Klasse umgestellt ist.
+ *
  * Signiert wird `${timestamp}.${rawBody}` per HMAC-SHA256 (hex) — dasselbe
  * Verfahren auf beiden Seiten (Stripe-Style). Der Timestamp begrenzt
  * Replay-Angriffe, der Vergleich ist timing-safe.
+ *
+ * Was hier NICHT gedeckt ist: die Metadaten. Die Signatur bindet nur Zeitpunkt
+ * und Body, nicht Klasse, Liste oder Envelope-Absender — die stehen ungeprüft
+ * in den Headern. Tragbar war das nur, weil das Secret je Klasse verschieden
+ * ist; genau diese Lücke schließt v2, indem es die Metadaten mitsigniert.
  *
  * Warum kein simples Bearer-Token: Der Worker schickt die vollstaendige
  * Original-Mail. Ein reines Token wuerde nur beweisen, dass der Aufrufer das
@@ -19,8 +32,15 @@ export const MAX_SKEW_SECONDS = 300
 
 /**
  * Header-Namen des Vertrags mit dem Cloudflare-Email-Worker. Maßgeblich
- * dokumentiert in `email-worker/README.md` — hier stehen sie als Konstanten,
- * damit ein Tippfehler nicht erst im Betrieb auffällt.
+ * dokumentiert in `email-worker/README.md` bzw. `README.md` des Dispatchers —
+ * hier stehen sie als Konstanten, damit ein Tippfehler nicht erst im Betrieb
+ * auffällt.
+ *
+ * Sie stehen in DIESER Datei, obwohl beide Verfahren sie brauchen: Es ist ein
+ * Vertrag mit zwei Ausbaustufen, keine zwei Verträge. Zwei Sätze
+ * Header-Konstanten wären die eine Kopie, an der sich ein Tippfehler
+ * unbemerkt einschleicht. Fällt der HMAC-Pfad weg, wandern sie nach
+ * `signatureEd25519.ts`.
  */
 export const HEADER_CLASS = 'x-list-class'
 export const HEADER_LIST_NAME = 'x-list-name'
@@ -29,6 +49,14 @@ export const HEADER_ENVELOPE_FROM = 'x-list-envelope-from'
 export const HEADER_MESSAGE_ID = 'x-list-message-id'
 export const HEADER_TIMESTAMP = 'x-list-timestamp'
 export const HEADER_SIGNATURE = 'x-list-signature'
+/**
+ * Kennung des Signierschlüssels. Schickt nur der neue Dispatcher, und genau
+ * daran wird das Verfahren erkannt: Header vorhanden -> Ed25519, Header fehlt
+ * -> HMAC. Ein Wert, den ein Angreifer weglassen kann, wählt damit das
+ * Verfahren — was nichts schwächt, weil dann der HMAC-Pfad mit vollem Ernst
+ * greift und ohne das Secret nichts durchkommt.
+ */
+export const HEADER_KEY_ID = 'x-list-key-id'
 
 export const computeSignature = (
 	secret: string,

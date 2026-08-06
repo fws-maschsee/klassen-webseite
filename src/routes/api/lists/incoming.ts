@@ -1,18 +1,9 @@
 import type { APIRoute } from 'astro'
-import { instanceName } from '../../../lib/db/instance.js'
 import {
 	handleIncomingListMail,
 	statusForResult,
 } from '../../../lib/lists/incoming.js'
-import {
-	HEADER_CLASS,
-	HEADER_ENVELOPE_FROM,
-	HEADER_LIST_NAME,
-	HEADER_MESSAGE_ID,
-	HEADER_SIGNATURE,
-	HEADER_TIMESTAMP,
-	verifyListSignature,
-} from '../../../lib/lists/signature.js'
+import { authenticateListRequest } from '../../../lib/lists/incomingAuth.js'
 import { syncMembersFromZitadel } from '../../../server/auth/mirror.js'
 
 export const prerender = false
@@ -20,8 +11,9 @@ export const prerender = false
 /**
  * Eingang für Listenmails aus dem Cloudflare-Email-Worker.
  *
- * Der maßgebliche Vertrag steht in `email-worker/README.md`; diese Datei ist
- * die App-Seite davon. Kurzfassung:
+ * Der maßgebliche Vertrag steht in `README.md` des Dispatcher-Repos
+ * `lists-dispatcher` (früher `email-worker/README.md`); diese Datei ist die
+ * App-Seite davon. Kurzfassung:
  *
  *   POST /api/lists/incoming
  *   Content-Type: message/rfc822
@@ -29,19 +21,30 @@ export const prerender = false
  *   Header:
  *     X-List-Class         Klassen-Label, z.B. "klasse-wiesen"
  *     X-List-Name          Listen-Localpart, z.B. "eltern"
- *     X-List-Recipient     vollständige Empfängeradresse (nur informativ)
+ *     X-List-Recipient     vollständige Empfängeradresse
  *     X-List-Envelope-From SMTP MAIL FROM — hierauf wird autorisiert
  *     X-List-Message-Id    Message-ID der Mail, falls vorhanden
  *     X-List-Timestamp     Unix-Sekunden
- *     X-List-Signature     hex(HMAC-SHA256(secret, `${timestamp}.${rawBody}`))
+ *     X-List-Key-Id        Kennung des Signierschlüssels — NUR beim neuen,
+ *                          zonenweiten Dispatcher. Dieser Header entscheidet
+ *                          über das Verfahren, siehe `incomingAuth.ts`
+ *     X-List-Signature     mit Key-Id: base64(Ed25519 über die kanonische
+ *                                      Zeichenkette, Metadaten mitsigniert)
+ *                          ohne:       hex(HMAC-SHA256(secret,
+ *                                      `${timestamp}.${rawBody}`))
  *
  *   202 verteilt · 200 angenommen, aber bewusst nicht verteilt ·
- *   403 abgelehnt · 404 Liste unbekannt · 413 zu groß ·
+ *   403 abgelehnt · 404 Liste unbekannt / fremde Klasse · 413 zu groß ·
  *   401 Signatur ungültig · 500 Störung (Worker stellt später erneut zu)
  *
  * Bei 403/404/413 liest der Worker `reason` aus dem JSON und gibt den Text dem
  * Absender in der SMTP-Antwort zurück. Er darf deshalb nichts Vertrauliches
  * enthalten.
+ *
+ * Diese Datei liest die `X-List-*`-Header NICHT selbst. Sie bekommt sie geprüft
+ * von `authenticateListRequest` und arbeitet ausschließlich mit dem Ergebnis
+ * weiter — im Ed25519-Pfad sind das die SIGNIERTEN Werte, und ein zweiter Griff
+ * in `request.headers` würde die Signatur um ihre Wirkung bringen.
  */
 
 /**
@@ -61,49 +64,15 @@ const megabytes = (bytes: number): string => (bytes / 1024 / 1024).toFixed(1)
 export const POST: APIRoute = async ({ request }) => {
 	const rawBody = Buffer.from(await request.arrayBuffer())
 
-	const sig = verifyListSignature({
-		secret: process.env.LIST_WEBHOOK_SECRET,
-		timestamp: request.headers.get(HEADER_TIMESTAMP),
-		signature: request.headers.get(HEADER_SIGNATURE),
-		rawBody,
-	})
-	if (!sig.ok) {
-		// 401 gilt beim Worker als Störung auf UNSERER Seite, nicht als
-		// Absenderfehler: Er wirft und der einliefernde Server stellt später
-		// erneut zu. Deshalb hier auch kein `reason` für den Absender.
-		return Response.json({ error: sig.reason }, { status: 401 })
-	}
-
-	const listName = request.headers.get(HEADER_LIST_NAME)
-	if (!listName) {
+	const auth = authenticateListRequest({ headers: request.headers, rawBody })
+	if (!auth.ok) {
 		return Response.json(
-			{ error: `Header ${HEADER_LIST_NAME} fehlt` },
-			{ status: 400 },
+			auth.anAbsender ? { reason: auth.reason } : { error: auth.reason },
+			{ status: auth.status },
 		)
 	}
-
-	// Zweite Prüfung der Klasse. Der Worker prüft sie bereits gegen sein
-	// CLASS_SLUG; hier kostet die Wiederholung nichts und deckt eine falsch
-	// gesetzte Worker-Variable auf, bevor Elternpost der einen Klasse in den
-	// Daten der anderen landet.
-	const className = request.headers.get(HEADER_CLASS)
-	if (className && className !== instanceName()) {
-		console.error(
-			`[lists/incoming] Mail für Klasse "${className}" bei Instanz "${instanceName()}" abgewiesen - Routing-Regel prüfen`,
-		)
-		return Response.json(
-			{ reason: 'Diese Adresse gehört nicht zu dieser Klasse.' },
-			{ status: 404 },
-		)
-	}
-
-	const envelopeFrom = request.headers.get(HEADER_ENVELOPE_FROM)
-	if (!envelopeFrom) {
-		return Response.json(
-			{ error: `Header ${HEADER_ENVELOPE_FROM} fehlt` },
-			{ status: 400 },
-		)
-	}
+	// Ab hier nur noch diese Werte — nicht `request.headers`.
+	const { list, envelopeFrom, messageId } = auth.request
 
 	const limit = maxBytes()
 	if (rawBody.length > limit) {
@@ -141,9 +110,9 @@ export const POST: APIRoute = async ({ request }) => {
 
 	try {
 		const result = await handleIncomingListMail(rawBody, {
-			listName,
+			listName: list,
 			envelopeFrom,
-			messageId: request.headers.get(HEADER_MESSAGE_ID),
+			messageId,
 		})
 		return Response.json(result, { status: statusForResult(result) })
 	} catch (err) {

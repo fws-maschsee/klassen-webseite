@@ -1,3 +1,5 @@
+import { listKeyIdFromPem } from '../lib/lists/signatureEd25519.js'
+
 /**
  * Der Konfigurationsvertrag zwischen diesem Package und einer Klassen-App.
  *
@@ -19,8 +21,9 @@
  *   an; wird dieser Pfad geschützt, brechen sämtliche Abos still — ohne
  *   Fehlermeldung bei irgendjemandem.
  * - `/api/lists/` : Die Endpunkte für den Cloudflare-Email-Worker. Sie sind
- *   NICHT ungeschützt, sondern authentifizieren sich über eine HMAC-Signatur
- *   mit dem geteilten `LIST_WEBHOOK_SECRET` (siehe `src/lib/lists/signature.ts`).
+ *   NICHT ungeschützt, sondern signaturgeprüft — beim zonenweiten Dispatcher
+ *   per Ed25519 gegen `listPublicKeyPem`, bei den alten Workern je Klasse per
+ *   HMAC gegen `LIST_WEBHOOK_SECRET` (siehe `src/lib/lists/incomingAuth.ts`).
  *
  * Diese Liste zu erweitern heißt, Inhalte zu veröffentlichen: `astro build`
  * kompiliert `src/content/` der Klasse (Berichte, Protokolle, Unterlagen) mit
@@ -39,6 +42,30 @@ const SCHUL_VORGABEN = {
 	listBaseDomain: 'lists.fws-maschsee-test.de',
 	/** ZITADEL-Projektrolle, die Zugang zur Seite gewährt. */
 	authRole: 'mitglied',
+	/**
+	 * Öffentlicher Ed25519-Schlüssel des zonenweiten Dispatchers, mit dem die
+	 * eingehende Listenmail geprüft wird (`src/lib/lists/signatureEd25519.ts`).
+	 *
+	 * Steht hier im Klartext, weil er KEIN Geheimnis ist: Damit lassen sich
+	 * Aufrufe prüfen, aber keine erzeugen — genau das ist der Grund für Ed25519
+	 * statt HMAC. Den Privatschlüssel hat allein der Dispatcher. Derselbe Wert
+	 * für alle Klassen, also gehört er ins Package und nicht in n Repositories:
+	 * ein Schlüsselwechsel ist damit eine Paketversion und kein Rundlauf durch
+	 * alle Klassen-Repos.
+	 */
+	listPublicKeyPem: `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAjYOv8AXbp+JScJ653wMEtv6lARyphIakIIRKQ+OT4IQ=
+-----END PUBLIC KEY-----
+`,
+	/**
+	 * Akzeptierte Key-Ids. Eine LISTE, damit ein Schlüsselwechsel möglich ist,
+	 * ohne alle Klassen gleichzeitig anzufassen: Die neue Id kann vorab
+	 * aufgenommen werden, und erst danach stellt der Dispatcher um.
+	 *
+	 * Die Id ist aus `listPublicKeyPem` abgeleitet und nicht frei gewählt;
+	 * `defineKlassenConfig` rechnet sie nach.
+	 */
+	listKeyIds: ['bf2226d575ece8c8'] as readonly string[],
 } as const
 
 /**
@@ -108,6 +135,21 @@ export type KlassenConfigInput = {
 	listBaseDomain?: string
 	/** Vorgabe: `${slug}.${listBaseDomain}`. */
 	listDomain?: string
+	/**
+	 * Öffentlicher Ed25519-Schlüssel des Dispatchers, SPKI-PEM. Vorgabe: der
+	 * Schlüssel der Schule, siehe `SCHUL_VORGABEN`. Kein Geheimnis.
+	 *
+	 * Nur setzen, wenn eine Klasse an einem anderen Dispatcher hängt — oder in
+	 * Tests, die selbst ein Schlüsselpaar erzeugen. Wer ihn setzt, muss
+	 * `listKeyIds` mitsetzen: Die Id des Schlüssels muss darin vorkommen, sonst
+	 * lehnt `defineKlassenConfig` ab.
+	 */
+	listPublicKeyPem?: string
+	/**
+	 * Akzeptierte Key-Ids des Dispatchers. Vorgabe: die Id des Schlüssels aus
+	 * `SCHUL_VORGABEN`. Muss die Id von `listPublicKeyPem` enthalten.
+	 */
+	listKeyIds?: readonly string[]
 	/** Vorgabe: `noreply@fws-maschsee-test.de` (in SES verifiziert). */
 	mailFrom?: string
 	/**
@@ -173,6 +215,30 @@ export const defineKlassenConfig = (
 		)
 	}
 
+	const listPublicKeyPem =
+		input.listPublicKeyPem ?? SCHUL_VORGABEN.listPublicKeyPem
+	const listKeyIds = input.listKeyIds ?? SCHUL_VORGABEN.listKeyIds
+
+	// Schlüssel und Id nachrechnen, statt beide nur nebeneinander zu glauben.
+	// Ein PEM ohne die dazu passende Id in der Positivliste kann NIE eine
+	// Signatur bestätigen: Jede Elternmail bliebe mit "Unbekannte Key-Id" beim
+	// absendenden Server hängen, tagelang, ohne Fehlermeldung an irgendjemanden.
+	// Das ist genau die Sorte Fehler, die beim Start auffallen muss.
+	if (listKeyIds.length === 0) {
+		fehler.push('listKeyIds ist leer — damit kommt keine Listenmail durch')
+	} else {
+		try {
+			const abgeleitet = listKeyIdFromPem(listPublicKeyPem)
+			if (!listKeyIds.includes(abgeleitet)) {
+				fehler.push(
+					`listKeyIds (${listKeyIds.join(', ')}) enthaelt nicht die Id des Schluessels in listPublicKeyPem (${abgeleitet}) — Schluessel und Id gehoeren zusammen`,
+				)
+			}
+		} catch (error) {
+			fehler.push((error as Error).message)
+		}
+	}
+
 	if (fehler.length > 0) {
 		throw new Error(
 			`Ungueltige KlassenConfig:\n  - ${fehler.join('\n  - ')}\n(siehe src/site.config.ts der Klassen-App)`,
@@ -194,6 +260,8 @@ export const defineKlassenConfig = (
 		zitadelProject: input.zitadelProject ?? input.slug,
 		listBaseDomain,
 		listDomain: input.listDomain ?? `${input.slug}.${listBaseDomain}`,
+		listPublicKeyPem,
+		listKeyIds,
 		mailFrom: input.mailFrom ?? SCHUL_VORGABEN.mailFrom,
 		dbPath: input.dbPath ?? `./data/${input.slug}.db`,
 		tagline: input.tagline ?? 'Unterlagen und Berichte',

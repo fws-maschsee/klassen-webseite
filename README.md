@@ -185,6 +185,8 @@ Vorfall geschrieben, nicht gegen eine Möglichkeit.
 | `listDomain` | `${slug}.${listBaseDomain}` | bei einer Sonderroute im Email-Worker |
 | `mailFrom` | `noreply@fws-maschsee-test.de` | nur mit einer anderen in SES verifizierten Adresse |
 | `dbPath` | `./data/${slug}.db` | wenn das Volume anders eingehängt ist |
+| `listPublicKeyPem` | der Ed25519-Schlüssel des Dispatchers (eingecheckt, **kein** Geheimnis) | nur mit einem eigenen Dispatcher — oder in Tests, die selbst ein Schlüsselpaar erzeugen |
+| `listKeyIds` | `['bf2226d575ece8c8']` | zusammen mit `listPublicKeyPem`; die Id des Schlüssels muss enthalten sein, sonst lehnt `defineKlassenConfig` ab |
 | `tagline` | `Unterlagen und Berichte` | nach Geschmack |
 | `feedbackUrl` | `${repoUrl}/issues` | `klasse-christophers` zeigt auf `/discussions` |
 | `farben` | keine | eigene daisyUI-Farben (`primary`, `secondary`, `accent`, `neutral`) |
@@ -300,6 +302,37 @@ der schon existiert, hat alles. Der Preis ist, dass `git log` hier nicht
 erzählt, warum eine Zeile so aussieht. Bezahlt wird er in den Kommentaren: die
 Begründungen sind aus den Klassen-Repos mitgewandert und stehen bei dem Code,
 den sie erklären.
+
+### Zwei Signaturverfahren am Listeneingang
+
+`POST /api/lists/incoming` nimmt **beides** an, und `X-List-Key-Id` entscheidet:
+Header vorhanden → **Ed25519** (`fwslist.v2`, der neue zonenweite Dispatcher),
+Header fehlt → **HMAC-SHA256** mit `LIST_WEBHOOK_SECRET` (die alten Worker je
+Klasse). Die Fallunterscheidung steht in `src/lib/lists/incomingAuth.ts`.
+
+Das ist kein Schalter, sondern ein Nebeneinander: Solange eine Listenadresse
+eine literale Email-Routing-Regel hat, gewinnt sie gegen den Catch-all des
+Dispatchers — umgestellt wird klassen- und listenweise, und beide Wege liefern
+in derselben Woche ein.
+
+Beide Pfade sind scharf, und keiner wird durch eine fehlende Konfiguration
+übersprungen: ohne Secret scheitert der HMAC-Pfad, ohne Schlüssel der
+Ed25519-Pfad, in beiden Fällen mit `401`. Ein `if (secret)`, das die Prüfung
+auslässt, wenn nichts konfiguriert ist, wäre ein offenes Relais in die
+Elternschaft.
+
+Der öffentliche Schlüssel ist **eingecheckt** (`listPublicKeyPem`) und für alle
+Klassen derselbe. Er ist kein Geheimnis: Damit lassen sich Aufrufe prüfen, aber
+keine erzeugen — genau das ist der Grund für Ed25519. Vorher hielt jede App ein
+HMAC-Secret, mit dem sich Post an die eigene Elternschaft fälschen ließ. Weil
+jetzt alle Klassen mit demselben Schlüssel prüfen, sind die Metadaten (Klasse,
+Liste, Empfänger, Envelope-Absender, Message-ID, Zeitstempel, Body-Hash)
+mitsigniert: Ohne die Klasse in der signierten Zeichenkette ließe sich ein
+gültiger Aufruf für Klasse A bei Klasse B einliefern.
+
+Die kanonische Zeichenkette gibt es dadurch **zweimal** — hier und im
+Dispatcher-Repo `lists-dispatcher`. Abgesichert ist das durch einen
+Golden-String-Test auf jeder Seite; wer das Format ändert, ändert beide.
 
 ### Der Adapter steht in der Integration
 
