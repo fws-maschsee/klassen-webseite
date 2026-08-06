@@ -94,6 +94,62 @@ steps:
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+### Der Docker-Build braucht das Token auch
+
+**Solange dieses Package privat ist, kann das `npm ci` IM Image nicht ohne
+Registry-Auth laufen.** Der Docker-Build sieht die `~/.npmrc` des Benutzers nicht
+und die Env des Workflows nicht — er sieht nur den Build-Kontext. Beide Umzüge
+(`klasse-wiesen#91`, `klasse-christophers#45`) sind darüber gestolpert, mit einem
+`npm error code E401` aus einer Schicht, in der niemand ein Token vermutet.
+
+Das Token gehört als **Build-Secret** hinein und nicht als `ARG`: ein `ARG` steht
+in der Image-Historie (`docker history`) und wäre damit mit dem Image gepusht, in
+eine Registry, die mehr Leute lesen als das Repository. Und die Zugangszeile darf
+in keiner `.npmrc` landen, die `COPY`t wird — die eingecheckte `.npmrc` enthält
+nur die Registry-Zeile für den Scope.
+
+`Dockerfile`, in **jeder** Stage mit `npm ci`:
+
+```dockerfile
+COPY package.json package-lock.json .npmrc ./
+
+# Die Zugangszeile entsteht AUSSERHALB des Image-Dateisystems und verschwindet
+# mit der Schicht: eine Zeile in `/app/.npmrc` wäre dauerhaft im Image.
+RUN --mount=type=secret,id=npm_token \
+    printf '//npm.pkg.github.com/:_authToken=%s\n' "$(cat /run/secrets/npm_token)" > /tmp/npmrc \
+    && NPM_CONFIG_USERCONFIG=/tmp/npmrc npm ci \
+    && rm -f /tmp/npmrc
+```
+
+Workflow — an **jeden** `docker/build-push-action`-Schritt, auch an den, der nur
+ein Zwischen-Image baut:
+
+```yaml
+permissions:
+  contents: read
+  packages: write   # write enthält read
+steps:
+  - uses: docker/build-push-action@v6
+    with:
+      secrets: |
+        npm_token=${{ secrets.GITHUB_TOKEN }}
+```
+
+Lokal und in `docker-compose.yaml` entsprechend:
+
+```bash
+docker build --secret id=npm_token,env=NODE_AUTH_TOKEN .
+```
+
+Alternativ lässt sich die fertige `~/.npmrc` direkt einhängen
+(`--mount=type=secret,id=npmrc,target=/root/.npmrc`). Das ist lokal kürzer,
+verlangt in der CI aber, dass der Workflow erst eine `.npmrc` schreibt — und
+hängt beim Entwickeln jedes andere Token aus dieser Datei in den Build.
+
+Fällt das Package einmal auf öffentlich, geht das trotzdem nicht weg:
+npm.pkg.github.com verlangt auch für öffentliche Packages eine
+Authentifizierung. Weg wäre es erst mit einem Wechsel der Registry.
+
 ### Die vier Dreizeiler
 
 `astro.config.mjs`:
@@ -187,10 +243,42 @@ Vorfall geschrieben, nicht gegen eine Möglichkeit.
 | --- | --- |
 | `slug` | Technischer Name, z. B. `klasse-wiesen`. Trägt **vier** Dinge, die zwingend zusammenpassen müssen: Name des ZITADEL-Projekts, Vorgabe für `MCP_INSTANCE_NAME`, Präfix der Listen-Domain und Dateiname der SQLite-Datei. Ein Wert statt vier, weil ein Auseinanderlaufen bedeutet, dass Post in der falschen Klasse landet. Nur `[a-z0-9-]` |
 | `label` | Anzeigename, z. B. `Klasse Wiesen`. Seitentitel, Kopfzeile, Absendername |
-| `domain` | Live-Domain **ohne Schema**. Nicht vom `slug` abgeleitet, weil DNS, Zertifikat und die Kalender-Abos daran hängen: `klasse-wiesen` läuft bis heute unter `klasse-poellmann.de` |
+| `domain` | Die Adresse, unter der die Instanz **jetzt** erreichbar ist, ohne Schema. Nicht vom `slug` abgeleitet, weil DNS und Zertifikat daran hängen und eine Klasse umziehen kann |
 | `repoUrl` | GitHub-Repository der Klasse. Quelle für Edit- und Feedback-Links |
 | `contactMail` | Adresse für Eltern, die angemeldet, aber noch nicht freigeschaltet sind |
 | `calendarPath` | Pfad des Kalenders unter `public/`, z. B. `/public/poellmann.ics`; `null` für „keinen Kalender". Muss unter `/public/` oder `/api/lists/` liegen — sonst verlangt die Middleware eine Anmeldung, und die Abos brechen still ab. Genau dieser Fehler blieb sieben Monate unbemerkt, deshalb wird er hier abgelehnt statt dokumentiert |
+
+#### `domain` ist die technische Adresse, nicht die historische
+
+**In `domain` gehört der Host, den der Ingress heute ausliefert — nie der Name,
+unter dem die Klasse einmal bekannt war.** Aus `domain` leitet das Package
+`siteUrl` ab, aus `siteUrl` die `redirect_uri` der Anmeldung. Steht dort eine
+abgelöste Adresse, die nur noch `301` liefert, dann schickt die App eine
+`redirect_uri` an ZITADEL, die am OIDC-Client nicht hinterlegt ist: die Anmeldung
+bricht mit einem Fehler von ZITADEL ab, und zwar für alle Eltern gleichzeitig.
+Der Wert muss deshalb mit `OIDC_PUBLIC_ORIGIN` und `PUBLIC_BASE_URL` des
+Deployments übereinstimmen.
+
+Der alte Name lebt weiter, wo er ein **Schlüssel** ist und keine Adresse — in
+`analyticsDomain`, weil Plausible Ereignisse für eine unbekannte Domain
+kommentarlos verwirft, und in `calendarPath`, weil dieser Pfad in den
+Kalender-Apps der Eltern steht. Für `klasse-wiesen` heißt das:
+
+```ts
+export const siteConfig = defineKlassenConfig({
+  slug: 'klasse-wiesen',
+  label: 'Klasse Wiesen',
+  // Der Ingress-Host. NICHT klasse-poellmann.de — die alte Adresse liefert nur
+  // noch 301, und die Anmeldung liefe gegen eine nicht hinterlegte redirect_uri.
+  domain: 'klasse-wiesen.fws-maschsee-test.de',
+  // Der alte Name, weil Plausible die Statistik daran hängt.
+  analyticsDomain: 'klasse-poellmann.de',
+  // Der alte Pfad, weil die Eltern genau ihn abonniert haben.
+  calendarPath: '/public/poellmann.ics',
+  repoUrl: 'https://github.com/fws-maschsee/klasse-wiesen',
+  contactMail: '…',
+})
+```
 
 ### Optional, mit Vorgabe
 

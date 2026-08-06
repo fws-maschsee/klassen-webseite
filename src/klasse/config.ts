@@ -98,9 +98,20 @@ export type KlassenConfigInput = {
 	/** Anzeigename, z.B. `Klasse Wiesen`. Seitentitel, Kopfzeile, Mails. */
 	label: string
 	/**
-	 * Live-Domain ohne Schema. Daran hängen DNS, Zertifikat und die
-	 * Kalender-Abos der Eltern — der Wert ist deshalb nicht vom `slug`
-	 * abgeleitet: `klasse-wiesen` läuft bis heute unter `klasse-poellmann.de`.
+	 * Die Adresse, unter der die Instanz JETZT erreichbar ist — ohne Schema.
+	 *
+	 * Der Wert ist technisch und nicht historisch: aus ihm leitet sich `siteUrl`
+	 * ab, und daraus die `redirect_uri` der Anmeldung. Er muss deshalb dem
+	 * Ingress-Host entsprechen (`OIDC_PUBLIC_ORIGIN`, `PUBLIC_BASE_URL`), und die
+	 * Adresse muss am OIDC-Client hinterlegt sein. Eine alte Domain, die nur noch
+	 * `301` liefert, ergibt hier eine `redirect_uri`, die ZITADEL nicht kennt —
+	 * die Anmeldung bricht dann mit einem Fehler von ZITADEL ab, nicht mit einer
+	 * Meldung dieser App.
+	 *
+	 * Nicht vom `slug` abgeleitet, weil DNS und Zertifikat daran hängen und eine
+	 * Klasse umziehen kann. Wo der alte Name ein SCHLÜSSEL ist und keine Adresse,
+	 * lebt er in eigenen Feldern weiter: `analyticsDomain` (Plausible verwirft
+	 * sonst jedes Ereignis) und `calendarPath` (die Abos der Eltern).
 	 */
 	domain: string
 	/** GitHub-Repository der Klasse. Quelle für Edit- und Feedback-Links. */

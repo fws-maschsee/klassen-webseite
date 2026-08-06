@@ -34,7 +34,9 @@ describe('defineKlassenConfig', () => {
 
 	test('laesst sich jeden abgeleiteten Wert einzeln ueberschreiben', () => {
 		// Der Fall aus der Wirklichkeit: `klasse-wiesen` laeuft unter
-		// `klasse-poellmann.de`, weil DNS und Zertifikat daran haengen.
+		// `klasse-wiesen.fws-maschsee-test.de`, zaehlt in Plausible aber weiter
+		// unter `klasse-poellmann.de` — sonst faengt die Statistik bei Null an.
+		// `domain` folgt dem Ingress, `analyticsDomain` der Geschichte.
 		const config = defineKlassenConfig({
 			...gueltig,
 			domain: 'alte-domain.example.org',
