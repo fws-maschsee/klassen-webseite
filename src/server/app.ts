@@ -1,3 +1,4 @@
+import type { Server } from 'node:http'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js'
@@ -51,9 +52,20 @@ export type StartServerOptions = {
 	astroEntry?: string
 }
 
+/**
+ * Startet die Express-App.
+ *
+ * Gibt den `http.Server` zurueck, damit ein Test den Start abschliessen und den
+ * Port danach wieder freigeben kann. In `server.ts` einer Klasse bleibt das
+ * `await startServer({ config })` davon unberuehrt.
+ */
 export const startServer = async (
 	options: StartServerOptions,
-): Promise<void> => {
+): Promise<Server> => {
+	// MUSS als erstes laufen: alles darunter liest die Konfiguration ueber
+	// `klassenConfig()`. Deshalb darf oberhalb dieser Zeile auch kein IMPORT
+	// etwas auswerten, das die Konfiguration braucht — siehe die Begruendung an
+	// `createMcpAuthMiddleware` in `./mcp/handler.ts`.
 	setKlassenConfig(options.config)
 
 	const db = openDb()
@@ -113,7 +125,7 @@ export const startServer = async (
 	const { handler } = (await import(astroEntry)) as { handler: any }
 	app.use(handler)
 
-	app.listen(port(), () => {
+	return app.listen(port(), () => {
 		console.log(
 			`[server] ${instance.configured} laeuft auf http://localhost:${port()}`,
 		)

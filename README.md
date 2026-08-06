@@ -132,6 +132,14 @@ import { siteConfig } from './src/site.config'
 await startServer({ config: siteConfig })
 ```
 
+Statischer Import, und `PUBLIC_BASE_URL` muss **nicht** gesetzt sein: kein Modul
+dieses Packages liest die Konfiguration beim Import, und `tests/server/` hält das
+fest. In 0.2.0 war das anders — dort baute `mcp/handler.ts` seine
+Bearer-Middleware im Modulkopf, und jeder Start ohne `PUBLIC_BASE_URL` starb mit
+„Keine KlassenConfig hinterlegt". Wer deswegen einen dynamischen `import()` oder
+ein `ENV PUBLIC_BASE_URL` im `Dockerfile` stehen hat, kann beides ab 0.2.1
+entfernen.
+
 Dazu `tailwind.config.mjs` — ohne diese Zeile baut die Seite durch und sieht
 kaputt aus, weil Tailwind die geteilten Seiten unter `node_modules` nicht
 scannt:
