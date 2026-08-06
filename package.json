@@ -93,7 +93,7 @@
 	"peerDependencies": {
 		"@astrojs/node": "^9.0.0",
 		"@astrojs/tailwind": "^6.0.2",
-		"@levino/shipyard-base": "0.6.1",
+		"@levino/shipyard-base": "^0.6.1",
 		"@levino/shipyard-blog": "0.6.1",
 		"@levino/shipyard-docs": "0.6.2",
 		"@tailwindcss/typography": "^0.5.15",
@@ -106,7 +106,7 @@
 		"@astrojs/node": "^9.0.0",
 		"@astrojs/tailwind": "^6.0.2",
 		"@biomejs/biome": "2.2.4",
-		"@levino/shipyard-base": "0.6.1",
+		"@levino/shipyard-base": "^0.6.1",
 		"@levino/shipyard-blog": "0.6.1",
 		"@levino/shipyard-docs": "0.6.2",
 		"@tailwindcss/typography": "^0.5.15",

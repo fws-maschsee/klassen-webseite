@@ -228,6 +228,28 @@ TypeScript aus, und vite-node inlined nur, was Node nicht laden könnte. Als
 kompiliertes JavaScript würde die Integration externalisiert, und Node scheiterte
 am `import` von shipyards `.ts`-Datei.
 
+## Die Peer-Bereiche von `@levino/shipyard-*`
+
+Sie sehen ungleich aus, und das ist gemessen und nicht vergessen:
+
+| Peer | Bereich | Warum nicht weiter |
+| --- | --- | --- |
+| `@levino/shipyard-base` | `^0.6.1` | 0.6.1 bis 0.6.3 haben identische Peers (`astro ^5.7`, `tailwindcss ^3`, `daisyui ^4`). 0.7.1 wäre attraktiv (der Footer-Ausgleich könnte weg), setzt aber Tailwind 4 und daisyUI 5 voraus — eine eigene Migration |
+| `@levino/shipyard-blog` | `0.6.1` | **festgenagelt.** Ab 0.6.2 hängt blog an `@levino/shipyard-base@^0.7.0`. npm installiert dann eine ZWEITE, verschachtelte shipyard-base 0.7.x neben der 0.6.x der Klasse: zwei Komponentenbibliotheken in einer Seite, und die 0.7er ohne das Tailwind 4, das sie braucht |
+| `@levino/shipyard-docs` | `0.6.2` | dasselbe ab 0.6.4. 0.6.3 wäre erlaubt, verlangt aber `base ^0.6.3` und zieht sich in einer Klasse mit `base 0.6.1` eine eigene Kopie |
+
+Die Regel dahinter: ein Peer-Bereich darf nur so weit reichen, wie am Ende
+**genau eine** `@levino/shipyard-base` im Baum steht. Nachzusehen mit
+`npm ls @levino/shipyard-base` — mehr als eine Zeile ohne `deduped` ist der
+Fehler, und er meldet sich nicht von selbst, sondern als Seite, die anders
+aussieht.
+
+Der sichtbare Unterschied zwischen base 0.6.1 und 0.6.2+: 0.6.1 schreibt
+`© Levin Keller, 2025` fest in den Footer, ohne jede Möglichkeit, das zu
+konfigurieren. Ab 0.6.2 gibt es dafür `config.copyright` und `hideBranding`.
+Deshalb reicht der Bereich hier nach oben — `klasse-christophers` musste für
+0.2.0 auf 0.6.1 herunter und hatte die Zeile wieder.
+
 ## Ein neues Feature ausrollen
 
 1. **PR gegen `main`.** Die CI prüft `build`, `typecheck`, `test`, `check`.
