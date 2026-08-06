@@ -1,0 +1,31 @@
+{
+	// Der Astro-Teil: die Integration, die Content-Konfiguration und die Typen,
+	// die eine Klassen-App einbindet. Eigenes Projekt, weil hier andere Regeln
+	// gelten als im Nodeteil — dieser Code wird ausschließlich von Vite bzw.
+	// vite-node geladen, nie von Node direkt.
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"noEmit": true,
+		// Erlaubt `./integration.ts` im Import. Vite loest eine ausgeschriebene
+		// `.ts`-Endung garantiert auf; `./integration.js` waere auf Vites
+		// Rueckfall-Verhalten angewiesen, und diese Datei liegt beim Verbraucher
+		// unter node_modules, wo Vite weniger tut.
+		"allowImportingTsExtensions": true,
+		"paths": {
+			"@fws-maschsee/klassen-webseite/klasse/*": ["./src/klasse/*.ts"],
+			"@fws-maschsee/klassen-webseite/lib/*": ["./src/lib/*.ts"],
+			"@fws-maschsee/klassen-webseite/server/*": ["./src/server/*.ts"],
+			"@fws-maschsee/klassen-webseite/remark/*": ["./src/remark/*.ts"],
+			"@levino/shipyard-base": ["./astro/types/shipyard-base.d.ts"],
+			"@levino/shipyard-base/remark": [
+				"./astro/types/shipyard-base-remark.d.ts"
+			],
+			"@levino/shipyard-blog": ["./astro/types/shipyard-blog.d.ts"],
+			"@levino/shipyard-docs": ["./astro/types/shipyard-docs.d.ts"]
+		}
+	},
+	"include": ["astro/**/*.ts", "astro/**/*.d.ts"],
+	"exclude": ["dist", "node_modules"]
+}

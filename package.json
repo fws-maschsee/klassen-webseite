@@ -1,0 +1,126 @@
+{
+	"name": "@fws-maschsee/klassen-webseite",
+	"version": "0.1.0",
+	"description": "Geteilter Code der Klassen-Webseiten der Freien Waldorfschule Hannover-Maschsee: Astro-Integration, Anmeldung, Mailinglisten, MCP-Server, Datenbankschema.",
+	"license": "UNLICENSED",
+	"private": false,
+	"type": "module",
+	"engines": {
+		"node": ">=20.0"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/fws-maschsee/klassen-webseite.git"
+	},
+	"publishConfig": {
+		"registry": "https://npm.pkg.github.com",
+		"access": "restricted"
+	},
+	"exports": {
+		".": "./astro/index.ts",
+		"./integration": "./astro/integration.ts",
+		"./content.config": "./astro/content.config.ts",
+		"./config": {
+			"types": "./dist/klasse/config.d.ts",
+			"default": "./dist/klasse/config.js"
+		},
+		"./middleware": {
+			"types": "./dist/klasse/middleware.d.ts",
+			"default": "./dist/klasse/middleware.js"
+		},
+		"./kalender": {
+			"types": "./dist/klasse/kalender.d.ts",
+			"default": "./dist/klasse/kalender.js"
+		},
+		"./tailwind": {
+			"types": "./dist/klasse/tailwind.d.ts",
+			"default": "./dist/klasse/tailwind.js"
+		},
+		"./migrations": {
+			"types": "./dist/migrations.d.ts",
+			"default": "./dist/migrations.js"
+		},
+		"./server-app": {
+			"types": "./dist/server/app.d.ts",
+			"default": "./dist/server/app.js"
+		},
+		"./klasse/*": {
+			"types": "./dist/klasse/*.d.ts",
+			"default": "./dist/klasse/*.js"
+		},
+		"./lib/*": {
+			"types": "./dist/lib/*.d.ts",
+			"default": "./dist/lib/*.js"
+		},
+		"./server/*": {
+			"types": "./dist/server/*.d.ts",
+			"default": "./dist/server/*.js"
+		},
+		"./remark/*": {
+			"types": "./dist/remark/*.d.ts",
+			"default": "./dist/remark/*.js"
+		},
+		"./styles/global.css": "./src/styles/global.css",
+		"./env.d.ts": "./astro/env.d.ts",
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"astro",
+		"dist",
+		"db/migrations",
+		"src/styles",
+		"README.md"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.astro.json",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"check": "biome check .",
+		"lint:fix": "biome check --write .",
+		"prepack": "npm run build"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.30.0",
+		"express": "^5.2.1",
+		"jose": "^6.2.8",
+		"mailparser": "^3.9.14",
+		"mjml": "^4.18.0",
+		"nodemailer": "^9.0.4",
+		"unist-util-visit": "^5.0.0",
+		"zod": "^3.25.76"
+	},
+	"peerDependencies": {
+		"@astrojs/node": "^9.0.0",
+		"@astrojs/tailwind": "^6.0.2",
+		"@levino/shipyard-base": "0.6.1",
+		"@levino/shipyard-blog": "0.6.1",
+		"@levino/shipyard-docs": "0.6.2",
+		"@tailwindcss/typography": "^0.5.15",
+		"astro": "^5.16.0",
+		"better-sqlite3": "^12.11.1",
+		"daisyui": "^4.12.0",
+		"tailwindcss": "^3.4.0"
+	},
+	"devDependencies": {
+		"@astrojs/node": "^9.0.0",
+		"@astrojs/tailwind": "^6.0.2",
+		"@biomejs/biome": "2.2.4",
+		"@levino/shipyard-base": "0.6.1",
+		"@levino/shipyard-blog": "0.6.1",
+		"@levino/shipyard-docs": "0.6.2",
+		"@tailwindcss/typography": "^0.5.15",
+		"@types/better-sqlite3": "^9.6.0",
+		"@types/express": "^5.0.6",
+		"@types/mailparser": "^3.4.6",
+		"@types/mjml": "^5.0.0",
+		"@types/node": "^22.20.1",
+		"@types/nodemailer": "^8.0.1",
+		"astro": "^5.16.0",
+		"better-sqlite3": "^12.11.1",
+		"daisyui": "^4.12.0",
+		"tailwindcss": "^3.4.0",
+		"typescript": "^5.8.2",
+		"vitest": "^4.1.10"
+	}
+}

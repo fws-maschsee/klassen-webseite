@@ -1,0 +1,31 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		// DOM steht hier nicht fuer einen Browser, sondern fuer `Request`,
+		// `Response` und `Headers`. Der geteilte Code arbeitet durchgehend mit
+		// diesen Web-Typen, weil Astro sie in seinen Handlern liefert.
+		"lib": ["ES2023", "DOM", "DOM.Iterable"],
+		"types": ["node"],
+		"strict": true,
+		"noImplicitOverride": true,
+		"noFallthroughCasesInSwitch": true,
+		"verbatimModuleSyntax": true,
+		"isolatedModules": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"baseUrl": ".",
+		// Selbstreferenz: die geteilten Seiten und die Integration importieren das
+		// Package unter seinem eigenen Namen, weil beim Verbraucher nur `dist/`
+		// liegt und ein relativer Pfad in `src/` dort ins Leere zeigte. Fuer die
+		// Typpruefung IN diesem Repo muss der Name auf die Quellen zeigen — sonst
+		// prueft tsc gegen einen Build, der beim ersten Lauf noch nicht existiert.
+		"paths": {
+			"@fws-maschsee/klassen-webseite": ["./astro/index.ts"],
+			"@fws-maschsee/klassen-webseite/klasse/*": ["./src/klasse/*.ts"],
+			"@fws-maschsee/klassen-webseite/lib/*": ["./src/lib/*.ts"],
+			"@fws-maschsee/klassen-webseite/server/*": ["./src/server/*.ts"],
+			"@fws-maschsee/klassen-webseite/remark/*": ["./src/remark/*.ts"],
+			"@fws-maschsee/klassen-webseite/migrations": ["./src/migrations.ts"]
+		}
+	}
+}

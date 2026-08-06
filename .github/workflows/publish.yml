@@ -1,0 +1,53 @@
+name: Veröffentlichen
+
+# Nur auf einen Tag `v*`. Veröffentlicht wird also nie durch einen Merge,
+# sondern durch eine bewusste Handlung mit einer Nummer daran.
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      # `packages: write` ist das einzige Schreibrecht, das dieser Job braucht.
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          # Legt die .npmrc mit Registry und `_authToken=${NODE_AUTH_TOKEN}` an.
+          registry-url: https://npm.pkg.github.com
+          scope: '@fws-maschsee'
+
+      - run: npm ci
+
+      # Dieselben Pruefungen wie in der CI, noch einmal unmittelbar vor dem
+      # Veroeffentlichen: ein Tag kann auf einen Commit zeigen, der die CI nie
+      # gesehen hat, und eine falsche Version im Registry laesst sich nicht
+      # zurueckziehen.
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run check
+
+      - name: Version gegen Tag pruefen
+        # Sonst entsteht `v0.2.0` mit dem Inhalt von 0.1.0 im Registry, und
+        # niemand sieht es, bis eine Klasse die falsche Version zieht.
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "Tag $GITHUB_REF_NAME passt nicht zu package.json ($pkg)" >&2
+            exit 1
+          fi
+
+      - run: npm publish
+        env:
+          # Der automatisch bereitgestellte Token des Workflow-Laufs. Kein PAT,
+          # nichts mit Ablaufdatum, nichts, das jemand rotieren muss.
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
