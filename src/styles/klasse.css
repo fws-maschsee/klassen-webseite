@@ -1,0 +1,41 @@
+/*
+ * Der Tailwind-Einstieg aller Klassen.
+ *
+ * Steht hier und nicht in der Klasse, aus demselben Grund wie früher
+ * `tailwindVorgabe()`: Ein fehlender `@import`, ein fehlendes `@plugin` oder ein
+ * fehlender `@source` lässt jeden Build durchlaufen und die Seite völlig
+ * unformatiert aussehen. Abgeschrieben lief diese Liste zwischen den Klassen
+ * auseinander, ohne dass es jemandem gemeldet wurde. In der Klasse steht
+ * deshalb genau eine Zeile:
+ *
+ *     @import "../../geteilt/src/styles/klasse.css";
+ *
+ * Seit shipyard 0.7 liefert das Paket kein Tailwind-Setup mehr mit — das CSS
+ * der Seite besteht ausschließlich aus dem, was hier steht.
+ */
+
+@import "tailwindcss";
+
+/*
+ * Komponentenstile UND `@source`-Zeilen der shipyard-Pakete: jedes Paket
+ * liefert seine eigenen Quellpfade in seiner `index.css` mit, aufgelöst über
+ * die `style`-Bedingung seines `exports`-Felds. Deshalb hier keine Pfade von
+ * Hand — und deshalb kein `@source "@levino/shipyard-base"`: `@source` löst
+ * keine Paketnamen auf und meldet das auch nicht.
+ */
+@import "@levino/shipyard-base";
+@import "@levino/shipyard-blog";
+@import "@levino/shipyard-docs";
+
+/*
+ * Die geteilten Seiten. Der Pfad ist relativ zu DIESER Datei und zeigt damit in
+ * der Klasse auf `geteilt/astro`. Ausdrücklich und nicht der automatischen
+ * Quellenerkennung überlassen, weil der geteilte Code als Submodule im Baum
+ * liegt: an dieser Git-Grenze ist nicht verlässlich, was Tailwind von allein
+ * findet. Fehlt die Zeile, fehlt jede Utility, die nur in `astro/pages/**`
+ * vorkommt.
+ */
+@source "../../astro";
+
+@plugin "daisyui";
+@plugin "@tailwindcss/typography";

@@ -6,7 +6,7 @@ MCP-Server und das Datenbankschema.
 
 Eine Klassen-App bindet dieses Repository als **git submodule** unter
 `geteilt/` ein und besteht danach aus ihren Inhalten, ihrer Konfiguration und
-vier Dreizeilern.
+fünf Dreizeilern.
 
 Kein npm-Package, kein `dist/`, kein Publish, keine Registry-Auth — die
 Begründung steht in
@@ -47,7 +47,7 @@ dreimal.
 | die geteilten Routen (`/`, `/verteiler`, `/verwaltung`, `/logout`, `/oauth/consent`, `/auth/*`, `/api/lists/*`) | `public/**` — Kalender, PDFs, Bilder |
 | `db/migrations/**` — das Datenbankschema | `deploy/**`, `Dockerfile`, `.env`, Sealed Secrets |
 | `astro/content.config.ts` — das Schema der Inhalte, nicht die Inhalte | `email-worker/` — ein Worker je Klasse |
-| die Astro-Integration mit dem ganzen Stack (Adapter, Tailwind, shipyard) | Playwright-/E2E-Tests, die eine laufende Instanz brauchen |
+| die Astro-Integration mit dem ganzen Stack (Adapter, shipyard, Markdown-Plugins) | Playwright-/E2E-Tests, die eine laufende Instanz brauchen |
 | die Unit-Tests des geteilten Codes | |
 
 **Die Inhalte bleiben in den Klassen-Repos, und zwar aus einem Grund, der sich
@@ -167,19 +167,32 @@ Build-Kontext. Es muss in die Stages kopiert werden, die es brauchen, und
 COPY --from=builder /app/geteilt ./geteilt
 ```
 
-### Die vier Dreizeiler
+### Die fünf Dreizeiler
 
 `astro.config.mjs`:
 
 ```js
 import { fwsKlasse } from '#geteilt-astro/index.ts'
+import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'astro/config'
+import appCss from './src/styles/app.css?url'
 import { siteConfig } from './src/site.config'
 
 export default defineConfig({
-  integrations: [fwsKlasse({ config: siteConfig })],
+  // Das Vite-Plugin steht in der Klasse und nicht im geteilten Code:
+  // `@tailwindcss/vite` muss in der Vite-Konfiguration DES PROJEKTS stehen,
+  // damit es dessen CSS-Dateien sieht.
+  vite: { plugins: [tailwindcss()] },
+  integrations: [fwsKlasse({ config: siteConfig, css: appCss })],
 })
 ```
+
+`css` ist Pflicht, und `?url` ist keine Feinheit: shipyard braucht den **Pfad**
+der Datei, nicht ihren Inhalt — es hängt sie über `virtual:shipyard/css` selbst
+ein. Fehlt `css`, hat die Seite **kein einziges Stylesheet**, und weder
+`astro build` noch `astro check` noch die Tests melden es. Deshalb führt der
+geteilte Code das Feld als Pflichtfeld, obwohl shipyard es optional hat: so ist
+es der einzige Fehler dieser Art, den `tsc` abfängt.
 
 `src/middleware.ts`:
 
@@ -213,34 +226,29 @@ Modulkopf, und jeder Start ohne `PUBLIC_BASE_URL` starb mit „Keine KlassenConf
 hinterlegt". Das war nie eine Eigenschaft von npm, sondern die
 Auswertungsreihenfolge von ESM-Importen: sie gilt per Submodule unverändert.
 
-Dazu `tailwind.config.mjs` — die einzige Datei, deren Fehler kein Build meldet:
-ein fehlendes Content-Muster oder ein fehlendes Plugin lässt `astro build`
-durchlaufen und die Seite kaputt aussehen. Deshalb kommt sie vollständig aus dem
-geteilten Code und wird nicht abgeschrieben:
+`src/styles/app.css` — der CSS-Einstieg, und die einzige Datei, deren Fehler kein
+Build meldet: eine fehlende Zeile lässt `astro build` durchlaufen und die Seite
+**völlig unformatiert** aussehen. Deshalb steht in der Klasse genau eine Zeile,
+und der ganze Rest im geteilten Code:
 
-```js
-import { tailwindVorgabe } from '#geteilt/klasse/tailwind.ts'
-
-export default tailwindVorgabe()
+```css
+@import "../../geteilt/src/styles/klasse.css";
 ```
 
-Darin stecken die Content-Muster der Klasse (`./src/**`, `src/content/docs`,
-`src/content/blog`), die absoluten Pfade auf die geteilten Seiten und die
-shipyard-Komponenten unter `node_modules`, und die drei Plugins:
-`@tailwindcss/typography`, `daisyui` und der Ausgleich, der den Footer über die
-volle Seitenbreite zieht (Eigenheit von shipyard-base 0.6.x, Begründung bei
-`footerVolleBreite` in `src/klasse/tailwind.ts`). Eine Klasse, die etwas
-**ergänzen** muss, ergänzt es — die Vorgabe läuft zuerst:
+In `geteilt/src/styles/klasse.css` stecken `@import "tailwindcss"`, die drei
+`@import "@levino/shipyard-*"` (die bringen shipyards Komponentenstile **und**
+deren `@source`-Pfade mit), `@source "../../astro"` für die geteilten Seiten und
+die beiden `@plugin`-Zeilen für `daisyui` und `@tailwindcss/typography`. Eine
+Klasse, die etwas **ergänzen** muss, schreibt es unter den Import — die Vorgabe
+kommt zuerst.
 
-```js
-export default tailwindVorgabe({
-  content: ['./komponenten/**/*.astro'],
-  plugins: [require('meine-erweiterung')],
-})
-```
+Eine `tailwind.config.mjs` gibt es nicht mehr: Tailwind 4 konfiguriert sich über
+CSS, und daisyUI 5 lässt sich über eine JS-Config nicht mehr einstellen.
 
-Wer die Teile einzeln braucht, bekommt sie einzeln: `tailwindContent()`,
-`tailwindPlugins()`, `footerVolleBreite()`.
+Bewacht wird der Vertrag von `tests/klasse/styling.test.ts`: der Test lässt
+Tailwind über `klasse.css` laufen und prüft am erzeugten Stylesheet, dass es
+plausibel groß ist, daisyUI-Komponenten enthält und Utilities, die **nur** in
+`astro/pages/**` vorkommen. Ein grüner Build ist für diese Frage kein Beweis.
 
 Und `src/env.d.ts`, damit `Astro.locals.user` und das virtuelle
 Konfigurationsmodul typisiert sind. Über einen **Pfad**, nicht über `types=`:
@@ -339,7 +347,7 @@ Es gibt keine `exports`-Karte mehr, die Namen auf Dateien abbildet — der Pfad
 | `#geteilt/server/app.ts` | `./server-app` | `startServer({ config })` |
 | `#geteilt/migrations.ts` | `./migrations` | `packageMigrations()`, `packageMigrationsDir()`, `alleMigrations()`, `runMigrations()` |
 | `#geteilt/klasse/kalender.ts` | `./kalender` | `pruefeKalender(projektWurzel, config)`, `webcalUrl(config)` |
-| `#geteilt/klasse/tailwind.ts` | `./tailwind` | `tailwindVorgabe()` — die ganze `tailwind.config.mjs`; dazu `tailwindContent()`, `tailwindPlugins()`, `footerVolleBreite()` einzeln |
+| `geteilt/src/styles/klasse.css` | `./styles/global.css` | der Tailwind-Einstieg; per `@import` aus `src/styles/app.css` der Klasse, nicht per Subpath-Import |
 | `#geteilt/lib/…`, `#geteilt/server/…`, `#geteilt/remark/…` | `./lib/*`, … | der geteilte Code, einzeln |
 | `#geteilt/klasse/…` | `./klasse/*` | Interna der Integration (`config`, `routes`, `locals`) |
 
@@ -361,11 +369,15 @@ Klasse.
 
 Sie sehen ungleich aus, und das ist gemessen und nicht vergessen:
 
-| Peer | Bereich | Warum nicht weiter |
+| Paket | Version | Warum genau die |
 | --- | --- | --- |
-| `@levino/shipyard-base` | `^0.6.1` | 0.6.1 bis 0.6.3 haben identische Peers (`astro ^5.7`, `tailwindcss ^3`, `daisyui ^4`). 0.7.1 wäre attraktiv (der Footer-Ausgleich könnte weg), setzt aber Tailwind 4 und daisyUI 5 voraus — eine eigene Migration |
-| `@levino/shipyard-blog` | `0.6.1` | **festgenagelt.** Ab 0.6.2 hängt blog an `@levino/shipyard-base@^0.7.0`. npm installiert dann eine ZWEITE, verschachtelte shipyard-base 0.7.x neben der 0.6.x der Klasse: zwei Komponentenbibliotheken in einer Seite, und die 0.7er ohne das Tailwind 4, das sie braucht |
-| `@levino/shipyard-docs` | `0.6.2` | dasselbe ab 0.6.4. 0.6.3 wäre erlaubt, verlangt aber `base ^0.6.3` und zieht sich in einer Klasse mit `base 0.6.1` eine eigene Kopie |
+| `@levino/shipyard-base` | `0.7.5` | letzte **stabile** 0.7.x — von 0.7.6 gibt es nur Release-Candidates. Peers: `astro ^5.7`, `tailwindcss ^4`, `daisyui ^5`. 0.8.0 verlangt Astro 6 und ist damit eine eigene Etappe |
+| `@levino/shipyard-blog` | `0.7.5` | hängt an `@levino/shipyard-base@^0.7.5` |
+| `@levino/shipyard-docs` | `0.7.5` | hängt an `@levino/shipyard-base@^0.7.5` |
+
+Alle drei auf **dieselbe** Version festgenagelt und nicht auf `^`: Ab wann welches
+Paket welches `base` verlangt, war schon einmal die Ursache für zwei
+`shipyard-base` in einem Baum.
 
 Die Regel dahinter: ein Peer-Bereich darf nur so weit reichen, wie am Ende
 **genau eine** `@levino/shipyard-base` im Baum steht. Nachzusehen mit
@@ -373,11 +385,12 @@ Die Regel dahinter: ein Peer-Bereich darf nur so weit reichen, wie am Ende
 Fehler, und er meldet sich nicht von selbst, sondern als Seite, die anders
 aussieht.
 
-Der sichtbare Unterschied zwischen base 0.6.1 und 0.6.2+: 0.6.1 schreibt
-`© Levin Keller, 2025` fest in den Footer, ohne jede Möglichkeit, das zu
-konfigurieren. Ab 0.6.2 gibt es dafür `config.copyright` und `hideBranding`.
-Deshalb reicht der Bereich hier nach oben — `klasse-christophers` musste für
-0.2.0 auf 0.6.1 herunter und hatte die Zeile wieder.
+Der Footer war lange der sichtbare Unterschied zwischen den 0.6er-Fassungen:
+0.6.1 schrieb `© Levin Keller, 2025` fest hinein. Seit 0.7 kommt der Text aus
+`footer.copyright`, und die Integration setzt dort `© <Klassenname>, <Jahr>` —
+ohne den Wert stünde dort nur noch `© <Jahr>` ohne Namen. Die Zeile
+„Built with Shipyard" daneben ist shipyards Vorgabe und bleibt stehen;
+`hideBranding: true` würde sie entfernen.
 
 ## Ein neues Feature ausrollen
 
@@ -398,6 +411,35 @@ Datei unter `astro/pages/` anlegen, Eintrag in `src/klasse/routes.ts`,
 nachziehen — und die Seite ist in allen Klassen da. Dasselbe für eine
 Schema-Änderung: SQL-Datei unter `db/migrations/`, nachziehen; `startServer()`
 wendet sie beim nächsten Start an.
+
+### Wenn der Nachzieh-PR mehr als eine Zeile ist
+
+Tailwind 4 und daisyUI 5 sind so ein Fall: der Vertrag zwischen geteiltem Code
+und Klasse hat sich geändert, also reicht der Submodule-Zeiger nicht. Was eine
+Klasse dabei zu tun hat:
+
+1. Submodule-Zeiger nachziehen.
+2. `package.json`: `tailwindcss` → `^4.3.3`, `daisyui` → `^5.7.16`,
+   `@tailwindcss/typography` → `^0.5.20`, `@tailwindcss/vite` `^4.3.3`
+   **hinzu**, `@astrojs/tailwind` **entfernen**, alle drei
+   `@levino/shipyard-*` → `0.7.5`. `astro` bleibt auf `^5`.
+3. `package-lock.json` neu erzeugen (`rm package-lock.json && npm install`) —
+   der alte Lock nagelt `shipyard-blog@0.6.1` fest und lässt `npm install` mit
+   `ERESOLVE` stehen.
+4. `tailwind.config.mjs` **löschen**. Tailwind 4 konfiguriert sich über CSS,
+   daisyUI 5 lässt sich über eine JS-Config gar nicht mehr einstellen.
+5. `src/styles/global.css` → `src/styles/app.css` mit der einen `@import`-Zeile
+   auf `geteilt/src/styles/klasse.css`.
+6. `astro.config.mjs`: `vite: { plugins: [tailwindcss()] }` und
+   `css: appCss` (siehe [Die fünf Dreizeiler](#die-fünf-dreizeiler)).
+7. In den **Inhalten** die umbenannten Klassen nachziehen: `shadow` →
+   `shadow-sm`, `rounded` → `rounded-sm`, `blur` → `blur-sm` und die weiteren
+   Skalenverschiebungen von Tailwind 4; `form-control`, `label-text`,
+   `label-text-alt`, `*-bordered` sind in daisyUI 5 ohne Ersatz gestrichen.
+8. `rm -rf dist .astro node_modules` vor dem ersten Build.
+9. **Sichtprüfung, nicht nur grüner Build.** Ein fehlender CSS-Einstieg baut
+   durch: `astro build`, dann im Client-Verzeichnis eine CSS-Datei > 100 KB
+   suchen, die `admonition` und `btn` enthält.
 
 ## Entwickeln
 

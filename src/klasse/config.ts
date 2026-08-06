@@ -70,8 +70,9 @@ MCowBQYDK2VwAyEAjYOv8AXbp+JScJ653wMEtv6lARyphIakIIRKQ+OT4IQ=
 
 /**
  * Farben der Klasse. Überschreiben die CSS-Variablen des daisyUI-Themes;
- * erwartet werden daisyUI-4-Werte, also `oklch(...)`-Tripel ohne Funktion
- * (z.B. `0.7 0.15 250`) oder gültige CSS-Farben.
+ * erwartet werden seit daisyUI 5 VOLLSTÄNDIGE CSS-Farbwerte, also
+ * `oklch(45% 0.24 277)` oder `#4f46e5` — nicht mehr die zerlegten Kanäle
+ * (`0.7 0.15 250`) von daisyUI 4.
  *
  * Optional, weil beide bestehenden Klassen das Standard-Theme benutzen. Das
  * Feld steht trotzdem im Vertrag, damit die dritte Klasse ihr Aussehen nicht
