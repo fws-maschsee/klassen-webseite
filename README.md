@@ -140,23 +140,34 @@ Bearer-Middleware im Modulkopf, und jeder Start ohne `PUBLIC_BASE_URL` starb mit
 ein `ENV PUBLIC_BASE_URL` im `Dockerfile` stehen hat, kann beides ab 0.2.1
 entfernen.
 
-Dazu `tailwind.config.mjs` — ohne diese Zeile baut die Seite durch und sieht
-kaputt aus, weil Tailwind die geteilten Seiten unter `node_modules` nicht
-scannt:
+Dazu `tailwind.config.mjs` — die einzige Datei, deren Fehler kein Build meldet:
+ein fehlendes Content-Muster oder ein fehlendes Plugin lässt `astro build`
+durchlaufen und die Seite kaputt aussehen. Deshalb kommt sie vollständig aus dem
+Package und wird nicht abgeschrieben:
 
 ```js
-import { tailwindContent } from '@fws-maschsee/klassen-webseite/tailwind'
+import { tailwindVorgabe } from '@fws-maschsee/klassen-webseite/tailwind'
 
-export default {
-  content: [
-    './src/**/*.{astro,html,js,jsx,md,mdx,ts,tsx}',
-    './src/content/docs/**/*.md',
-    './src/content/blog/**/*.md',
-    ...tailwindContent(),
-  ],
-  plugins: [require('@tailwindcss/typography'), require('daisyui')],
-}
+export default tailwindVorgabe()
 ```
+
+Darin stecken die Content-Muster der Klasse (`./src/**`, `src/content/docs`,
+`src/content/blog`), die absoluten Pfade auf die geteilten Seiten und die
+shipyard-Komponenten unter `node_modules`, und die drei Plugins:
+`@tailwindcss/typography`, `daisyui` und der Ausgleich, der den Footer über die
+volle Seitenbreite zieht (Eigenheit von shipyard-base 0.6.x, Begründung bei
+`footerVolleBreite` in `src/klasse/tailwind.ts`). Eine Klasse, die etwas
+**ergänzen** muss, ergänzt es — die Vorgabe läuft zuerst:
+
+```js
+export default tailwindVorgabe({
+  content: ['./komponenten/**/*.astro'],
+  plugins: [require('meine-erweiterung')],
+})
+```
+
+Wer die Teile einzeln braucht, bekommt sie einzeln: `tailwindContent()`,
+`tailwindPlugins()`, `footerVolleBreite()`.
 
 Und `src/env.d.ts`, damit `Astro.locals.user` und das virtuelle Konfigurationsmodul typisiert sind:
 
@@ -216,7 +227,7 @@ mit Begründung: `.env.example`.
 | `./server-app` | `startServer({ config })` |
 | `./migrations` | `packageMigrations()`, `packageMigrationsDir()`, `alleMigrations()`, `runMigrations()` |
 | `./kalender` | `pruefeKalender(projektWurzel, config)`, `webcalUrl(config)` |
-| `./tailwind` | `tailwindContent()` |
+| `./tailwind` | `tailwindVorgabe()` — die ganze `tailwind.config.mjs`; dazu `tailwindContent()`, `tailwindPlugins()`, `footerVolleBreite()` einzeln |
 | `./lib/*`, `./server/*`, `./remark/*` | der geteilte Code, einzeln |
 | `./klasse/*` | Interna der Integration (`config`, `routes`, `locals`) |
 
