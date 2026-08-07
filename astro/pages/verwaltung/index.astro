@@ -376,6 +376,30 @@ const editingList = listId ? lists.find((l) => l.address === listId) : undefined
     {maySeePersons ? (
       <>
         <h2 class="text-xl font-bold mt-8 mb-3">Adressbuch ({mitglieder.length})</h2>
+        {/* Diese beiden Absätze sind keine Beschreibung, sondern eine Pflicht.
+            Das Adressbuch und die Anmeldung (ZITADEL) sind getrennte
+            Datenschichten: es gibt keinen Abgleich, der Einträge anlegt oder
+            entfernt. Wer das nicht weiß, verlässt sich auf einen Automatismus,
+            den es nicht gibt — und dann bleiben Adressen im Verteiler stehen.
+            Dieselbe Begründung steht im README und bei `delete_mitglied`. */}
+        <p class="mb-3">
+          Jeder Eintrag hier steht da, weil <strong>jemand ihn eingetragen
+          hat</strong> — hier oder über MCP. Wer sich anmelden kann, bekommt
+          davon <em>keinen</em> Eintrag: Zugang zur Seite und Platz im Verteiler
+          sind zwei getrennte Dinge. Ein neues Elternteil bekommt also erst
+          Post, wenn es unten eingetragen ist.
+        </p>
+        <p class="mb-3">
+          <strong>Und umgekehrt, das ist der wichtigere Satz:</strong> Wenn eine
+          Familie die Klasse verlässt und ihren Zugang verliert, verschwindet
+          sie <strong>nicht</strong> von selbst aus dem Verteiler. Sie bekommt
+          weiter jede Elternmail, bis der Eintrag hier gelöscht wird
+          („löschen" in der Zeile) oder die Person über MCP
+          (<code>delete_mitglied</code>, <code>remove_from_group</code>) aus dem
+          Verteiler genommen wird. Bis dahin stehen Name und E-Mail-Adresse
+          dort, wo sie nicht mehr hingehören — <strong>das aufzuräumen ist
+          Aufgabe der Klassenverwaltung, und niemand erinnert daran</strong>.
+        </p>
         <div class="not-prose overflow-x-auto">
           <table class="table table-sm">
             <thead>

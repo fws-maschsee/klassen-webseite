@@ -64,6 +64,74 @@ nichts — es verweist auf einen Commit, es kopiert keine Inhalte.
 Aus demselben Grund beginnt die Historie dieses Repositorys frisch — siehe
 [Entscheidungen](#entscheidungen).
 
+## ZITADEL und das Adressbuch sind getrennte Datenschichten
+
+Die Anwendung führt **zwei** Bestände über dieselben Menschen, und sie sprechen
+nicht miteinander:
+
+| | Wo | Was sie beantwortet | Wer sie pflegt |
+| --- | --- | --- | --- |
+| **Anmeldung** | ZITADEL, ein Projekt je Klasse | Wer ist das, und was darf er? (`authRole`, `admin`/`mitglied`, `canEdit`, `may_see_personal_data`, die Rollen im MCP-Token) | die Grants in ZITADEL |
+| **Adressbuch** | Tabelle `mitglieder` in der SQLite-Datei der Klasse | Wer bekommt Post? | ein **Mensch**, über `/verwaltung` oder MCP |
+
+**Es gibt keinen Übertrag von ZITADEL in das Adressbuch.** Nicht auf Knopfdruck,
+nicht nebenbei, nicht beim Anmelden. Wer im Adressbuch steht, steht da, weil
+jemand ihn eingetragen hat.
+
+Vorher war es anders: eine Spiegelung (`src/server/auth/mirror.ts`) holte alle
+Personen mit dem Rollen-Grant der Klasse und schrieb sie ins Adressbuch —
+angestoßen durch das MCP-Werkzeug `sync_mitglieder` **und automatisch vor jeder
+eingehenden Listenmail**. Beides ist entfernt, ebenso `usersWithRole()` in
+`src/server/auth/grants.ts` und die Spalte `mitglieder.zitadel_user_id`, über
+die die Spiegelung ihre Zeilen wiedererkannte. Wer den Namen `sync_mitglieder`
+noch irgendwo findet — in einer Notiz, in einem Chatverlauf, in einem alten
+Klassen-Stand —: das Werkzeug gibt es nicht mehr.
+
+`src/server/auth/grants.ts` fragt weiterhin bei jedem Seitenaufruf und jedem
+MCP-Werkzeugaufruf frisch bei ZITADEL nach — aber nur nach **Rollen**. Ein
+entzogener Grant wirkt dort weiter sofort: der Zugang zur Seite und zum
+MCP-Server ist weg.
+
+### Die Folge, und sie ist datenschutzrelevant
+
+Ein entzogener Grant nimmt **niemandem mehr die Post**. Das ist die Kehrseite
+der Trennung, und sie geht in die unangenehme Richtung:
+
+> **Wenn eine Familie die Klasse verlässt, bekommt sie weiter jede Elternmail —
+> bis jemand ihren Adressbuch-Eintrag von Hand löscht.** Der Zugang zur Seite
+> endet mit dem Grant, der Platz im Verteiler nicht. Es gibt keinen
+> Automatismus, keine Erinnerung und keine Meldung.
+
+Das heißt: **personenbezogene Daten stehen genau so lange im Verteiler, wie die
+Klassenverwaltung sie stehen lässt.** Wer eine Klasse verwaltet, hat damit eine
+Pflicht und nicht nur eine Möglichkeit — beim Schuljahreswechsel, bei einem
+Schulwechsel, bei einem Todesfall. Die Werkzeuge dafür:
+
+| Was | Wie |
+| --- | --- |
+| Person ganz aus dem Adressbuch entfernen | `delete_mitglied` über MCP, oder „löschen" in der Adressbuch-Tabelle unter `/verwaltung`. Gruppenzuordnungen, Opt-outs und Versandprotokoll gehen mit (FK CASCADE) |
+| Person nur aus einem Verteiler nehmen, Eintrag behalten | `remove_from_group` (oder `bulk_remove_from_group` für mehrere) |
+| Nachsehen, wen eine Liste erreicht | `list_list_recipients` — das ist die Liste, die wirklich Post bekommt |
+
+Die zweite Hälfte der Folge ist die harmlose: Ein neues Elternteil bekommt
+**keine** Post, bis es eingetragen ist — auch wenn es sich längst anmelden kann.
+Das fällt auf, weil sich jemand beschwert, nichts bekommen zu haben.
+
+Beides ist gewollt. Der Grund, es trotzdem so zu machen: Ein Automatismus, der
+ungefragt Adressen anlegt und löscht, ist genau dann falsch, wenn er sich irrt —
+und er irrt sich an den Rändern, an denen das Adressbuch mehr enthält als die
+Elternschaft. Grosseltern, Lehrkräfte und externe Kontakte haben gar keinen
+Zugang; für sie war jeder Abgleich blind. Die Trennung macht die Verantwortung
+sichtbar, statt sie auf ein System zu schieben, das nur die halbe Wahrheit
+kennt.
+
+Bewacht wird die Trennung von
+[`tests/auth/getrennte-datenschichten.test.ts`](tests/auth/getrennte-datenschichten.test.ts):
+Er wird rot, sobald ein Modul wieder Grants bezieht **und** ins Adressbuch
+schreibt, sobald der Weg einer Listenmail ZITADEL befragt, sobald das Adressbuch
+eine Spalte mit Verweis auf ZITADEL bekommt und sobald der MCP-Server ein
+Werkzeug anbietet, das einen Abgleich verspricht.
+
 ## Einbinden
 
 ### Das Submodule anlegen
@@ -591,6 +659,14 @@ gültiger Aufruf für Klasse A bei Klasse B einliefern.
 Die kanonische Zeichenkette gibt es dadurch **zweimal** — hier und im
 Dispatcher-Repo `lists-dispatcher`. Abgesichert ist das durch einen
 Golden-String-Test auf jeder Seite; wer das Format ändert, ändert beide.
+
+### Kein Abgleich zwischen ZITADEL und dem Adressbuch
+
+Die Entscheidung und ihre betriebliche Folge stehen weiter oben, weil sie
+niemand überlesen darf:
+[ZITADEL und das Adressbuch sind getrennte Datenschichten](#zitadel-und-das-adressbuch-sind-getrennte-datenschichten).
+Kurzfassung: Ein entzogener Grant sperrt den Zugang, nimmt aber niemandem die
+Post — der Adressbuch-Eintrag muss von Hand gelöscht werden.
 
 ### Der Adapter steht in der Integration
 

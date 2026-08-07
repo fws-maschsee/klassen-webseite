@@ -348,8 +348,8 @@ export const setListPosterRules = (
  * Vergleich case-insensitiv; ein fuehrendes `@domain` erlaubt eine ganze
  * Domain).
  *
- * Warum es das gibt: Seit die Empfaenger aus den ZITADEL-Grants abgeleitet
- * werden, stehen dort echte Elternadressen — je Klasse gut fuenfzig. Ein
+ * Warum es das gibt: Im Adressbuch stehen echte Elternadressen — je Klasse gut
+ * fuenfzig, eingetragen beim Import der Klassenliste. Ein
  * versehentlicher Versand waehrend der Erprobung waere nicht
  * zurueckzuholen, und die Eltern wissen von ihren Konten noch nichts. Die
  * Liste zu deaktivieren schuetzt nur, solange niemand sie aktiviert; diese
@@ -382,8 +382,8 @@ export const resolveListRecipients = (
 		const placeholders = groups.map(() => '?').join(', ')
 		const rows = db
 			.prepare<string[], MitgliedRow>(
-				// Spalten aufgezaehlt statt `m.*`: `zitadel_user_id` ist intern
-				// und darf nirgends nebenbei mitkommen (siehe members.ts).
+				// Spalten aufgezaehlt statt `m.*`, aus demselben Grund wie in
+				// members.ts: `m.*` liefert jede kuenftige Spalte automatisch mit.
 				`SELECT DISTINCT m.id, m.first_name, m.last_name, m.email,
                 m.created_at, m.updated_at
            FROM mitglieder m

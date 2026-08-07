@@ -4,7 +4,6 @@ import {
 	statusForResult,
 } from '../../../lib/lists/incoming.ts'
 import { authenticateListRequest } from '../../../lib/lists/incomingAuth.ts'
-import { syncMembersFromZitadel } from '../../../server/auth/mirror.ts'
 
 export const prerender = false
 
@@ -84,30 +83,22 @@ export const POST: APIRoute = async ({ request }) => {
 		)
 	}
 
-	// Empfaenger frisch aus ZITADEL spiegeln, BEVOR verteilt wird.
+	// HIER STAND EIN ABGLEICH MIT ZITADEL, und hier kommt keiner mehr hin.
 	//
-	// Hier und nicht in `handleIncomingListMail`: die Verteilungslogik bleibt
-	// damit eine reine Funktion auf der Datenbank und ohne Netzzugriff
-	// testbar.
+	// Vor jeder Listenmail wurden die Grants geholt und ins Adressbuch
+	// geschrieben — Neuzugaenge angelegt, Personen ohne Grant geloescht. Das ist
+	// entfallen: Adressbuch und ZITADEL sind getrennte Datenschichten
+	// (Entscheidung des Betreibers, siehe README). Wer Post bekommt, steht im
+	// Adressbuch, weil ein Mensch ihn eingetragen hat.
 	//
-	// Ein Fehler bricht den Eingang NICHT ab. Eine Mail, die wegen einer
-	// Stoerung bei ZITADEL gar nicht erst verteilt wird, faellt niemandem auf
-	// — verteilt mit dem letzten bekannten Stand faellt hoechstens ein
-	// fehlender Neuzugang auf, und der Fehler steht im Log. Das ist die
-	// Richtung, in die man sich hier irren will.
-	try {
-		const mirror = await syncMembersFromZitadel()
-		if (mirror.added || mirror.updated || mirror.removed) {
-			console.log(
-				`[lists] Empfaenger abgeglichen: +${mirror.added} ~${mirror.updated} -${mirror.removed} (${mirror.total} mit Grant)`,
-			)
-		}
-	} catch (error) {
-		console.error(
-			`[lists] Abgleich mit ZITADEL fehlgeschlagen, verteile mit dem letzten Stand: ${(error as Error).message}`,
-		)
-	}
-
+	// Der Eingang verteilt deshalb an den Stand, den die Datenbank hat, und
+	// spricht mit keinem anderen Dienst. Das macht ihn zugleich robuster: eine
+	// Stoerung bei ZITADEL kann die Verteilung nicht mehr aufhalten.
+	//
+	// PREIS, den die Verwaltung tragen muss: Ein entzogener Grant nimmt
+	// niemandem die Post. Wer die Klasse verlaesst, bleibt im Verteiler, bis
+	// sein Eintrag von Hand geloescht wird (`delete_mitglied`,
+	// `remove_from_group`, oder „löschen" in /verwaltung).
 	try {
 		const result = await handleIncomingListMail(rawBody, {
 			listName: list,
