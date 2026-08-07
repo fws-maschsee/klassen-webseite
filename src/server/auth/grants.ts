@@ -25,6 +25,14 @@
  * erreichbar, kommt ohnehin niemand mehr an irgendetwas heran — ein
  * fehlschlagender Aufruf ist dann das erwartete Verhalten und kein Ausfall,
  * den man umgehen muesste.
+ *
+ * WAS HIER NICHT ENTSTEHT: Adressbuch-Eintraege. Diese Datei liefert ROLLEN zu
+ * einer Nutzernummer und sonst nichts — keine Namen, keine Adressen, keine
+ * Empfaengerlisten. Es gab hier einmal ein `usersWithRole()`, aus dem eine
+ * Spiegelung ins Adressbuch gespeist wurde; beides ist entfernt, weil
+ * Adressbuch und ZITADEL getrennte Datenschichten sind (siehe README). Wer
+ * Grant-Antworten wieder in `mitglieder` schreiben will, faellt ueber
+ * `tests/auth/getrennte-datenschichten.test.ts`.
  */
 
 /** Konfiguration fehlt oder ist unvollstaendig — ein Betriebsfehler. */
@@ -81,14 +89,16 @@ export const resetGrantsConfig = (): void => {
 
 const ACTIVE_STATE = 'USER_GRANT_STATE_ACTIVE'
 
+/**
+ * Nur die drei Felder, die fuer eine Berechtigungspruefung gebraucht werden.
+ * Die Antwort von ZITADEL traegt mehr — `email`, `firstName`, `lastName`,
+ * `displayName` —, und genau die sind hier bewusst NICHT modelliert: was nicht
+ * getippt ist, wandert auch nicht versehentlich ins Adressbuch.
+ */
 type GrantRow = {
 	userId?: string
 	roleKeys?: string[]
 	state?: string
-	email?: string
-	firstName?: string
-	lastName?: string
-	displayName?: string
 }
 
 /**
@@ -143,8 +153,7 @@ const search = async (
  * lang genug, um ein Buendel abzufangen.
  *
  * Zwischengespeichert wird die ganze Projektliste und nicht die Antwort pro
- * Person: die Klasse hat rund 55 Grants, das ist eine Anfrage statt 55, und
- * dieselbe Liste bedient auch den Empfaenger-Abgleich.
+ * Person: die Klasse hat rund 55 Grants, das ist eine Anfrage statt 55.
  *
  * Der Speicher liegt im Prozess. Das ist zulaessig, weil dieser Dienst
  * ausdruecklich mit EINER Replik laeuft (server-config, AGENTS.md
@@ -152,11 +161,6 @@ const search = async (
  */
 const CACHE_TTL_MS = 5000
 let cache: { at: number; rows: GrantRow[] } | null = null
-
-/** Nur fuer Tests. */
-export const clearGrantsCache = (): void => {
-	cache = null
-}
 
 /**
  * Alle aktiven Grants im Projekt dieser Instanz.
@@ -196,34 +200,4 @@ export const rolesForUser = async (userId: string): Promise<string[]> => {
 				.flatMap((row) => row.roleKeys ?? []),
 		),
 	]
-}
-
-/** Eine Person mit Grant im Projekt dieser Klasse. */
-export type GrantedUser = {
-	userId: string
-	email: string
-	firstName: string
-	lastName: string
-	roles: string[]
-}
-
-/**
- * Alle Personen, die im Projekt dieser Klasse die genannte Rolle haben.
- *
- * Grundlage der Listenempfaenger: wer den Grant hat, ist erreichbar — ohne
- * zweiten Handgriff in einer eigenen Tabelle. Bewusst NICHT zwischengespeichert:
- * der Aufruf passiert beim Abgleich, nicht pro Anfrage.
- */
-export const usersWithRole = async (role: string): Promise<GrantedUser[]> => {
-	const rows = await projectGrants()
-	return rows
-		.filter((row) => (row.roleKeys ?? []).includes(role))
-		.filter((row) => Boolean(row.userId) && Boolean(row.email))
-		.map((row) => ({
-			userId: row.userId as string,
-			email: (row.email as string).trim().toLowerCase(),
-			firstName: row.firstName ?? '',
-			lastName: row.lastName ?? row.displayName ?? '',
-			roles: row.roleKeys ?? [],
-		}))
 }

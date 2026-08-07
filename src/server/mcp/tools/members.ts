@@ -11,7 +11,6 @@ import {
 	upsertMitglied,
 } from '../../../lib/db/members.ts'
 import type { MitgliedRow } from '../../../lib/db/types.ts'
-import { syncMembersFromZitadel } from '../../auth/mirror.ts'
 import type { McpAuth } from '../guard.ts'
 import { registerPersonalDataTool, registerWriteTool } from '../guard.ts'
 
@@ -19,6 +18,14 @@ import { registerPersonalDataTool, registerWriteTool } from '../guard.ts'
  * Das Adressbuch speichert bewusst nur Name und E-Mail — mehr braucht der
  * Versand nicht. Anrede, Telefonnummer und Notizen gab es einmal und sind
  * entfernt worden (Datenminimierung, Entscheidung des Betreibers).
+ *
+ * DAS ADRESSBUCH IST EINE EIGENE DATENSCHICHT und hat mit ZITADEL nichts zu
+ * tun. Jeder Eintrag hier steht da, weil ein Mensch ihn eingetragen hat; kein
+ * Werkzeug leitet Eintraege aus Grants ab, und es gibt keinen Abgleich — auch
+ * keinen, der nebenbei laeuft. ZITADEL beantwortet ausschliesslich die Frage,
+ * WER gerade zugreift und was er darf (siehe ../guard.ts). Die Folge fuer die
+ * Verwaltung steht bei `delete_mitglied` und im README: wer geht, muss von
+ * Hand geloescht werden.
  */
 const MitgliedInputShape = {
 	id: z
@@ -212,34 +219,11 @@ export const registerMitgliederTools = (
 	registerWriteTool(
 		server,
 		auth,
-		'sync_mitglieder',
-		{
-			title: 'Empfaenger mit ZITADEL abgleichen',
-			description:
-				'Holt alle Personen mit dem Rollen-Grant dieser Klasse aus ZITADEL und schreibt sie ins Adressbuch. Die id wird wie ueberall aus dem Namen abgeleitet (vorname-nachname, bei Namensgleichheit mit -2/-3); die ZITADEL-Nutzernummer steht intern und wird nicht ausgegeben. Wer keinen Grant mehr hat, wird entfernt. Von Hand angelegte Eintraege bleiben unberuehrt — sie sind fuer Adressen ohne Zugang gedacht (Grosseltern, Lehrkraefte, externe Kontakte). Der Abgleich laeuft ausserdem automatisch vor jeder eingehenden Listenmail; dieses Werkzeug ist fuer den Blick zwischendurch.',
-			inputSchema: {},
-		},
-		async () => {
-			try {
-				const result = await syncMembersFromZitadel()
-				return { content: [{ type: 'text', text: toJson(result) }] }
-			} catch (err) {
-				return {
-					isError: true,
-					content: [{ type: 'text', text: (err as Error).message }],
-				}
-			}
-		},
-	)
-
-	registerWriteTool(
-		server,
-		auth,
 		'delete_mitglied',
 		{
 			title: 'Adressbuch-Eintrag loeschen',
 			description:
-				'Loescht eine Person. Ihre Gruppen-Mitgliedschaften, Opt-outs und Send-Log-Eintraege verschwinden mit (FK CASCADE).',
+				'Loescht eine Person. Ihre Gruppen-Mitgliedschaften, Opt-outs und Send-Log-Eintraege verschwinden mit (FK CASCADE). Das ist der EINZIGE Weg, wie jemand aus dem Verteiler verschwindet: Ein entzogener ZITADEL-Grant nimmt niemandem die Post, er nimmt nur den Zugang zur Seite. Wer die Klasse verlaesst, gehoert hier geloescht (oder via remove_from_group aus dem Verteiler genommen) — sonst bleiben Name und Adresse im Verteiler stehen, obwohl sie dort nicht mehr hingehoeren.',
 			inputSchema: { id: z.string() },
 		},
 		({ id }) => {

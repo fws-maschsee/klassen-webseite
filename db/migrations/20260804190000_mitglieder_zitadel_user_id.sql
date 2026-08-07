@@ -1,4 +1,11 @@
 -- migrate:up
+-- ACHTUNG, HISTORISCH: Die Spalte `zitadel_user_id` und ihr Index sind mit
+-- 20260807120000_drop_mitglieder_zitadel_user_id wieder entfallen, weil es die
+-- Spiegelung nicht mehr gibt, von der dieser Text spricht — ZITADEL und das
+-- Adressbuch sind getrennte Datenschichten (Entscheidung des Betreibers, siehe
+-- README). Diese Datei bleibt unveraendert ausser diesem Hinweis; Migrationen
+-- sind forward-only und werden nicht nachtraeglich umgeschrieben.
+--
 -- Die ZITADEL-Nutzernummer bekommt eine eigene Spalte, statt im Schluessel zu
 -- stehen.
 --

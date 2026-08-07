@@ -14,7 +14,6 @@ import {
 	removeFromGroup,
 	searchMitglieder,
 	setGroupMembers,
-	uniqueMemberId,
 	upsertMitglied,
 } from '../../src/lib/db/members.ts'
 import { createTestDb } from '../helpers/db.ts'
@@ -29,7 +28,11 @@ beforeEach(() => {
 })
 
 describe('Schema des Adressbuchs', () => {
-	test('kennt nur Name, E-Mail, Zeitstempel und die interne ZITADEL-Nummer', () => {
+	test('kennt nur Name, E-Mail und Zeitstempel', () => {
+		// Die frueheren Spalten `salutation`, `phone`, `notes` und
+		// `zitadel_user_id` sind alle wieder gefallen. Dass hier eine
+		// ABGESCHLOSSENE Liste steht und kein `toContain`, ist der Punkt: eine
+		// neue Spalte im Adressbuch soll auffallen und begruendet werden muessen.
 		const columns = db
 			.prepare<[], { name: string }>('PRAGMA table_info(mitglieder)')
 			.all()
@@ -41,17 +44,15 @@ describe('Schema des Adressbuchs', () => {
 			'email',
 			'created_at',
 			'updated_at',
-			'zitadel_user_id',
 		])
 	})
 
-	test('listMitglieder gibt die ZITADEL-Nummer NICHT heraus', () => {
-		// Sie ist die Verbindung zur Anmeldung und geht weder die Oberflaeche
-		// noch einen MCP-Client etwas an.
+	test('listMitglieder gibt genau die Spalten des Adressbuchs heraus', () => {
+		// Die Abfragen zaehlen ihre Spalten auf, statt `SELECT *` zu nehmen. Diese
+		// Zusicherung ist das Gegenstueck dazu: eine kuenftige Spalte erscheint
+		// nicht von selbst in der Oberflaeche und in MCP-Antworten. So ist die
+		// Spalte `zitadel_user_id` nie nach draussen gelangt, solange es sie gab.
 		upsertMitglied({ id: 'p1', first_name: 'Anna', last_name: 'Beispiel' }, db)
-		db.prepare(
-			"UPDATE mitglieder SET zitadel_user_id = 'u1' WHERE id = 'p1'",
-		).run()
 		expect(Object.keys(listMitglieder(db)[0] ?? {})).toEqual([
 			'id',
 			'first_name',
@@ -60,23 +61,6 @@ describe('Schema des Adressbuchs', () => {
 			'created_at',
 			'updated_at',
 		])
-		expect(Object.keys(getMitglied('p1', db) ?? {})).not.toContain(
-			'zitadel_user_id',
-		)
-	})
-
-	test('uniqueMemberId haengt bei Namensgleichheit -2, -3 an', () => {
-		upsertMitglied({ first_name: 'Anna', last_name: 'Beispiel' }, db)
-		expect(uniqueMemberId('Anna', 'Beispiel', db)).toBe('anna-beispiel-2')
-		upsertMitglied(
-			{ id: 'anna-beispiel-2', first_name: 'Anna', last_name: 'Beispiel' },
-			db,
-		)
-		expect(uniqueMemberId('Anna', 'Beispiel', db)).toBe('anna-beispiel-3')
-		// Die eigene Zeile zaehlt beim Umschluesseln nicht als Kollision.
-		expect(uniqueMemberId('Anna', 'Beispiel', db, 'anna-beispiel')).toBe(
-			'anna-beispiel',
-		)
 	})
 
 	test('Index und Trigger haben den Tabellen-Neubau ueberlebt', () => {
