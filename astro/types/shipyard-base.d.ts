@@ -19,10 +19,19 @@ import type { AstroIntegration } from 'astro'
 declare const shipyard: (config: {
 	brand: string
 	title: string
+	/**
+	 * Pfad des CSS-Einstiegs der Anwendung. Bei shipyard optional, hier
+	 * absichtlich PFLICHT: ohne diesen Wert liefert `virtual:shipyard/css` einen
+	 * leeren String, und die Seite hat kein CSS. Kein Build, kein `astro check`
+	 * und kein Test merkt das — tsc schon.
+	 */
+	css: string
 	tagline?: string
 	navigation?: Record<string, { label: string; href: string }>
 	scripts?: Array<Record<string, unknown>>
 	onBrokenLinks?: 'ignore' | 'warn' | 'throw'
+	footer?: { copyright?: string }
+	hideBranding?: boolean
 }) => AstroIntegration
 
 export default shipyard

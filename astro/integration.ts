@@ -2,12 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import node from '@astrojs/node'
-import tailwind from '@astrojs/tailwind'
 import shipyard from '@levino/shipyard-base'
-import {
-	remarkAdmonitions,
-	remarkDirective,
-} from '@levino/shipyard-base/remark'
 import shipyardBlog from '@levino/shipyard-blog'
 import shipyardDocs from '@levino/shipyard-docs'
 import type { AstroIntegration } from 'astro'
@@ -38,6 +33,21 @@ export type FwsKlasseOptions = {
 	/** Die Klassen-Konfiguration, üblicherweise aus `src/site.config.ts`. */
 	config: KlassenConfigInput | KlassenConfig
 	/**
+	 * Der CSS-Einstieg der Klasse, als
+	 * `import appCss from './src/styles/app.css?url'`.
+	 *
+	 * PFLICHTFELD, obwohl shipyard es optional führt: shipyard 0.7 lädt das CSS
+	 * der Anwendung ausschließlich über diesen Wert (`virtual:shipyard/css`).
+	 * Fehlt er, rendert die Seite ohne ein einziges Stylesheet, und weder
+	 * `astro build` noch `astro check` noch die Tests melden es. Als
+	 * Pflichtfeld ist es der einzige Fehler dieser Art, den tsc abfängt.
+	 *
+	 * `?url` und kein gewöhnlicher Import: shipyard braucht den PFAD, nicht den
+	 * Inhalt — es hängt die Datei selbst ein, damit sie in der richtigen
+	 * Reihenfolge verarbeitet wird.
+	 */
+	css: string
+	/**
 	 * Zusätzliche Einträge in der Hauptnavigation, zwischen „Berichte" und
 	 * „Mailverteiler". Für Klassen mit einer eigenen Seite; die Regelklasse
 	 * braucht das nicht.
@@ -48,14 +58,29 @@ export type FwsKlasseOptions = {
 const VIRTUELLES_MODUL = 'virtual:fws-klasse/config'
 
 /**
+ * Anbieterkennzeichnung im Footer jeder Klassenseite.
+ *
+ * Diese Seiten werden privat betrieben und **nicht** von der Freien
+ * Waldorfschule Maschsee — auch wenn sie nach Klassen benannt sind und
+ * Schulthemen behandeln. Wer sie verantwortet, gehört deshalb sichtbar auf jede
+ * Seite und nicht in ein Feld, das eine Klasse setzen oder vergessen kann.
+ */
+const BETREIBER = 'Levin Keller, Hohenzollerndamm 152, 14199 Berlin'
+
+/**
  * Die Astro-Integration. Sie ist der Grund, warum eine neue geteilte Seite
  * ohne eine einzige Datei im Klassen-Repo in allen Klassen erscheint: die
  * Routen kommen aus `GETEILTE_ROUTEN` und werden hier injiziert.
  *
- * Sie richtet außerdem den ganzen restlichen Stack ein (Adapter, Tailwind,
- * shipyard, Markdown-Plugins), damit `astro.config.mjs` einer Klasse aus einem
- * Import und einem Integrationsaufruf besteht. Jeder Wert, den sie dabei setzt,
- * war in beiden Klassen-Repos identisch — gemessen mit `diff -wB`.
+ * Sie richtet außerdem den ganzen restlichen Stack ein (Adapter, shipyard,
+ * Markdown-Plugins), damit `astro.config.mjs` einer Klasse aus einem Import und
+ * einem Integrationsaufruf besteht. Jeder Wert, den sie dabei setzt, war in
+ * beiden Klassen-Repos identisch — gemessen mit `diff -wB`.
+ *
+ * Zwei Dinge bleiben in der Klasse, weil sie projektrelativ sind und von dort
+ * aus aufgelöst werden müssen: `vite.plugins: [tailwindcss()]` und der Pfad des
+ * CSS-Einstiegs (`css`). Beides zeigt auf Dateien der Klasse; aus dem geteilten
+ * Code heraus gesetzt, würde `@tailwindcss/vite` sie nicht verlässlich sehen.
  *
  * Rückgabe ist eine LISTE von Integrationen, nicht eine einzelne. Astro flacht
  * `integrations` mit `flat(Infinity)` ab, `integrations: [fwsKlasse(...)]`
@@ -111,14 +136,28 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 					// redirect_uri abgesichert.
 					security: { checkOrigin: false },
 					markdown: {
-						// Docusaurus-Admonitions (:::note, :::tip, :::info, :::warning,
-						// :::danger). `remarkAdmonitionLabels` muss zwischen den beiden
-						// anderen laufen.
-						remarkPlugins: [
-							remarkDirective,
-							remarkAdmonitionLabels,
-							remarkAdmonitions,
-						],
+						// NUR die Label-Normalisierung. Den Direktiven-Parser und
+						// `remarkAdmonitions` setzt shipyard-base seit 0.7 selbst; Astros
+						// `mergeConfig` konkateniert `remarkPlugins`, und unified verwirft
+						// beim `use()` einen Eintrag, den es unter derselben Funktion
+						// schon kennt. Ein zweiter Eintrag liefe also nicht doppelt — er
+						// wäre nur eine zweite Wahrheit über eine Liste, die shipyard
+						// pflegt.
+						//
+						// Und die kostet: shipyard hat den Parser in 0.8.1 von
+						// `remarkDirective` auf eine Block-Variante umgestellt, damit der
+						// Gender-Doppelpunkt („Elternvertreter:in") nicht mehr als
+						// Inline-Direktive zerfällt. Stünde `remarkDirective` hier
+						// weiterhin, blieben dessen micromark-Erweiterungen daneben
+						// registriert und das Fehlerbild käme durch die Hintertür zurück.
+						//
+						// Dass diese Integration als ERSTE der zurückgegebenen Liste
+						// steht, ist die Bedingung dafür, dass `remarkAdmonitionLabels`
+						// vor shipyards `remarkAdmonitions` läuft — nur so findet dieses
+						// den Titel in `node.label`, und sonst steht über jeder
+						// Admonition „Warning" statt „WICHTIG". Gemessen und bewacht in
+						// `tests/klasse/markdown.test.ts`.
+						remarkPlugins: [remarkAdmonitionLabels],
 					},
 					vite: {
 						plugins: [
@@ -155,11 +194,25 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 	return [
 		kern,
 		adapter,
-		tailwind({ applyBaseStyles: false }),
 		shipyard({
+			// Das Tailwind-Setup steckt nicht mehr in einer Integration, sondern in
+			// dieser einen Zeile: shipyard hängt die Datei über
+			// `virtual:shipyard/css` ein, und sie ist die einzige Quelle des CSS.
+			css: options.css,
 			brand: config.label,
 			title: config.label,
 			tagline: config.tagline,
+			// Kein Copyright-Vermerk, sondern die Anbieterkennzeichnung — und die
+			// ist bewusst NICHT die der Schule: Diese Seiten werden privat
+			// betrieben, nicht von der Freien Waldorfschule Maschsee. Wer sie
+			// verantwortet, muss darauf erkennbar sein und nicht hinter einer
+			// Klassenbezeichnung verschwinden.
+			//
+			// Deshalb steht hier ein fester Wert und kein Feld der KlassenConfig:
+			// Die Angabe ist für alle Klassen dieselbe, und eine Klasse, die sie
+			// vergisst oder überschreibt, hätte eine Seite ohne Anbieterangabe.
+			// Ändert sich die Anschrift, ändert sie sich hier einmal.
+			footer: { copyright: BETREIBER },
 			navigation: {
 				unterlagen: { label: 'Unterlagen', href: '/docs' },
 				berichte: { label: 'Berichte', href: '/blog' },
@@ -225,15 +278,18 @@ const virtuellesModul = (config: KlassenConfig): string =>
 	].join('\n')
 
 /**
- * daisyUI 4 liest seine Farben aus CSS-Variablen auf `[data-theme]`. Nur die
+ * daisyUI liest seine Farben aus CSS-Variablen auf `[data-theme]`. Nur die
  * Farben schreiben, die die Klasse gesetzt hat — ein vollständiges Theme wäre
  * eine Kopie der daisyUI-Vorgaben, die beim nächsten daisyUI-Update veraltet.
+ *
+ * Die Namen sind die von daisyUI 5. In 4 hießen sie `--p`, `--s`, `--a`, `--n`
+ * und trugen zerlegte Farbkanäle; seit 5 sind es vollständige Farbwerte.
  */
 const DAISY_VARIABLEN = {
-	primary: '--p',
-	secondary: '--s',
-	accent: '--a',
-	neutral: '--n',
+	primary: '--color-primary',
+	secondary: '--color-secondary',
+	accent: '--color-accent',
+	neutral: '--color-neutral',
 } as const
 
 const themeCss = (config: KlassenConfig): string | null => {
