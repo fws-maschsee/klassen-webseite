@@ -385,10 +385,15 @@ Die Regel dahinter: ein Peer-Bereich darf nur so weit reichen, wie am Ende
 Fehler, und er meldet sich nicht von selbst, sondern als Seite, die anders
 aussieht.
 
-Der Footer war lange der sichtbare Unterschied zwischen den 0.6er-Fassungen:
-0.6.1 schrieb `© Levin Keller, 2025` fest hinein. Seit 0.7 kommt der Text aus
-`footer.copyright`, und die Integration setzt dort `© <Klassenname>, <Jahr>` —
-ohne den Wert stünde dort nur noch `© <Jahr>` ohne Namen. Die Zeile
+Im Footer steht die **Anbieterkennzeichnung**, kein Copyright-Vermerk:
+`Levin Keller, Hohenzollerndamm 152, 14199 Berlin`. Diese Seiten werden privat
+betrieben und **nicht** von der Freien Waldorfschule Maschsee — auch wenn sie
+nach Klassen benannt sind. Der Wert steht deshalb als Konstante `BETREIBER` in
+`astro/integration.ts` und nicht in der `KlassenConfig`: Er ist für alle Klassen
+derselbe, und eine Klasse, die ihn vergisst oder überschreibt, hätte eine Seite
+ohne Anbieterangabe. Ohne den Wert schreibt shipyard nur `© <Jahr>` ohne Namen —
+ein Fehler, der niemandem auffällt, weil die Seite normal aussieht. Deshalb
+bewacht ihn `tests/klasse/betreiber.test.ts`. Die Zeile
 „Built with Shipyard" daneben ist shipyards Vorgabe und bleibt stehen;
 `hideBranding: true` würde sie entfernen.
 

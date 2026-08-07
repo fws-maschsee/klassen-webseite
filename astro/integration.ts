@@ -58,6 +58,16 @@ export type FwsKlasseOptions = {
 const VIRTUELLES_MODUL = 'virtual:fws-klasse/config'
 
 /**
+ * Anbieterkennzeichnung im Footer jeder Klassenseite.
+ *
+ * Diese Seiten werden privat betrieben und **nicht** von der Freien
+ * Waldorfschule Maschsee — auch wenn sie nach Klassen benannt sind und
+ * Schulthemen behandeln. Wer sie verantwortet, gehört deshalb sichtbar auf jede
+ * Seite und nicht in ein Feld, das eine Klasse setzen oder vergessen kann.
+ */
+const BETREIBER = 'Levin Keller, Hohenzollerndamm 152, 14199 Berlin'
+
+/**
  * Die Astro-Integration. Sie ist der Grund, warum eine neue geteilte Seite
  * ohne eine einzige Datei im Klassen-Repo in allen Klassen erscheint: die
  * Routen kommen aus `GETEILTE_ROUTEN` und werden hier injiziert.
@@ -192,16 +202,17 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 			brand: config.label,
 			title: config.label,
 			tagline: config.tagline,
-			// Bis 0.6.x stand im Footer fest verdrahtet „© Levin Keller, <Jahr>" —
-			// die Vorgabe des shipyard-Autors, keine Entscheidung dieser Schule.
-			// Seit 0.7 ist der Text konfigurierbar, und ohne Wert steht dort nur
-			// „© <Jahr>" ohne Namen. Die Klasse ist die richtige Angabe.
+			// Kein Copyright-Vermerk, sondern die Anbieterkennzeichnung — und die
+			// ist bewusst NICHT die der Schule: Diese Seiten werden privat
+			// betrieben, nicht von der Freien Waldorfschule Maschsee. Wer sie
+			// verantwortet, muss darauf erkennbar sein und nicht hinter einer
+			// Klassenbezeichnung verschwinden.
 			//
-			// Das Jahr entsteht beim Bauen und nicht beim Ausliefern. Für eine
-			// Seite, die bei jeder Änderung neu gebaut wird, ist das genau genug;
-			// ein serverseitig gerechnetes Jahr wäre nur über eine eigene
-			// Footer-Komponente zu haben.
-			footer: { copyright: `© ${config.label}, ${new Date().getFullYear()}` },
+			// Deshalb steht hier ein fester Wert und kein Feld der KlassenConfig:
+			// Die Angabe ist für alle Klassen dieselbe, und eine Klasse, die sie
+			// vergisst oder überschreibt, hätte eine Seite ohne Anbieterangabe.
+			// Ändert sich die Anschrift, ändert sie sich hier einmal.
+			footer: { copyright: BETREIBER },
 			navigation: {
 				unterlagen: { label: 'Unterlagen', href: '/docs' },
 				berichte: { label: 'Berichte', href: '/blog' },
