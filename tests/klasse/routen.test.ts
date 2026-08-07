@@ -27,9 +27,26 @@ describe('GETEILTE_ROUTEN', () => {
 			'/auth/logout',
 			'/api/lists/incoming',
 			'/api/lists/check',
+			// Der Putzplan liegt auf dem BESTEHENDEN Docs-Pfad. Steht er nicht in
+			// dieser Liste, ist er nicht bloss weg — dann bedient shipyards
+			// Catch-all den Pfad wieder, die Seite lädt ohne Tabelle, und keine CI
+			// meldet es.
+			'/docs/putzen/putzplan',
 		]) {
 			expect(muster).toContain(pflicht)
 		}
+	})
+
+	test('der Putzplan-Pfad ist vollstaendig statisch', () => {
+		// Nur dadurch gewinnt er gegen shipyards `/docs/[...slug]`: Astro bevorzugt
+		// das spezifischere Muster, und ein Platzhalter darin machte die
+		// Reihenfolge zur Glückssache — die Seite lieferte dann mal die Tabelle und
+		// mal die Prosa allein.
+		const putzplan = GETEILTE_ROUTEN.find(
+			(r) => r.pattern === '/docs/putzen/putzplan',
+		)
+		expect(putzplan).toBeDefined()
+		expect(putzplan?.pattern).not.toMatch(/[[\].]/)
 	})
 
 	test('jede Begruendung ist ausgeschrieben', () => {

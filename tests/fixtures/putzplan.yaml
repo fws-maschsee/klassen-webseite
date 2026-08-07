@@ -1,0 +1,56 @@
+# Steht fuer `src/content/putzplan.yaml` einer Klasse.
+#
+# ABSICHTLICH nicht chronologisch: die Sortierung ist Aufgabe der Seite, und ein
+# nachgetragener Termin landet in der echten Datei dort, wo gerade Platz war.
+#
+# Die Namen sind erfunden. Eine echte Einteilung gehoert nicht in dieses
+# Repository — sie nennt die Familien einer bestimmten Klasse.
+#
+# Die Anzahl der Eintraege steht in KEINEM Test als Zahl. Die Tests zaehlen sie
+# aus dieser Datei; sonst waere ein sechster Eintrag hier eine rote Zeile dort,
+# und die Aussage "keine stille Auslassung" haenge an einer Zahl, die jemand
+# nachzieht.
+
+- id: "2026-09-04"
+  datum: 2026-09-04
+  familien:
+    - name: Musterfrau
+      slug: musterfrau
+    - name: Beispiel
+      slug: beispiel
+
+- id: "2026-08-21"
+  datum: 2026-08-21
+  familien:
+    # Ein Schraegstrich gehoert zu EINER Familie mit zwei Nachnamen.
+    - name: Probst/Vogel
+      slug: probst-vogel
+    - name: Sonnenschein
+      slug: sonnenschein
+
+- id: "2026-10-01"
+  datum: 2026-10-01
+  familien:
+    - name: Winter
+      slug: winter
+    - name: Sommer
+      slug: sommer
+  anmerkung: (Do, da Fr Feiertag)
+
+- id: "2026-08-28"
+  datum: 2026-08-28
+  familien:
+    - name: Herbst
+      slug: herbst
+    - name: Fruehling
+      slug: fruehling
+
+# Ein Termin mit nur EINER Familie — der Grund, warum `familien` im Schema
+# `.min(1)` ist und nicht `.length(2)`.
+- id: "2026-10-09"
+  datum: 2026-10-09
+  familien:
+    - name: Einzeln
+      slug: einzeln
+  anmerkung: >-
+    nur eine Familie, weil die Zahl der Familien ungerade ist

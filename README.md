@@ -48,6 +48,7 @@ dreimal.
 | `db/migrations/**` — das Datenbankschema | `deploy/**`, `Dockerfile`, `.env`, Sealed Secrets |
 | `astro/content.config.ts` — das Schema der Inhalte, nicht die Inhalte | `email-worker/` — ein Worker je Klasse |
 | die Astro-Integration mit dem ganzen Stack (Adapter, shipyard, Markdown-Plugins) | Playwright-/E2E-Tests, die eine laufende Instanz brauchen |
+| `src/klasse/putzplan.ts` — Schema und Darstellung des Putzplans | `src/content/putzplan.yaml` — die Putz-Einteilung selbst |
 | die Unit-Tests des geteilten Codes | |
 
 **Die Inhalte bleiben in den Klassen-Repos, und zwar aus einem Grund, der sich
@@ -415,6 +416,7 @@ Es gibt keine `exports`-Karte mehr, die Namen auf Dateien abbildet — der Pfad
 | `#geteilt/server/app.ts` | `./server-app` | `startServer({ config })` |
 | `#geteilt/migrations.ts` | `./migrations` | `packageMigrations()`, `packageMigrationsDir()`, `alleMigrations()`, `runMigrations()` |
 | `#geteilt/klasse/kalender.ts` | `./kalender` | `pruefeKalender(projektWurzel, config)`, `webcalUrl(config)` |
+| `#geteilt/klasse/putzplan.ts` | — | `putzplanSchema`, `optionaleDatei()`, `putzplanZeilen()`, `PUTZPLAN_DATEI` — neu, siehe [Strukturierte Daten](#strukturierte-daten-eine-yaml-datei-eine-sammlung-eine-erzeugte-seite) |
 | `geteilt/src/styles/klasse.css` | `./styles/global.css` | der Tailwind-Einstieg; per `@import` aus `src/styles/app.css` der Klasse, nicht per Subpath-Import |
 | `#geteilt/lib/…`, `#geteilt/server/…`, `#geteilt/remark/…` | `./lib/*`, … | der geteilte Code, einzeln |
 | `#geteilt/klasse/…` | `./klasse/*` | Interna der Integration (`config`, `routes`, `locals`) |
@@ -485,6 +487,10 @@ nachziehen — und die Seite ist in allen Klassen da. Dasselbe für eine
 Schema-Änderung: SQL-Datei unter `db/migrations/`, nachziehen; `startServer()`
 wendet sie beim nächsten Start an.
 
+Eine neue **Content-Collection** ist die Ausnahme davon — sie braucht eine Datei
+im Klassen-Repo und damit zwei PRs in fester Reihenfolge, siehe
+[Strukturierte Daten](#strukturierte-daten-eine-yaml-datei-eine-sammlung-eine-erzeugte-seite).
+
 ### Wenn der Nachzieh-PR mehr als eine Zeile ist
 
 Tailwind 4 und daisyUI 5 sind so ein Fall: der Vertrag zwischen geteiltem Code
@@ -513,6 +519,83 @@ Klasse dabei zu tun hat:
 9. **Sichtprüfung, nicht nur grüner Build.** Ein fehlender CSS-Einstieg baut
    durch: `astro build`, dann im Client-Verzeichnis eine CSS-Datei > 100 KB
    suchen, die `admonition` und `btn` enthält.
+
+### Strukturierte Daten: eine YAML-Datei, eine Sammlung, eine erzeugte Seite
+
+**Regel: Was strukturierte Daten sind, kommt als Astro-Content-Collection aus
+einer einzigen YAML-Datei im Klassen-Repo, und die Seite wird daraus erzeugt.
+Keine zweite Quelle daneben — keine gepflegte Tabelle, keine Kopie im Markdown,
+kein zweiter Ort mit denselben Angaben.**
+
+Der Grund ist derselbe wie bei den Mailverteilern (siehe
+`src/lib/lists/uebersicht.ts`): Dieselbe Angabe an zwei Orten heißt, dass eine
+davon veraltet — und man erfährt nicht, welche. Auf der Verteiler-Seite stand so
+monatelang eine abgelöste Mailman-Adresse, während die Anwendung längst anders
+zustellte. Bei einer Putz-Einteilung wäre der Ausfall leiser und teurer: Ein
+Tausch, der in einer der beiden Tabellen fehlt, bedeutet, dass eine Familie zu
+ihrem Termin nicht erscheint. Die Seite sieht dabei vollständig aus.
+
+Wo was liegt:
+
+| | Datei | Repo |
+| --- | --- | --- |
+| die Daten | `src/content/putzplan.yaml` | **Klassen-Repo** |
+| Schema, Loader, Darstellung | `src/klasse/putzplan.ts` | hier |
+| die Sammlung | `astro/content.config.ts` | hier |
+| die Seite | `astro/pages/docs/putzen/putzplan.astro` | hier |
+| die Route | `src/klasse/routes.ts` | hier |
+
+Die Aufteilung ist dieselbe wie bei `docs` und `blog` und hat denselben Grund:
+Die Einteilung nennt die Familien einer bestimmten Klasse und gehört in kein
+geteiltes Repository. Der Pfad in `optionaleDatei(...)` ist deshalb **relativ
+zur Projektwurzel der Klasse**, genau wie bei
+`createDocsCollection('./src/content/docs')`.
+
+Der Putzplan als Beispiel, mit den drei Entscheidungen, die sich wiederholen
+lassen:
+
+- **`z.coerce.date()` statt `z.date()`.** YAML liefert `datum` je nach Parser
+  als `Date` oder als String.
+- **`id` steht nicht im Schema.** Der `file()`-Loader zieht sie aus dem Feld
+  `id` jedes Eintrags. In der YAML gehört sie **in Anführungszeichen**
+  (`id: "2026-08-21"`), weil ein nacktes `2026-08-21` als Datum geparst würde
+  und der Loader einen String braucht.
+- **Mengen als `.min(1)`, nicht als feste Zahl.** Zwei Familien pro Termin ist
+  die Regel, aber keine Eigenschaft der Daten — bei ungerader Familienzahl
+  bleibt der letzte Termin mit einer übrig.
+
+**Eine Klasse ohne die Datei muss weiter bauen.** Astros `file()` schreibt für
+eine fehlende Datei `File not found` als **Fehler** ins Build-Log — bei jedem
+Build, ohne dass jemand etwas zu beheben hätte. Deshalb der Vorschalter
+`optionaleDatei()` aus `src/klasse/putzplan.ts`: Fehlt die Datei, bleibt die
+Sammlung leer und im Log steht eine Information. Die Seite antwortet dann so:
+
+- **kein Docs-Eintrag `putzen/putzplan`** → `404`. Die Seite erscheint nicht.
+- **Docs-Eintrag da, Sammlung leer** → nur die Prosa, keine Tabelle und kein
+  Hinweis. `klasse-christophers` ist genau dieser Fall und trägt ihre Tabelle
+  noch im Markdown; ein „hier fehlen Daten" stünde dort unter einer
+  vollständigen Tabelle und wäre falsch. Der Hinweis richtet sich an die Person,
+  die die Datei anlegt, und steht deshalb im Build-Log.
+
+#### Eine neue Sammlung berührt immer zwei Repositories
+
+Das ist der Unterschied zu einer neuen geteilten Seite, die ohne eine einzige
+Datei im Klassen-Repo auskommt. Hier gibt es zwei PRs, und **die Reihenfolge ist
+festgelegt:**
+
+1. **Erst der geteilte Code** (dieses Repo): Schema, Sammlung, Seite, Route.
+   Solange die Klasse die YAML-Datei nicht hat, ist die Sammlung leer und die
+   Seite verhält sich wie vorher. Dieser PR ist allein mergefähig.
+2. **Dann in der Klasse, in EINEM Commit:** die YAML-Datei anlegen, die alte
+   Tabelle aus dem Markdown entfernen **und** den Submodule-Zeiger nachziehen.
+
+Getrennt gemergt entsteht in genau einer Richtung ein Zwischenzustand, den keine
+CI meldet: Wer die Tabelle aus dem Markdown nimmt, bevor der Submodule-Zeiger
+steht, hat eine Elternseite mit Prosa und **ohne Einteilung** — `astro build`,
+`npm test` und `npm run check` der Klasse laufen dabei grün durch, weil die
+YAML-Datei unreferenziert unter `src/content/` liegt und Astro sie ignoriert.
+Deshalb gehören Datei, Markdown-Änderung und Zeiger in einen Commit, und deshalb
+darf der Klassen-PR nicht vor dem hiesigen gemergt werden.
 
 ## Entwickeln
 
