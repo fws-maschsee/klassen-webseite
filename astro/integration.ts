@@ -7,6 +7,7 @@ import shipyardBlog from '@levino/shipyard-blog'
 import shipyardDocs from '@levino/shipyard-docs'
 import type { AstroIntegration } from 'astro'
 import {
+	bearbeitenUrl,
 	defineKlassenConfig,
 	type KlassenConfig,
 	type KlassenConfigInput,
@@ -233,7 +234,7 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 			],
 		}),
 		shipyardDocs({
-			editUrl: `${config.repoUrl}/edit/main/src/content/docs`,
+			editUrl: bearbeitenUrl(config, 'src/content/docs'),
 		}),
 		shipyardBlog({
 			blogTitle: 'Berichte',

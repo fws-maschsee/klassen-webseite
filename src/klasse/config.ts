@@ -337,6 +337,25 @@ export const defineKlassenConfig = (
 	}
 }
 
+/**
+ * GitHub-Adresse, unter der eine Datei des Klassen-Repos bearbeitet wird.
+ *
+ * Eine Funktion und kein zusammengesetztes Literal an drei Stellen: die
+ * Integration übergibt shipyard-docs die Basis für alle Unterlagen, und die
+ * Putzplan-Seite verweist zusätzlich auf ihre YAML-Datei. Stünde `/edit/main/`
+ * dreimal getippt im Baum, wäre ein Wechsel des Standard-Branches ein Rundlauf
+ * durch drei Dateien, von denen zwei vergessen würden — und ein toter
+ * Bearbeiten-Link fällt niemandem auf, der nur liest.
+ *
+ * Nimmt die Konfiguration als Argument und liest sie nicht aus dem Register:
+ * die Integration ruft sie auf, bevor `setKlassenConfig` gelaufen ist.
+ */
+export const bearbeitenUrl = (
+	config: KlassenConfig,
+	/** Pfad der Datei, relativ zur Wurzel des Klassen-Repos. */
+	pfadImRepo: string,
+): string => `${config.repoUrl}/edit/main/${pfadImRepo}`
+
 let angemeldet: KlassenConfig | null = null
 
 /**

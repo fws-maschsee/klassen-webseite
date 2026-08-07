@@ -1,0 +1,131 @@
+---
+import Layout from '@levino/shipyard-docs/astro/Layout.astro'
+import { getCollection, getEntry, render } from 'astro:content'
+import { bearbeitenUrl, klassenConfig } from '../../../../src/klasse/config.ts'
+import {
+  PUTZPLAN_DATEI,
+  putzplanZeilen,
+} from '../../../../src/klasse/putzplan.ts'
+
+export const prerender = false
+
+/**
+ * Der Putzplan — Prosa aus dem Markdown, Tabelle aus den Daten.
+ *
+ * Diese Seite liegt auf dem BESTEHENDEN Pfad `/docs/putzen/putzplan`. Der ist
+ * aus `putzen/index.md` verlinkt, steht in der Seitenleiste und ist bei Eltern
+ * gespeichert; ein neuer Pfad hätte jeden dieser Verweise gebrochen. Das Muster
+ * ist vollständig statisch und damit spezifischer als shipyards Docs-Catch-all
+ * `/docs/[...slug]` — Astro entscheidet sich deshalb für diese Datei.
+ *
+ * Warum die Prosa weiterhin aus dem Docs-Eintrag kommt und nicht hier steht:
+ * Titel, Beschreibung, Seitenleisten-Eintrag und Position leben im Frontmatter
+ * von `putzplan.md`, und die Seitenleiste entsteht aus der Docs-Sammlung. Wäre
+ * der Eintrag dort entfallen, fiele der Putzplan aus der Seitenleiste und die
+ * Klasse müsste ihn von Hand in die Navigation eintragen — genau die Datei im
+ * Klassen-Repo, die diese Seite vermeiden soll.
+ *
+ * Die Tabelle steht DAHINTER, unter einer eigenen Überschrift. Sie mitten in
+ * die Prosa zu setzen hieße, das gerenderte Markdown aufzuschneiden; die
+ * Überschrift ist der Preis dafür, dass die Tabelle nicht als Teil des letzten
+ * Prosa-Abschnitts gelesen wird. Sie wird an `headings` angehängt, damit das
+ * Inhaltsverzeichnis vollständig bleibt.
+ */
+
+const eintrag = await getEntry('docs', 'putzen/putzplan')
+
+/**
+ * Keine Unterlage `putzen/putzplan` — dann gibt es diese Seite in dieser Klasse
+ * nicht, und zwar mit 404 statt mit einer leeren Seite. Der Docs-Catch-all
+ * leitet in diesem Fall auf `/404` um; ein 302 auf eine Seite, die es ebenso
+ * wenig gibt, ist der Umweg zur selben Antwort.
+ *
+ * Das ist der Grund, warum die Route bedingungslos eingehängt werden darf: eine
+ * Klasse ohne Putzplan bekommt keine zusätzliche Seite, sondern dieselbe
+ * Antwort wie vorher.
+ */
+if (!eintrag || eintrag.data.render === false) {
+  return new Response(null, { status: 404 })
+}
+
+const { Content, headings } = await render(eintrag)
+
+/**
+ * Die Einteilung. Leer, wenn die Klasse keine `putzplan.yaml` hat — dann
+ * bleibt es bei der Prosa.
+ *
+ * Bewusst OHNE Hinweis auf der Seite: `klasse-christophers` ist genau dieser
+ * Fall und trägt ihre Tabelle noch im Markdown. Ein „hier fehlen Daten" stünde
+ * dort unmittelbar unter einer vollständigen Tabelle und wäre schlicht falsch.
+ * Der Hinweis gehört an die Person, die die Datei anlegt, und steht deshalb im
+ * Build-Log (siehe `optionaleDatei` in `src/klasse/putzplan.ts`) — nicht auf
+ * einer Seite für Eltern.
+ *
+ * Astro schreibt für eine leere Sammlung bei jedem Aufruf
+ * „The collection "putzplan" does not exist or is empty" ins Serverlog. Das ist
+ * ein `console.warn` in Astros `getCollection` und über die öffentliche
+ * Schnittstelle nicht abzustellen; es ist die richtige Auskunft, nur an der
+ * falschen Stelle. Wer es beheben will, legt der Klasse eine `putzplan.yaml`
+ * an — an Astros Datenspeicher vorbeizulesen wäre der schlechtere Tausch.
+ */
+const zeilen = putzplanZeilen(await getCollection('putzplan'))
+
+const UEBERSCHRIFT = 'Einteilung'
+const UEBERSCHRIFT_ANKER = 'einteilung'
+
+const inhaltsverzeichnis =
+  zeilen.length > 0
+    ? [...headings, { depth: 2, text: UEBERSCHRIFT, slug: UEBERSCHRIFT_ANKER }]
+    : headings
+
+// Der Bearbeiten-Link zeigt auf die Datei, in der das Bearbeitbare steht: die
+// Prosa. Die Einteilung hat ihren eigenen Link unter der Tabelle — denn wer sie
+// ändern will, muss in die YAML und nicht ins Markdown.
+const klasse = klassenConfig()
+const editUrl = bearbeitenUrl(klasse, 'src/content/docs/putzen/putzplan.md')
+const datenUrl = bearbeitenUrl(klasse, PUTZPLAN_DATEI)
+---
+
+<Layout headings={inhaltsverzeichnis} routeBasePath="docs" editUrl={editUrl}>
+  <Content />
+
+  {zeilen.length > 0 && (
+    <>
+      <h2 id={UEBERSCHRIFT_ANKER}>{UEBERSCHRIFT}</h2>
+
+      {/*
+        Eine schlichte Tabelle ohne eigene Klassen: die Layout-Vorlage von
+        shipyard-docs umschliesst diesen Bereich mit `prose`, und Tailwinds
+        Typografie gestaltet `<table>` dort genauso, wie sie es mit der
+        Markdown-Tabelle getan hat, die vorher an dieser Stelle stand. Gleiche
+        Spalten, gleiche Anmutung — Eltern erkennen sie wieder.
+      */}
+      <table>
+        <thead>
+          <tr>
+            <th>Familie</th>
+            <th>Datum</th>
+            <th>Anmerkungen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {zeilen.map((zeile) => (
+            <tr id={`termin-${zeile.id}`}>
+              <td>{zeile.familie}</td>
+              <td><time datetime={zeile.iso}>{zeile.datum}</time></td>
+              <td>{zeile.anmerkung}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p>
+        Die Einteilung wird in <code>{PUTZPLAN_DATEI}</code> gepflegt und diese
+        Tabelle daraus erzeugt — es gibt sie bewusst nur einmal.{' '}
+        <a href={datenUrl} target="_blank" rel="noopener noreferrer">Termin
+        ändern</a> geht deshalb nur dort. Wer nicht kann, tauscht besser direkt
+        mit einer anderen Familie.
+      </p>
+    </>
+  )}
+</Layout>
