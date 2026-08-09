@@ -132,12 +132,32 @@ describe('Annahme und Verteilung', () => {
 			'vera@example.org',
 		])
 		expect(sent[0]?.subject).toBe('[Eltern] Termin')
-		// From zeigt auf die Liste (DMARC), der Originalabsender bleibt sichtbar.
-		expect(sent[0]?.from).toContain('Vera Beispiel via Eltern')
+		// From zeigt auf die Liste (DMARC), der Originalabsender bleibt sichtbar —
+		// mit Adresse, weil `X-Original-From` allein kein Mailprogramm anzeigt.
+		expect(sent[0]?.from).toContain(
+			'Vera Beispiel (vera@example.org) via Eltern',
+		)
 		expect(sent[0]?.from).toContain('eltern@')
 		expect(sent[0]?.headers?.['X-Original-From']).toContain('vera@example.org')
 		expect(sent[0]?.headers?.Precedence).toBe('list')
 		expect(sent[0]?.headers?.['List-Id']).toContain('eltern.')
+	})
+
+	test('der Fuss mit dem zweiten Antwortweg kommt bis in den Versand', async () => {
+		// Denselben Weg wie im Betrieb: rohe Mail rein, `SendInput` raus. Der
+		// Wachter fuer die Einzelheiten steht in `redistribute.test.ts`; hier geht
+		// es darum, dass der Fuss nicht auf dem Weg durch die Warteschlange
+		// verlorengeht.
+		await deliver({
+			headerFrom: 'Vera Beispiel <vera@example.org>',
+			subject: 'Termin',
+			messageId: '<fuss@example.org>',
+		})
+		expect(sent[0]?.text).toContain(
+			'mailto:vera@example.org?subject=Re%3A%20Termin',
+		)
+		expect(sent[0]?.text).toContain('Nur an Vera Beispiel (vera@example.org)')
+		expect(sent[0]?.text).toContain('Liste Eltern')
 	})
 
 	test('reply_mode sender laesst Antworten an den Absender gehen', async () => {

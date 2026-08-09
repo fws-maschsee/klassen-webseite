@@ -597,6 +597,89 @@ YAML-Datei unreferenziert unter `src/content/` liegt und Astro sie ignoriert.
 Deshalb gehören Datei, Markdown-Änderung und Zeiger in einen Commit, und deshalb
 darf der Klassen-PR nicht vor dem hiesigen gemergt werden.
 
+## Was in einer weiterverteilten Listenmail steht
+
+Eine Mail an `eltern@…` wird **nicht durchgereicht**, sondern je Empfänger neu
+gebaut (`src/lib/lists/redistribute.ts`). So sieht das Ergebnis aus, wenn Vera
+Beispiel an die Liste `Eltern` mit `reply_mode: list` schreibt:
+
+```
+From:             "Vera Beispiel (vera@example.org) via Eltern" <eltern@klasse-beispiel.lists.fws-maschsee.de>
+To:               anna@example.org
+Reply-To:         eltern@klasse-beispiel.lists.fws-maschsee.de
+Sender:           noreply@fws-maschsee.de
+Subject:          [Eltern] Elternabend am 3. September
+List-Id:          Eltern <eltern.klasse-beispiel.lists.fws-maschsee.de>
+List-Post:        <mailto:eltern@klasse-beispiel.lists.fws-maschsee.de>
+List-Unsubscribe: <mailto:noreply@fws-maschsee.de?subject=Austragen%20eltern>
+Precedence:       list
+X-Original-From:  Vera Beispiel <vera@example.org>
+```
+
+Am Ende des Rumpfs steht ein Fuß, im Textteil so:
+
+```
+--------------------------------------------
+Nur an Vera Beispiel (vera@example.org) antworten: mailto:vera@example.org?subject=Re%3A%20Elternabend%20am%203.%20September
+„Antworten“ geht an alle Empfänger der Liste Eltern (eltern@klasse-beispiel.lists.fws-maschsee.de).
+```
+
+…und im HTML-Teil derselbe Inhalt als Absatz mit Trennlinie, eingefügt
+unmittelbar vor `</body>` (fehlt das, wird angehängt):
+
+```html
+<div style="margin-top:24px;padding-top:12px;border-top:1px solid #d4d4d4;…">
+  <a href="mailto:vera@example.org?subject=Re%3A%20Elternabend%20am%203.%20September">Nur an Vera Beispiel (vera@example.org) antworten</a><br />
+  „Antworten“ geht an alle Empfänger der Liste Eltern (eltern@…).
+</div>
+```
+
+Warum jede Zeile so ist:
+
+- **`From` zeigt auf die Liste, nicht auf die Privatadresse.** SES signiert nur
+  für die eigene verifizierte Domain; eine fremde From-Domain scheitert an
+  DMARC. Der Absender steht deshalb im Anzeigenamen.
+- **Zwei Antwortwege, beide sichtbar.** „Antworten" folgt `Reply-To` und damit
+  `reply_mode` (`list` → an alle, `sender` → an den Absender). Der Link im Fuß
+  ist der zweite Weg: nur an die Person, die geschrieben hat. Der Fuß nennt
+  beide, weil die Verwechslung nur in einer Richtung teuer ist — eine private
+  Antwort an fünfzig Elternhäuser ist nicht zurückzuholen.
+- **`List-Post` sagt, wer schreiben darf, nicht wohin Antworten gehen.** Die
+  Listenadresse steht dort, wenn jeder Empfänger posten darf
+  (`poster_policy: offen` oder `broadcast: true`), sonst `NO`. Mit `reply_mode`
+  hat der Header nichts zu tun; die frühere Kopplung setzte `NO` auf offenen
+  Listen, in die jeder schreiben durfte.
+- **Signierte Nachrichten bekommen keinen Fuß.** Erkannt werden PGP/MIME und
+  S/MIME an ihrem Signaturteil (`application/pgp-signature`,
+  `application/pkcs7-signature`, `application/pkcs7-mime`) sowie inline
+  signiertes PGP am Rumpf selbst. Jedes angehängte Zeichen würde die Signatur
+  ungültig machen, und „Signatur fehlerhaft" beim Empfänger ist schlimmer als
+  ein fehlender Hinweis.
+
+### Hinweis: Die Absenderadresse ist für ALLE Empfänger sichtbar
+
+Vorher war sie es nicht — sie stand allein in `X-Original-From`, und den zeigt
+kein Mailprogramm an. Jetzt steht sie im Anzeigenamen **und** im `mailto:`-Link
+des Fußes, also in jedem Programm und in jedem Weiterleitungs-Zitat.
+
+Das ist eine bewusste Entscheidung und **nicht zurücknehmbar, sobald eine Mail
+draußen ist**: In einer Klasse kennen sich die Eltern, und ohne sichtbare
+Adresse gibt es keinen Weg zurück zum Absender — `From` und `Reply-To` zeigen
+beide auf die Liste. Wer eine Liste braucht, auf der Absenderadressen verborgen
+bleiben (eine Vertrauensadresse etwa), kann sie so nicht betreiben; das wäre
+eine eigene Betriebsart und keine Einstellung an dieser Stelle.
+
+### Hinweis: Der Rumpf wird nicht mehr unverändert durchgereicht
+
+Bis hierher galt „Inhalt und Anhänge bleiben unverändert". Das ist **nicht mehr
+richtig**: Der Fuß wird in Text- und HTML-Teil eingefügt. Unverändert bleiben
+die **Anhänge** und der Rumpf **signierter** Nachrichten.
+
+Der Fuß wird beim Versand gerechnet und nie gespeichert. Ein erneuter
+Zustellversuch aus `list_outbound` baut damit zeichengleich dieselbe Mail. Und
+zweimal steht der Fuß nie drin: trägt der Rumpf den `mailto:`-Link samt Betreff
+schon, wird nichts angefügt.
+
 ## Entwickeln
 
 ```bash
