@@ -111,6 +111,15 @@ const drainListQueue = async (): Promise<void> => {
 		log(
 			`Listen-Batch: ${result.count} verarbeitet (${sent} gesendet, ${errors} Fehler)`,
 		)
+		if (errors > 0) {
+			// Eine gescheiterte LISTENmail meldet sich bei niemandem: Der Absender
+			// hat sein SMTP-OK laengst, ein Bounce entsteht nicht mehr. Diese Zeile
+			// ist die einzige Stelle, an der die Stoerung auffaellt — sie nennt
+			// deshalb den Weg zurueck.
+			log(
+				'Gescheiterte Zustellungen bleiben liegen und loesen KEINEN Bounce aus. Zustand: list_list_messages, nachreichen: retry_failed_list_sends',
+			)
+		}
 	}
 }
 

@@ -4,6 +4,7 @@ import type { McpAuth } from './guard.ts'
 import { registerEmailTools } from './tools/emails.ts'
 import { registerGroupTools } from './tools/groups.ts'
 import { registerInstanceTools } from './tools/instance.ts'
+import { registerListQueueTools } from './tools/listQueue.ts'
 import { registerMailingListTools } from './tools/mailingLists.ts'
 import { registerMitgliederTools } from './tools/members.ts'
 
@@ -30,6 +31,7 @@ export const buildMcpServer = (auth: McpAuth): McpServer => {
 	registerGroupTools(server, auth)
 	registerEmailTools(server, auth)
 	registerMailingListTools(server, auth)
+	registerListQueueTools(server, auth)
 
 	return server
 }

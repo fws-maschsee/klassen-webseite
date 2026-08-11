@@ -207,6 +207,114 @@ export const listOutboundForMessage = (
 		)
 		.all(messageId)
 
+/** Zaehlung je Status. Alle vier Schluessel sind immer da, auch mit 0. */
+export type ListOutboundCounts = {
+	queued: number
+	sending: number
+	sent: number
+	error: number
+}
+
+export type ListMessageStatus = ListMessageRow & {
+	counts: ListOutboundCounts
+	recipients: ListOutboundRow[]
+}
+
+export type ListMessageSummary = ListMessageRow & {
+	counts: ListOutboundCounts
+}
+
+const countsFor = (messageId: number, db: Database): ListOutboundCounts => {
+	const counts: ListOutboundCounts = {
+		queued: 0,
+		sending: 0,
+		sent: 0,
+		error: 0,
+	}
+	const rows = db
+		.prepare<[number], { status: keyof ListOutboundCounts; c: number }>(
+			'SELECT status, COUNT(*) AS c FROM list_outbound WHERE message_id = ? GROUP BY status',
+		)
+		.all(messageId)
+	for (const row of rows) counts[row.status] = row.c
+	return counts
+}
+
+/**
+ * Der Zustand EINER angenommenen Listenmail — samt Fehlermeldung je Empfaenger.
+ *
+ * Bis hierher endete der Weg einer Listenmail im Dunkeln: Der Eingang antwortet
+ * dem Cloudflare-Worker mit 202, sobald die Mail in der Queue liegt, und ab da
+ * gibt es keine SMTP-Antwort mehr, an der ein Absender etwas merken koennte.
+ * Scheitert der Versand danach, bekommt niemand eine Unzustellbarkeitsnachricht
+ * — die Mail ist weg, und die Frage „ist sie ueberhaupt angekommen?" war ohne
+ * Zugriff auf die Pod-Logs nicht zu beantworten. Der Rundmail-Weg kann das
+ * laengst (`get_send_log`); hier ist das Gegenstueck.
+ */
+export const listMessageStatus = (
+	id: number,
+	db: Database = openDb(),
+): ListMessageStatus | undefined => {
+	const message = getListMessage(id, db)
+	if (!message) return undefined
+	return {
+		...message,
+		counts: countsFor(id, db),
+		recipients: listOutboundForMessage(id, db),
+	}
+}
+
+/** Die zuletzt angenommenen Listenmails, neueste zuerst, mit ihren Zahlen. */
+export const recentListMessages = (
+	limit = 20,
+	db: Database = openDb(),
+): ListMessageSummary[] =>
+	db
+		.prepare<[number], ListMessageRow>(
+			'SELECT * FROM list_messages ORDER BY id DESC LIMIT ?',
+		)
+		.all(limit)
+		.map((message) => ({ ...message, counts: countsFor(message.id, db) }))
+
+/**
+ * Reiht die gescheiterten Zustellungen einer Listenmail erneut ein
+ * (`error -> queued`) und gibt zurueck, wie viele es waren.
+ *
+ * Angefasst werden ausschliesslich `error`-Zeilen: Wer die Mail schon hat,
+ * bekommt sie kein zweites Mal, und was noch in der Queue liegt, bleibt liegen.
+ * Ohne `messageId` gilt es fuer alle Mails — der Fall nach einem Neustart, der
+ * einen ganzen Schwung Zustellungen unterbrochen hat.
+ *
+ * Die verbleibende Unsicherheit steht hier, weil sie sich nicht wegprogrammieren
+ * laesst: Eine Zeile auf `error` heisst „unser Sendeversuch ist gescheitert",
+ * nicht „SES hat die Mail nicht angenommen". Bricht die Verbindung NACH der
+ * Annahme ab, erzeugt eine Wiederholung eine zweite Mail beim Empfaenger. Eine
+ * doppelte Mail ist der ertraeglichere Fehler gegenueber einer verlorenen —
+ * deshalb gibt es diese Funktion, und deshalb loest ein Mensch sie aus statt
+ * eines Automatismus.
+ */
+export const requeueListErrors = (
+	messageId?: number,
+	db: Database = openDb(),
+): number =>
+	messageId === undefined
+		? db
+				.prepare(
+					`UPDATE list_outbound
+              SET status = 'queued', error_message = NULL,
+                  claimed_at = NULL, sent_at = NULL
+            WHERE status = 'error'`,
+				)
+				.run().changes
+		: db
+				.prepare<[number]>(
+					`UPDATE list_outbound
+              SET status = 'queued', error_message = NULL,
+                  claimed_at = NULL, sent_at = NULL
+            WHERE status = 'error' AND message_id = ?`,
+				)
+				.run(messageId).changes
+
 export const countListSentInLastHour = (db: Database = openDb()): number =>
 	db
 		.prepare<[], { c: number }>(
@@ -239,7 +347,7 @@ export const cleanupStuckListOutbound = (
             WHERE status = 'sending'`,
 				)
 				.run(
-					'Worker-Neustart hat den Versand unterbrochen - bitte erneut senden',
+					'Worker-Neustart hat den Versand unterbrochen - mit retry_failed_list_sends erneut einreihen',
 				).changes
 		: db
 				.prepare<[string, string]>(

@@ -51,20 +51,25 @@ export const processListOne = async (
 		return { kind: 'error', outboundId: row.id, error }
 	}
 
-	const message = getListMessage(row.message_id, db)
-	if (!message) return fail('Listenmail nicht gefunden')
-	const list = getMailingList(message.list_address, db)
-	if (!list) return fail('Mailingliste wurde geloescht')
-
-	const attachments = getListAttachments(message.id, db)
-	const input = buildListSendInput(
-		message,
-		attachments,
-		list,
-		row.recipient_email,
-	)
-
 	try {
+		const message = getListMessage(row.message_id, db)
+		if (!message) return fail('Listenmail nicht gefunden')
+		const list = getMailingList(message.list_address, db)
+		if (!list) return fail('Mailingliste wurde geloescht')
+
+		// Innerhalb des `try`, und das ist der Punkt: Ein Wurf beim Laden der
+		// Anhaenge oder beim Bauen der Mail liess den Eintrag frueher auf
+		// `sending` stehen — ohne Fehlermeldung, und niemand haette ihn je
+		// abgeschlossen. Erst der Stuck-Cleanup raeumte ihn 30 Sekunden spaeter
+		// mit einem Text ab, der die Ursache nicht kennt.
+		const attachments = getListAttachments(message.id, db)
+		const input = buildListSendInput(
+			message,
+			attachments,
+			list,
+			row.recipient_email,
+		)
+
 		const { messageId } = await transport.send(input)
 		completeListOutbound(
 			row.id,

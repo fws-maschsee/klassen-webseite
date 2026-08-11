@@ -680,6 +680,44 @@ Zustellversuch aus `list_outbound` baut damit zeichengleich dieselbe Mail. Und
 zweimal steht der Fuß nie drin: trägt der Rumpf den `mailto:`-Link samt Betreff
 schon, wird nichts angefügt.
 
+## Nach dem 202 gibt es keinen Bounce mehr
+
+Der Eingang quittiert dem Cloudflare-Worker mit **202**, sobald die Mail in
+`list_messages`/`list_outbound` liegt — der Versand über SES kommt danach, aus
+dem Queue-Worker. Das ist richtig so (eine SMTP-Sitzung darf nicht auf fünfzig
+Zustellungen warten), hat aber eine Folge, die man kennen muss:
+
+**Ab dem 202 kann keine Störung mehr beim Absender ankommen.** Vorher wird
+abgelehnt, und der Worker macht daraus eine SMTP-Antwort; nachher ist die
+SMTP-Sitzung beendet und niemand erzeugt eine Unzustellbarkeitsnachricht mehr.
+Scheitert eine Zustellung, steht sie als `error` in `list_outbound` und sonst
+nirgends. Aus Sicht der Eltern sieht das aus wie „die Mail ist einfach
+verschwunden" — nicht angekommen, kein Bounce.
+
+Damit dieser Zustand ablesbar und behebbar ist, gibt es dieselben zwei
+Werkzeuge, die der Rundmail-Weg mit `get_send_log`/`retry_failed_sends` schon
+hatte:
+
+| Frage | Werkzeug |
+| --- | --- |
+| Ist meine Mail an den Verteiler überhaupt angekommen? | `list_list_messages` — steht sie nicht drin, hat die App sie nie angenommen; dann in die Logs des Cloudflare-Workers schauen |
+| Was ist aus ihr geworden, Empfänger für Empfänger? | `get_list_message` — Status und Fehlermeldung je Zustellung |
+| Gescheiterte Zustellungen nachreichen | `retry_failed_list_sends` — setzt genau die `error`-Zeilen auf `queued` zurück, erfolgreich Belieferte bleiben unangetastet |
+
+`error` heißt „**unser** Sendeversuch ist gescheitert", nicht sicher „SES hat
+nichts angenommen". Bricht die Verbindung nach der Annahme ab, erzeugt die
+Wiederholung eine zweite Mail beim Empfänger. Eine doppelte Mail ist der
+erträglichere Fehler gegenüber einer verlorenen — deshalb gibt es die
+Wiederholung, und deshalb löst sie ein Mensch aus und kein Automatismus.
+
+Anhänge haben an dieser Stelle keinen eigenen Weg: Sie liegen als BLOB in
+`list_attachments`, werden je Empfänger unverändert an die Mail gehängt und sind
+mit [`tests/lists/anhaenge.test.ts`](tests/lists/anhaenge.test.ts) vom Eingang
+bis zum SMTP-Aufruf abgedeckt — byteweise. Was Anhänge ändern, ist die
+Größenordnung: Eine Mail mit einem 218-kB-PDF an fünfzig Eltern sind rund 15 MB
+ausgehend, und Störungen beim Provider trifft sie deshalb eher als eine
+Textmail.
+
 ## Entwickeln
 
 ```bash
