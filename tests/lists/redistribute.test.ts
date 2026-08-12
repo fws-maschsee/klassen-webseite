@@ -82,11 +82,18 @@ type BauenOptions = {
 	attachments?: ListAttachmentRow[]
 }
 
+/**
+ * `reply_mode` wird hier IMMER gesetzt und nicht dem Vorgabewert ueberlassen.
+ * Der Vorgabewert der Datenbank ist `sender`, die Listen der Klassen stehen auf
+ * `list` — und weil der Fuss den jeweils ANDEREN Antwortweg anbietet, waere ein
+ * Test ohne diese Angabe nicht bloss unvollstaendig, sondern irrefuehrend: Er
+ * pruefte den Fall, den es in keiner Klasse gibt.
+ */
 const bauen = (options: BauenOptions = {}) =>
 	buildListSendInput(
 		nachricht(options.message),
 		options.attachments ?? [],
-		liste(options.list),
+		liste({ reply_mode: 'list', ...options.list }),
 		EMPFAENGERIN,
 	)
 
@@ -96,6 +103,13 @@ const vorkommen = (haystack: string, needle: string): number =>
 
 /** Der `mailto:`-Link, den der Fuss auf Vera zeigen laesst. */
 const NUR_AN_VERA = 'mailto:vera@example.org?subject=Re%3A%20Termin'
+
+/**
+ * Die Trennlinie des Fusses. Absichtlich nicht `-- `: Alles hinter der
+ * Signatur-Trennzeile klappen viele Mailprogramme zu, und der Hinweis stuende
+ * da, wo ihn niemand liest.
+ */
+const FOOTER_RULE_ANFANG = '-'.repeat(44)
 
 describe('From zeigt auf die Liste und nennt den Absender', () => {
 	test('Anzeigename enthaelt Name UND Adresse, Kuvert bleibt die Liste', () => {
@@ -224,11 +238,80 @@ describe('Der Fuss mit dem zweiten Antwortweg', () => {
 		expect(sent.html).toContain('&lt;script&gt;')
 	})
 
-	test('der Fuss haengt nicht an reply_mode — auch bei sender ist er da', () => {
+	test('der Fuss ist auch bei reply_mode sender da — nur zeigt er anders', () => {
+		// Es gibt keinen Fall ohne Fuss (ausser signiert): Bei `list` fehlte sonst
+		// der Weg zur einen Person, bei `sender` der Weg an die Liste.
 		expect(bauen({ list: { reply_mode: 'sender' } }).text).toContain(
-			NUR_AN_VERA,
+			FOOTER_RULE_ANFANG,
 		)
 		expect(bauen({ list: { reply_mode: 'list' } }).text).toContain(NUR_AN_VERA)
+	})
+})
+
+/**
+ * Der umgekehrte Fall, und der Grund fuer diesen Block: Bei `reply_mode =
+ * 'sender'` liegt auf „Antworten" der Absender. Ein Fuss, der dann „Nur an Vera
+ * antworten" anbietet, waere nicht falsch, sondern sinnlos — er benennt den Weg,
+ * auf dem man schon ist, und laesst den anderen weg. Genau so war es, bis
+ * jemandem auffiel, dass in Thunderbird beide Knoepfe dasselbe tun.
+ */
+describe('reply_mode sender: der Fuss zeigt an die Liste', () => {
+	const AN_DIE_LISTE = `mailto:${LIST_ADDRESS}?subject=Termin`
+
+	test('Text und HTML tragen den Link an die Liste', () => {
+		const sent = bauen({ list: { reply_mode: 'sender' } })
+		expect(sent.text).toContain(
+			`An alle in der Liste Eltern antworten: ${AN_DIE_LISTE}`,
+		)
+		expect(sent.html).toContain(`<a href="${AN_DIE_LISTE}">`)
+	})
+
+	test('der Hinweis nennt, wohin „Antworten" geht — naemlich an Vera', () => {
+		const sent = bauen({ list: { reply_mode: 'sender' } })
+		expect(sent.text).toContain(
+			'„Antworten“ geht nur an Vera Beispiel (vera@example.org).',
+		)
+		expect(sent.text).not.toContain(NUR_AN_VERA)
+	})
+
+	test('der Betreff der Listenantwort bekommt KEIN Re:', () => {
+		// Eine Antwort an die Liste ist eine Fortsetzung desselben Fadens; ein
+		// zweites „Re:" davor waere nur Rauschen, und die Mailprogramme setzen es
+		// beim Antworten selbst.
+		expect(bauen({ list: { reply_mode: 'sender' } }).text).toContain(
+			'?subject=Termin',
+		)
+	})
+
+	test('auf einer Ankuendigungsliste gibt es keinen Listen-Link', () => {
+		// Dort darf der gewoehnliche Empfaenger nicht posten (`List-Post: NO`).
+		// Eine Adresse anzubieten, an der seine Mail abprallt, waere schlechter als
+		// keine — der Hinweis allein bleibt.
+		const sent = bauen({
+			list: {
+				reply_mode: 'sender',
+				poster_policy: 'eingeschraenkt',
+				broadcast: false,
+			},
+		})
+		expect(sent.headers?.['List-Post']).toBe('NO')
+		expect(sent.text).not.toContain('mailto:')
+		expect(sent.text).toContain('„Antworten“ geht nur an Vera Beispiel')
+	})
+
+	test('auch ohne Link bekommt eine erneute Zustellung keinen zweiten Fuss', () => {
+		const liste = {
+			reply_mode: 'sender' as const,
+			poster_policy: 'eingeschraenkt' as const,
+			broadcast: false,
+		}
+		const erste = bauen({ list: liste })
+		const zweite = bauen({
+			list: liste,
+			message: { body_text: erste.text, body_html: erste.html },
+		})
+		expect(vorkommen(zweite.text, 'geht nur an Vera Beispiel')).toBe(1)
+		expect(vorkommen(zweite.html, 'geht nur an Vera Beispiel')).toBe(1)
 	})
 })
 
@@ -369,7 +452,11 @@ describe('Reply-To bleibt, wie es war', () => {
 	})
 
 	test('die Vorgabe einer neuen Liste ist sender', () => {
-		expect(bauen().replyTo).toBe('vera@example.org')
+		// Bewusst OHNE `bauen()`: Dieser Helfer setzt `reply_mode` absichtlich
+		// immer, und genau das waere hier der Fehler — geprueft wird ja der
+		// Vorgabewert der Datenbank.
+		const sent = buildListSendInput(nachricht(), [], liste(), EMPFAENGERIN)
+		expect(sent.replyTo).toBe('vera@example.org')
 	})
 })
 

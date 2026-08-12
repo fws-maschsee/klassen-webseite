@@ -111,6 +111,10 @@ beforeEach(() => {
 
 			poster_policy: 'eingeschraenkt',
 			subject_prefix: '[Eltern]',
+			// Wie die echten Listen der Klassen: „Antworten" geht an die Liste.
+			// Damit bietet der Fuss den Weg zur einen Person an — und genau der
+			// soll unten bis in den Versand durchkommen.
+			reply_mode: 'list',
 		},
 		db,
 	)
@@ -161,6 +165,18 @@ describe('Annahme und Verteilung', () => {
 	})
 
 	test('reply_mode sender laesst Antworten an den Absender gehen', async () => {
+		// Umstellen, weil die Liste oben auf `list` steht — wie die echten.
+		upsertMailingList(
+			{
+				address: 'eltern',
+				label: 'Eltern',
+				recipient_groups: ['eltern'],
+				poster_groups: ['elternvertretung'],
+				poster_policy: 'eingeschraenkt',
+				reply_mode: 'sender',
+			},
+			db,
+		)
 		await deliver({ messageId: '<a2@example.org>' })
 		expect(sent[0]?.replyTo).toBe('vera@example.org')
 	})

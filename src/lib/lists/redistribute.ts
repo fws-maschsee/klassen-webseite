@@ -169,34 +169,72 @@ type ReplyFooter = {
 	 * uebersteht auch ein Mailprogramm, das das Markup umformatiert. Er ist
 	 * prozentkodiert und enthaelt darum weder `&` noch `<`, `>` oder `"` — im
 	 * HTML steht also derselbe String wie im Text.
+	 *
+	 * Wichtig bei einer WIEDERHOLTEN Zustellung (`retry_failed_sends`): Ohne
+	 * dieses Merkmal bekaeme die Mail beim zweiten Versuch einen zweiten Fuss.
 	 */
 	marker: string
 }
 
 /**
- * Der zweite Antwortweg. „Antworten“ geht bei `reply_mode = 'list'` an alle —
- * das bleibt so, weil es der haeufige Fall ist. Wer nur der einen Person
- * schreiben will, braucht aber einen Weg, der ohne Kopieren aus einem Header
- * auskommt, und den gibt dieser Fuss: ein Link, der ein leeres Fenster an den
- * Originalabsender aufmacht.
+ * Der zweite Antwortweg — und zwar der, der NICHT auf dem „Antworten"-Knopf
+ * liegt. Welcher das ist, sagt `reply_mode`:
  *
- * Der Fuss nennt BEIDE Wege. Ein Link "nur an Vera" allein liesse offen, wohin
- * die gewoehnliche Antwort geht — und die Verwechslung ist die teure Richtung:
- * eine private Antwort an fuenfzig Elternhaeuser laesst sich nicht zurueckholen.
+ * - `list`:   `Reply-To` ist die Liste. „Antworten" geht an alle, der Fuss
+ *             bietet den Weg zur einen Person an.
+ * - `sender`: `Reply-To` ist der Absender. „Antworten" geht nur an ihn, der Fuss
+ *             bietet den Weg an die ganze Liste an.
+ *
+ * Der Fuss nennt IMMER beide Wege, in beiden Richtungen. Ein Link allein liesse
+ * offen, wohin die gewoehnliche Antwort geht — und die Verwechslung hat eine
+ * teure Richtung: Eine private Antwort an fuenfzig Elternhaeuser laesst sich
+ * nicht zurueckholen. Deshalb steht der Satz „‚Antworten' geht an ..." da, auch
+ * wenn er dem Kundigen selbstverstaendlich vorkommt.
+ *
+ * Bei `sender` auf einer Liste, in die der Empfaenger gar nicht posten darf
+ * (`listAllowsPosting` ist falsch — Ankuendigungsliste), gibt es keinen
+ * Listen-Link: Eine Adresse anzubieten, an der die Mail abprallt, ist schlechter
+ * als keine. Dann traegt der Hinweis allein den Fuss, und weil er dann das
+ * Erkennungsmerkmal ist, wird er ueber `escapeHtml` gefuehrt wie im HTML-Teil —
+ * sonst wuerde ein `&` im Namen die Wiedererkennung zerreissen.
  */
 const buildReplyFooter = (
 	message: ListMessageRow,
 	list: MailingListRow,
 ): ReplyFooter => {
-	const href = mailtoHref(message.from_email, replySubject(message.subject))
-	const label = `Nur an ${senderDisplay(message)} antworten`
-	const hint = `„Antworten“ geht an alle Empfänger der Liste ${sanitizeDisplay(list.label)} (${listAddressFull(list)}).`
+	const anDieListe = list.reply_mode !== 'list'
+
+	const hint = anDieListe
+		? `„Antworten“ geht nur an ${senderDisplay(message)}.`
+		: `„Antworten“ geht an alle Empfänger der Liste ${sanitizeDisplay(list.label)} (${listAddressFull(list)}).`
+
+	const link =
+		anDieListe && !listAllowsPosting(list)
+			? null
+			: anDieListe
+				? {
+						href: mailtoHref(listAddressFull(list), message.subject),
+						label: `An alle in der Liste ${sanitizeDisplay(list.label)} antworten`,
+					}
+				: {
+						href: mailtoHref(message.from_email, replySubject(message.subject)),
+						label: `Nur an ${senderDisplay(message)} antworten`,
+					}
+
+	if (!link) {
+		return {
+			marker: escapeHtml(hint),
+			text: `\n\n${FOOTER_RULE}\n${hint}`,
+			html: `<div style="${FOOTER_STYLE}">${escapeHtml(hint)}</div>`,
+		}
+	}
+
 	return {
-		marker: href,
-		text: `\n\n${FOOTER_RULE}\n${label}: ${href}\n${hint}`,
+		marker: link.href,
+		text: `\n\n${FOOTER_RULE}\n${link.label}: ${link.href}\n${hint}`,
 		html:
 			`<div style="${FOOTER_STYLE}">` +
-			`<a href="${escapeHtml(href)}">${escapeHtml(label)}</a><br />` +
+			`<a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a><br />` +
 			`${escapeHtml(hint)}</div>`,
 	}
 }
