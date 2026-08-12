@@ -3,16 +3,30 @@ import {
 	createPublicKey,
 	verify as verifyEd25519,
 } from 'node:crypto'
-import {
-	HEADER_CLASS,
-	HEADER_ENVELOPE_FROM,
-	HEADER_KEY_ID,
-	HEADER_LIST_NAME,
-	HEADER_MESSAGE_ID,
-	HEADER_RECIPIENT,
-	HEADER_SIGNATURE,
-	HEADER_TIMESTAMP,
-} from './signature.ts'
+
+/**
+ * Die `X-List-*`-Header, mit denen der Dispatcher seine Angaben mitschickt.
+ * Kleingeschrieben, weil `Headers.get()` unabhaengig von der Schreibweise
+ * arbeitet und ein Vergleich hier sonst an der Grossschreibung scheitern koennte.
+ *
+ * Sie standen bis zum Wegfall des HMAC-Pfades in `signature.ts` — dort war der
+ * Vertrag mit ZWEI Ausbaustufen zuhause. Jetzt gibt es nur noch eine, also
+ * stehen sie bei ihr. Zwei Saetze Header-Konstanten waeren die eine Kopie, an der
+ * sich ein Tippfehler unbemerkt einschleicht.
+ *
+ * MASSGEBLICH sind trotzdem nicht die Header, sondern die signierten Felder:
+ * Nach der Pruefung wird ausschliesslich mit `fields` weitergearbeitet.
+ */
+export const HEADER_CLASS = 'x-list-class'
+export const HEADER_LIST_NAME = 'x-list-name'
+export const HEADER_RECIPIENT = 'x-list-recipient'
+export const HEADER_ENVELOPE_FROM = 'x-list-envelope-from'
+export const HEADER_MESSAGE_ID = 'x-list-message-id'
+export const HEADER_TIMESTAMP = 'x-list-timestamp'
+export const HEADER_SIGNATURE = 'x-list-signature'
+
+/** Kennung des Signierschluessels, aus dem oeffentlichen Schluessel abgeleitet. */
+export const HEADER_KEY_ID = 'x-list-key-id'
 
 /**
  * Ed25519-Prüfung der Aufrufe des zonenweiten Dispatchers (`fwslist.v2`).

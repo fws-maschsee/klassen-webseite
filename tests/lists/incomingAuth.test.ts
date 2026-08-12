@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { setKlassenConfig } from '../../src/klasse/config.ts'
 import { instanceName } from '../../src/lib/db/instance.ts'
 import { authenticateListRequest } from '../../src/lib/lists/incomingAuth.ts'
-import { computeSignature } from '../../src/lib/lists/signature.ts'
 import {
 	buildSigningInput,
 	type ListRequestFields,
@@ -16,12 +15,14 @@ import {
 import { TESTKLASSE } from '../setup.ts'
 
 /**
- * Die Fallunterscheidung am Eingang: `X-List-Key-Id` vorhanden -> Ed25519 (neuer
- * zonenweiter Dispatcher), Header fehlt -> HMAC (alte Worker je Klasse).
+ * Der Eingang für Listenmails: Ed25519 gegen den öffentlichen Schlüssel der
+ * Klasse, und nichts sonst. Einliefern darf damit nur der zonenweite
+ * Dispatcher, denn nur er hat den privaten Schlüssel.
  *
- * Während der Umstellung liefern beide gleichzeitig ein, deshalb muss BEIDES
- * scharf sein. Was dieser Test vor allem ausschließt: dass ein Aufruf durch
- * Weglassen oder durch eine fehlende Konfiguration an einer Prüfung vorbeikommt.
+ * Bis vor kurzem gab es hier einen zweiten Pfad (HMAC mit einem Secret je
+ * Klasse, für die alten Worker). Er ist mit den Workern entfallen. Was dieser
+ * Test vor allem ausschließt: dass ein Aufruf durch Weglassen eines Headers oder
+ * durch eine fehlende Konfiguration an der Prüfung vorbeikommt.
  *
  * Alle Namen und Adressen sind frei erfunden.
  */
@@ -30,7 +31,6 @@ const { publicKey, privateKey } = generateKeyPairSync('ed25519')
 const PEM = publicKey.export({ format: 'pem', type: 'spki' }).toString()
 const KEY_ID = listKeyIdFromPem(PEM)
 
-const SECRET = 'test-secret'
 const BODY = Buffer.from('From: vera@example.org\r\n\r\nHallo', 'utf-8')
 const NOW = new Date(1_800_000_000_000)
 const TS = `${Math.floor(NOW.getTime() / 1000)}`
@@ -74,25 +74,6 @@ const v2Header = (
 	return headers
 }
 
-/** Header eines alten Worker-Aufrufs (v1, HMAC) — ohne `X-List-Key-Id`. */
-const v1Header = (
-	manipulation: Record<string, string | null> = {},
-): Headers => {
-	const headers = new Headers({
-		'x-list-class': instanceName(),
-		'x-list-name': 'eltern',
-		'x-list-envelope-from': 'vera@example.org',
-		'x-list-message-id': '<abc@example.org>',
-		'x-list-timestamp': TS,
-		'x-list-signature': computeSignature(SECRET, TS, BODY),
-	})
-	for (const [name, wert] of Object.entries(manipulation)) {
-		if (wert === null) headers.delete(name)
-		else headers.set(name, wert)
-	}
-	return headers
-}
-
 const auth = (headers: Headers, rawBody: Buffer = BODY) =>
 	authenticateListRequest({ headers, rawBody, now: NOW })
 
@@ -105,12 +86,10 @@ beforeEach(() => {
 		listPublicKeyPem: PEM,
 		listKeyIds: [KEY_ID],
 	})
-	process.env.LIST_WEBHOOK_SECRET = SECRET
 })
 
 afterEach(() => {
 	setKlassenConfig(TESTKLASSE)
-	delete process.env.LIST_WEBHOOK_SECRET
 	vi.restoreAllMocks()
 })
 
@@ -120,7 +99,6 @@ describe('authenticateListRequest, Ed25519-Pfad', () => {
 		expect(ergebnis.ok).toBe(true)
 		if (!ergebnis.ok) return
 		expect(ergebnis.request).toEqual({
-			verfahren: 'ed25519',
 			class: instanceName(),
 			list: 'eltern',
 			envelopeFrom: 'vera@example.org',
@@ -137,13 +115,12 @@ describe('authenticateListRequest, Ed25519-Pfad', () => {
 		expect(auth(v2Header(fremd))).toMatchObject({ ok: false, status: 401 })
 	})
 
-	test('faellt bei unbekannter Key-Id NICHT auf HMAC zurueck', () => {
-		// Der Kern der Fallunterscheidung: Waehlt der Aufrufer mit einem Header das
-		// Verfahren, darf ein ungueltiger Wert nicht ins andere Verfahren
-		// zurueckfallen. Hier ist die HMAC-Signatur sogar korrekt — trotzdem 401.
+	test('lehnt eine unbekannte Key-Id ab', () => {
+		// Der Schluesselwechsel laeuft ueber `listKeyIds`. Eine Id, die dort nicht
+		// steht, ist kein Grund zum Durchlassen — auch dann nicht, wenn die
+		// Signatur zu irgendeinem anderen Schluessel passt.
 		const headers = v2Header(feldsatz(), {
 			'x-list-key-id': '0123456789abcdef',
-			'x-list-signature': computeSignature(SECRET, TS, BODY),
 		})
 		expect(auth(headers)).toMatchObject({
 			ok: false,
@@ -167,80 +144,5 @@ describe('authenticateListRequest, Ed25519-Pfad', () => {
 			ok: false,
 			status: 401,
 		})
-	})
-})
-
-describe('authenticateListRequest, HMAC-Pfad', () => {
-	test('nimmt einen gueltigen Aufruf des alten Workers an', () => {
-		const ergebnis = auth(v1Header())
-		expect(ergebnis.ok).toBe(true)
-		if (!ergebnis.ok) return
-		expect(ergebnis.request).toEqual({
-			verfahren: 'hmac',
-			class: instanceName(),
-			list: 'eltern',
-			envelopeFrom: 'vera@example.org',
-			messageId: '<abc@example.org>',
-			// Der alte Worker fuehrt den Empfaenger als rein informativ und darf
-			// ihn weglassen.
-			recipient: null,
-			timestamp: TS,
-		})
-	})
-
-	test('lehnt ab, wenn kein Secret konfiguriert ist', () => {
-		delete process.env.LIST_WEBHOOK_SECRET
-		expect(auth(v1Header())).toMatchObject({
-			ok: false,
-			status: 401,
-			reason: expect.stringMatching(/LIST_WEBHOOK_SECRET/),
-		})
-	})
-
-	test('lehnt eine falsche Signatur und einen veraenderten Body ab', () => {
-		expect(
-			auth(v1Header({ 'x-list-signature': 'ab'.repeat(32) })),
-		).toMatchObject({ ok: false, status: 401 })
-		expect(auth(v1Header(), Buffer.from('etwas anderes'))).toMatchObject({
-			ok: false,
-			status: 401,
-		})
-	})
-
-	test('lehnt fehlende Signatur-Header ab', () => {
-		for (const name of ['x-list-timestamp', 'x-list-signature']) {
-			expect(auth(v1Header({ [name]: null })), name).toMatchObject({
-				ok: false,
-				status: 401,
-			})
-		}
-	})
-
-	test('weist eine fremde Klasse mit 404 und einem Text fuer den Absender ab', () => {
-		vi.spyOn(console, 'error').mockImplementation(() => {})
-		expect(auth(v1Header({ 'x-list-class': 'klasse-nachbar' }))).toMatchObject({
-			ok: false,
-			status: 404,
-			anAbsender: true,
-		})
-		expect(console.error).toHaveBeenCalled()
-	})
-
-	test('verlangt die Klasse, statt die Pruefung ohne sie zu ueberspringen', () => {
-		expect(auth(v1Header({ 'x-list-class': null }))).toMatchObject({
-			ok: false,
-			status: 400,
-			reason: expect.stringMatching(/x-list-class/),
-		})
-	})
-
-	test('verlangt Listenname und Envelope-Absender', () => {
-		for (const name of ['x-list-name', 'x-list-envelope-from']) {
-			expect(auth(v1Header({ [name]: null })), name).toMatchObject({
-				ok: false,
-				status: 400,
-				reason: expect.stringMatching(new RegExp(name)),
-			})
-		}
 	})
 })

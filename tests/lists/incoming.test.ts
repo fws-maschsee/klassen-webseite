@@ -13,9 +13,8 @@ import { processListBatch } from '../../src/lib/lists/queue.ts'
 import { createTestDb } from '../helpers/db.ts'
 
 /**
- * Der Weg vom Cloudflare-Worker bis zum SMTP-Aufruf: rohe Mail rein,
- * n Zustellungen raus. Der Vertrag mit dem Worker steht in
- * `email-worker/README.md`.
+ * Der Weg vom Dispatcher bis zum SMTP-Aufruf: rohe Mail rein, n Zustellungen
+ * raus. Der Vertrag steht in fws-maschsee/lists-dispatcher.
  *
  * Alle Namen und Adressen sind frei erfunden.
  */

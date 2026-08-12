@@ -56,7 +56,7 @@ describe('healthReport', () => {
 		expect(report.builtAt).toBeNull()
 	})
 
-	test('meldet Ed25519 nur, wenn Schluessel UND Kennung da sind', () => {
+	test('meldet ed25519 nur, wenn Schluessel UND Kennung da sind', () => {
 		expect(healthReport(input()).lists.schemes).toEqual(['ed25519'])
 		expect(
 			healthReport(input({}, { hasPublicKey: false })).lists.schemes,
@@ -64,11 +64,6 @@ describe('healthReport', () => {
 		expect(healthReport(input({}, { listKeyIds: [] })).lists.schemes).toEqual(
 			[],
 		)
-	})
-
-	test('meldet beide Verfahren im Uebergang, Ed25519 zuerst', () => {
-		const report = healthReport(input({ LIST_WEBHOOK_SECRET: 'geheim' }))
-		expect(report.lists.schemes).toEqual(['ed25519', 'hmac'])
 	})
 
 	test('ohne jedes Verfahren bleibt die Liste leer statt "ok" zu behaupten', () => {

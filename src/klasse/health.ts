@@ -39,11 +39,14 @@
 export const UNKNOWN = 'unknown'
 
 /**
- * Die Verfahren, mit denen eingehende Listenmails beglaubigt werden können.
- * Beide gleichzeitig ist der Übergangszustand, siehe
- * `src/lib/lists/incomingAuth.ts`.
+ * Die Verfahren, mit denen eingehende Listenmails beglaubigt werden können. Es
+ * ist genau eines — `hmac` stand hier, solange die alten Worker je Klasse noch
+ * einlieferten (siehe `src/lib/lists/incomingAuth.ts`). Die Liste bleibt eine
+ * Liste, weil ein Wechsel des Verfahrens wieder eine Übergangszeit mit zwei
+ * Einträgen hätte, und weil ein leerer Eintrag die Aussage trägt, auf die es
+ * hier ankommt: Dann kommt keine Listenmail durch.
  */
-export type SignatureScheme = 'ed25519' | 'hmac'
+export type SignatureScheme = 'ed25519'
 
 export type HealthReport = {
 	status: 'ok'
@@ -57,9 +60,7 @@ export type HealthReport = {
 	builtAt: string | null
 	lists: {
 		/**
-		 * Welche Signaturverfahren `/api/lists/incoming` annimmt. Die
-		 * Reihenfolge ist stabil (Ed25519 zuerst), damit sich die Antwort
-		 * vergleichen lässt.
+		 * Welche Signaturverfahren `/api/lists/incoming` annimmt.
 		 *
 		 * LEER heißt: Es kommt keine Listenmail durch. Das ist keine Störung des
 		 * Betriebs, sondern eine fehlende Konfiguration — und der Grund, warum
@@ -81,7 +82,6 @@ export type BuildEnv = {
 	BUILD_COMMIT?: string | undefined
 	BUILD_SHARED?: string | undefined
 	BUILD_TIME?: string | undefined
-	LIST_WEBHOOK_SECRET?: string | undefined
 }
 
 export type HealthInput = {
@@ -110,9 +110,6 @@ export const healthReport = (input: HealthInput): HealthReport => {
 	// dieser Endpunkt „ed25519" und die Mail bekäme trotzdem ein 401.
 	if (input.hasPublicKey && input.listKeyIds.length > 0) {
 		schemes.push('ed25519')
-	}
-	if (filled(input.env.LIST_WEBHOOK_SECRET)) {
-		schemes.push('hmac')
 	}
 
 	return {

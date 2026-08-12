@@ -20,10 +20,11 @@ import { listKeyIdFromPem } from '../lib/lists/signatureEd25519.ts'
  * - `/public/` : Der Klassenkalender. Eine Kalender-App meldet sich nirgends
  *   an; wird dieser Pfad geschützt, brechen sämtliche Abos still — ohne
  *   Fehlermeldung bei irgendjemandem.
- * - `/api/lists/` : Die Endpunkte für den Cloudflare-Email-Worker. Sie sind
- *   NICHT ungeschützt, sondern signaturgeprüft — beim zonenweiten Dispatcher
- *   per Ed25519 gegen `listPublicKeyPem`, bei den alten Workern je Klasse per
- *   HMAC gegen `LIST_WEBHOOK_SECRET` (siehe `src/lib/lists/incomingAuth.ts`).
+ * - `/api/lists/` : Der Eingang für Listenmails aus dem zonenweiten Dispatcher.
+ *   NICHT ungeschützt, sondern signaturgeprüft: Ed25519 gegen
+ *   `listPublicKeyPem`, mit mitsignierten Metadaten (siehe
+ *   `src/lib/lists/incomingAuth.ts`). Einliefern kann damit nur, wer den
+ *   privaten Schlüssel hat, und den hat allein der Dispatcher.
  *
  * Diese Liste zu erweitern heißt, Inhalte zu veröffentlichen: `astro build`
  * kompiliert `src/content/` der Klasse (Berichte, Protokolle, Unterlagen) mit
@@ -37,7 +38,7 @@ const SCHUL_VORGABEN = {
 	mailFrom: 'noreply@fws-maschsee-test.de',
 	/**
 	 * Basis-Domain der Mailinglisten OHNE Klassen-Label. Der Worker routet
-	 * `<liste>@<klasse>.<listBaseDomain>`, siehe `email-worker/README.md`.
+	 * `<liste>@<klasse>.<listBaseDomain>`, siehe fws-maschsee/lists-dispatcher.
 	 */
 	listBaseDomain: 'lists.fws-maschsee-test.de',
 	/** ZITADEL-Projektrolle, die Zugang zur Seite gewährt. */

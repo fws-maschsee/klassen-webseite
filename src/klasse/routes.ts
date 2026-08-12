@@ -94,12 +94,7 @@ export const GETEILTE_ROUTEN: readonly GeteilteRoute[] = [
 		pattern: '/api/lists/incoming',
 		entrypoint: geteilt('src/routes/api/lists/incoming.ts'),
 		grund:
-			'Eingang für Listenmails aus dem Cloudflare-Email-Worker. Vertrag steht in email-worker/README.md.',
-	},
-	{
-		pattern: '/api/lists/check',
-		entrypoint: geteilt('src/routes/api/lists/check.ts'),
-		grund: 'Vorabprüfung "darf dieser Absender an diese Liste senden?".',
+			'Eingang für Listenmails aus dem zonenweiten Dispatcher (fws-maschsee/lists-dispatcher). Ed25519-signiert; der Vertrag steht dort in der README.',
 	},
 	{
 		pattern: '/public/health',

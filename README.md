@@ -46,7 +46,7 @@ dreimal.
 | `src/server/**` — Anmeldung, MCP-Server, OAuth-Provider, Express-App | `src/site.config.ts` — die `KlassenConfig` |
 | die geteilten Routen (`/`, `/verteiler`, `/verwaltung`, `/logout`, `/oauth/consent`, `/auth/*`, `/api/lists/*`) | `public/**` — Kalender, PDFs, Bilder |
 | `db/migrations/**` — das Datenbankschema | `deploy/**`, `Dockerfile`, `.env`, Sealed Secrets |
-| `astro/content.config.ts` — das Schema der Inhalte, nicht die Inhalte | `email-worker/` — ein Worker je Klasse |
+| `astro/content.config.ts` — das Schema der Inhalte, nicht die Inhalte | (nichts mehr: der Worker je Klasse ist entfallen, es gibt einen Dispatcher für die ganze Zone) |
 | die Astro-Integration mit dem ganzen Stack (Adapter, shipyard, Markdown-Plugins) | Playwright-/E2E-Tests, die eine laufende Instanz brauchen |
 | `src/klasse/putzplan.ts` — Schema und Darstellung des Putzplans | `src/content/putzplan.yaml` — die Putz-Einteilung selbst |
 | die Unit-Tests des geteilten Codes | |

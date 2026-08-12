@@ -10,8 +10,8 @@ import {
 
 /**
  * Ergebnis der Eingangsverarbeitung. Die vier Fälle sind bewusst unterschieden,
- * weil der Cloudflare-Email-Worker auf jeden anders reagiert (siehe
- * `email-worker/README.md`):
+ * weil der Dispatcher auf jeden anders reagiert (fws-maschsee/lists-dispatcher,
+ * README dort):
  *
  *   enqueued     -> 202, angenommen und verteilt
  *   skipped      -> 200, angenommen, aber bewusst NICHT verteilt (Schleife,

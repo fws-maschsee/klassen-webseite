@@ -26,7 +26,6 @@ describe('GETEILTE_ROUTEN', () => {
 			'/auth/callback',
 			'/auth/logout',
 			'/api/lists/incoming',
-			'/api/lists/check',
 			// Der Putzplan liegt auf dem BESTEHENDEN Docs-Pfad. Steht er nicht in
 			// dieser Liste, ist er nicht bloss weg — dann bedient shipyards
 			// Catch-all den Pfad wieder, die Seite lädt ohne Tabelle, und keine CI
