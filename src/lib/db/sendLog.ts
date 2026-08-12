@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3'
-import { openDb } from './index.ts'
+import { dbTimestamp, dbTimestampBefore, openDb } from './index.ts'
 import type { SendLogInsert, SendLogRow, SendStatus } from './types.ts'
 
 export type SendCounts = {
@@ -153,21 +153,34 @@ export const requeueErrors = (
 	return mitglieder.length
 }
 
-/** Erfolgreich verschickte Mails im gleitenden 1h-Fenster. */
-export const countSentInLastHour = (db: Database = openDb()): number =>
+/**
+ * Erfolgreich verschickte Mails im GLEITENDEN 1h-Fenster.
+ *
+ * Die Grenze wird in JS gerechnet und als Parameter uebergeben — siehe
+ * `dbTimestamp` in `./index.ts`. Ein `datetime('now','-1 hour')` in der
+ * Abfrage waere ein anderes Textformat als das gespeicherte `sent_at` und
+ * verglich frueher faktisch den KALENDERTAG.
+ */
+export const countSentInLastHour = (
+	db: Database = openDb(),
+	now: Date = new Date(),
+): number =>
 	db
-		.prepare<[], { c: number }>(
-			"SELECT COUNT(*) AS c FROM email_send_log WHERE status = 'sent' AND sent_at >= datetime('now', '-1 hour')",
+		.prepare<[string], { c: number }>(
+			"SELECT COUNT(*) AS c FROM email_send_log WHERE status = 'sent' AND sent_at >= ?",
 		)
-		.get()?.c ?? 0
+		.get(dbTimestampBefore(3600, now))?.c ?? 0
 
 /** Aeltester sent-Eintrag innerhalb des 1h-Fensters (ISO-String) oder null. */
-export const oldestSentInLastHour = (db: Database = openDb()): string | null =>
+export const oldestSentInLastHour = (
+	db: Database = openDb(),
+	now: Date = new Date(),
+): string | null =>
 	db
-		.prepare<[], { sent_at: string }>(
-			"SELECT sent_at FROM email_send_log WHERE status = 'sent' AND sent_at >= datetime('now', '-1 hour') ORDER BY sent_at ASC LIMIT 1",
+		.prepare<[string], { sent_at: string }>(
+			"SELECT sent_at FROM email_send_log WHERE status = 'sent' AND sent_at >= ? ORDER BY sent_at ASC LIMIT 1",
 		)
-		.get()?.sent_at ?? null
+		.get(dbTimestampBefore(3600, now))?.sent_at ?? null
 
 /** Aelteste queued-Eintraege (aelteste zuerst). */
 export const peekQueued = (
@@ -187,10 +200,10 @@ export const peekQueued = (
  */
 export const claimQueued = (id: number, db: Database = openDb()): boolean =>
 	db
-		.prepare<[number]>(
-			"UPDATE email_send_log SET status = 'sending', claimed_at = datetime('now') WHERE id = ? AND status = 'queued'",
+		.prepare<[string, number]>(
+			"UPDATE email_send_log SET status = 'sending', claimed_at = ? WHERE id = ? AND status = 'queued'",
 		)
-		.run(id).changes === 1
+		.run(dbTimestamp(), id).changes === 1
 
 /**
  * Reboot-Cleanup: Beim Worker-Start alle `sending`-Eintraege auf `error`
@@ -201,15 +214,17 @@ export const claimQueued = (id: number, db: Database = openDb()): boolean =>
  */
 export const cleanupStuckOnBoot = (db: Database = openDb()): number =>
 	db
-		.prepare<[string]>(
+		.prepare<[string, string]>(
 			`UPDATE email_send_log
           SET status = 'error',
               error_message = COALESCE(error_message, ?),
-              sent_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+              sent_at = ?
         WHERE status = 'sending'`,
 		)
-		.run('Worker-Neustart hat den Versand unterbrochen - bitte erneut senden')
-		.changes
+		.run(
+			'Worker-Neustart hat den Versand unterbrochen - mit retry_failed_sends erneut einreihen',
+			dbTimestamp(),
+		).changes
 
 /**
  * Periodischer Cleanup: `sending`-Eintraege, die aelter als `maxAgeSeconds`
@@ -221,17 +236,18 @@ export const cleanupStuckByTimeout = (
 	maxAgeSeconds = 30,
 ): number =>
 	db
-		.prepare<[string, string]>(
+		.prepare<[string, string, string]>(
 			`UPDATE email_send_log
           SET status = 'error',
               error_message = COALESCE(error_message, ?),
-              sent_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+              sent_at = ?
         WHERE status = 'sending'
-          AND (claimed_at IS NULL OR claimed_at < datetime('now', ?))`,
+          AND (claimed_at IS NULL OR claimed_at < ?)`,
 		)
 		.run(
 			`Versand-Timeout (>${maxAgeSeconds}s in sending)`,
-			`-${maxAgeSeconds} seconds`,
+			dbTimestamp(),
+			dbTimestampBefore(maxAgeSeconds),
 		).changes
 
 export const countQueued = (db: Database = openDb()): number =>
@@ -258,6 +274,7 @@ export const completeQueued = (
 				status: SendStatus
 				message_id: string | null
 				error_message: string | null
+				sent_at: string
 			},
 			SendLogRow
 		>(
@@ -265,7 +282,7 @@ export const completeQueued = (
        SET status = @status,
            message_id = @message_id,
            error_message = @error_message,
-           sent_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+           sent_at = @sent_at
      WHERE id = @id
      RETURNING *`,
 		)
@@ -274,4 +291,5 @@ export const completeQueued = (
 			status: patch.status,
 			message_id: patch.message_id ?? null,
 			error_message: patch.error_message ?? null,
+			sent_at: dbTimestamp(),
 		})

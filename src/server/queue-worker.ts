@@ -14,7 +14,15 @@ import { processListBatch } from '../lib/lists/queue.ts'
  * Wir laufen bewusst single-replica: SQLite im Pod, ein Worker.
  */
 
-const DEFAULT_POLL_MS = 30_000
+/**
+ * Wie oft nachgesehen wird, ob etwas in der Warteschlange liegt.
+ *
+ * Das ist die Verzoegerung, mit der eine Mail an den Verteiler im
+ * schlechtesten Fall startet — sie stand auf 30 Sekunden. Ein Tick ohne Arbeit
+ * kostet zwei Zaehlabfragen auf indizierten Spalten; alle 10 Sekunden ist das
+ * nichts, und Elternpost soll sich nicht wie Stapelverarbeitung anfuehlen.
+ */
+const DEFAULT_POLL_MS = 10_000
 const MAX_BATCHES_PER_TICK = 50
 const STUCK_TIMEOUT_SECONDS = 30
 
@@ -111,6 +119,15 @@ const drainListQueue = async (): Promise<void> => {
 		log(
 			`Listen-Batch: ${result.count} verarbeitet (${sent} gesendet, ${errors} Fehler)`,
 		)
+		if (errors > 0) {
+			// Eine gescheiterte LISTENmail meldet sich bei niemandem: Der Absender
+			// hat sein SMTP-OK laengst, ein Bounce entsteht nicht mehr. Diese Zeile
+			// ist die einzige Stelle, an der die Stoerung auffaellt — sie nennt
+			// deshalb den Weg zurueck.
+			log(
+				'Gescheiterte Zustellungen bleiben liegen und loesen KEINEN Bounce aus. Zustand: list_list_messages, nachreichen: retry_failed_list_sends',
+			)
+		}
 	}
 }
 

@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3'
-import { openDb } from './index.ts'
+import { dbTimestamp, dbTimestampBefore, openDb } from './index.ts'
 import type {
 	ListAttachmentRow,
 	ListMessageRow,
@@ -163,10 +163,10 @@ export const claimListOutbound = (
 	db: Database = openDb(),
 ): boolean =>
 	db
-		.prepare<[number]>(
-			"UPDATE list_outbound SET status = 'sending', claimed_at = datetime('now') WHERE id = ? AND status = 'queued'",
+		.prepare<[string, number]>(
+			"UPDATE list_outbound SET status = 'sending', claimed_at = ? WHERE id = ? AND status = 'queued'",
 		)
-		.run(id).changes === 1
+		.run(dbTimestamp(), id).changes === 1
 
 export const completeListOutbound = (
 	id: number,
@@ -182,18 +182,20 @@ export const completeListOutbound = (
 		status: string
 		sent_message_id: string | null
 		error_message: string | null
+		sent_at: string
 	}>(
 		`UPDATE list_outbound
         SET status = @status,
             sent_message_id = @sent_message_id,
             error_message = @error_message,
-            sent_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            sent_at = @sent_at
       WHERE id = @id`,
 	).run({
 		id,
 		status: patch.status,
 		sent_message_id: patch.sent_message_id ?? null,
 		error_message: patch.error_message ?? null,
+		sent_at: dbTimestamp(),
 	})
 }
 
@@ -207,12 +209,131 @@ export const listOutboundForMessage = (
 		)
 		.all(messageId)
 
-export const countListSentInLastHour = (db: Database = openDb()): number =>
-	db
-		.prepare<[], { c: number }>(
-			"SELECT COUNT(*) AS c FROM list_outbound WHERE status = 'sent' AND sent_at >= datetime('now', '-1 hour')",
+/** Zaehlung je Status. Alle vier Schluessel sind immer da, auch mit 0. */
+export type ListOutboundCounts = {
+	queued: number
+	sending: number
+	sent: number
+	error: number
+}
+
+export type ListMessageStatus = ListMessageRow & {
+	counts: ListOutboundCounts
+	recipients: ListOutboundRow[]
+}
+
+export type ListMessageSummary = ListMessageRow & {
+	counts: ListOutboundCounts
+}
+
+const countsFor = (messageId: number, db: Database): ListOutboundCounts => {
+	const counts: ListOutboundCounts = {
+		queued: 0,
+		sending: 0,
+		sent: 0,
+		error: 0,
+	}
+	const rows = db
+		.prepare<[number], { status: keyof ListOutboundCounts; c: number }>(
+			'SELECT status, COUNT(*) AS c FROM list_outbound WHERE message_id = ? GROUP BY status',
 		)
-		.get()?.c ?? 0
+		.all(messageId)
+	for (const row of rows) counts[row.status] = row.c
+	return counts
+}
+
+/**
+ * Der Zustand EINER angenommenen Listenmail — samt Fehlermeldung je Empfaenger.
+ *
+ * Bis hierher endete der Weg einer Listenmail im Dunkeln: Der Eingang antwortet
+ * dem Cloudflare-Worker mit 202, sobald die Mail in der Queue liegt, und ab da
+ * gibt es keine SMTP-Antwort mehr, an der ein Absender etwas merken koennte.
+ * Scheitert der Versand danach, bekommt niemand eine Unzustellbarkeitsnachricht
+ * — die Mail ist weg, und die Frage „ist sie ueberhaupt angekommen?" war ohne
+ * Zugriff auf die Pod-Logs nicht zu beantworten. Der Rundmail-Weg kann das
+ * laengst (`get_send_log`); hier ist das Gegenstueck.
+ */
+export const listMessageStatus = (
+	id: number,
+	db: Database = openDb(),
+): ListMessageStatus | undefined => {
+	const message = getListMessage(id, db)
+	if (!message) return undefined
+	return {
+		...message,
+		counts: countsFor(id, db),
+		recipients: listOutboundForMessage(id, db),
+	}
+}
+
+/** Die zuletzt angenommenen Listenmails, neueste zuerst, mit ihren Zahlen. */
+export const recentListMessages = (
+	limit = 20,
+	db: Database = openDb(),
+): ListMessageSummary[] =>
+	db
+		.prepare<[number], ListMessageRow>(
+			'SELECT * FROM list_messages ORDER BY id DESC LIMIT ?',
+		)
+		.all(limit)
+		.map((message) => ({ ...message, counts: countsFor(message.id, db) }))
+
+/**
+ * Reiht die gescheiterten Zustellungen einer Listenmail erneut ein
+ * (`error -> queued`) und gibt zurueck, wie viele es waren.
+ *
+ * Angefasst werden ausschliesslich `error`-Zeilen: Wer die Mail schon hat,
+ * bekommt sie kein zweites Mal, und was noch in der Queue liegt, bleibt liegen.
+ * Ohne `messageId` gilt es fuer alle Mails — der Fall nach einem Neustart, der
+ * einen ganzen Schwung Zustellungen unterbrochen hat.
+ *
+ * Die verbleibende Unsicherheit steht hier, weil sie sich nicht wegprogrammieren
+ * laesst: Eine Zeile auf `error` heisst „unser Sendeversuch ist gescheitert",
+ * nicht „SES hat die Mail nicht angenommen". Bricht die Verbindung NACH der
+ * Annahme ab, erzeugt eine Wiederholung eine zweite Mail beim Empfaenger. Eine
+ * doppelte Mail ist der ertraeglichere Fehler gegenueber einer verlorenen —
+ * deshalb gibt es diese Funktion, und deshalb loest ein Mensch sie aus statt
+ * eines Automatismus.
+ */
+export const requeueListErrors = (
+	messageId?: number,
+	db: Database = openDb(),
+): number =>
+	messageId === undefined
+		? db
+				.prepare(
+					`UPDATE list_outbound
+              SET status = 'queued', error_message = NULL,
+                  claimed_at = NULL, sent_at = NULL
+            WHERE status = 'error'`,
+				)
+				.run().changes
+		: db
+				.prepare<[number]>(
+					`UPDATE list_outbound
+              SET status = 'queued', error_message = NULL,
+                  claimed_at = NULL, sent_at = NULL
+            WHERE status = 'error' AND message_id = ?`,
+				)
+				.run(messageId).changes
+
+/**
+ * Erfolgreiche Zustellungen im GLEITENDEN Fenster der letzten Stunde.
+ *
+ * Die Grenze wird in JS gerechnet und als Parameter uebergeben — siehe
+ * `dbTimestamp` in `./index.ts`. Ein `datetime('now','-1 hour')` in der
+ * Abfrage waere ein anderes Textformat als das gespeicherte `sent_at` und
+ * verglich frueher faktisch den KALENDERTAG.
+ */
+export const countListSentInLastHour = (
+	db: Database = openDb(),
+	now: Date = new Date(),
+): number =>
+	db
+		.prepare<[string], { c: number }>(
+			"SELECT COUNT(*) AS c FROM list_outbound WHERE status = 'sent' AND sent_at >= ?",
+		)
+		.get(dbTimestampBefore(3600, now))?.c ?? 0
 
 export const countListQueued = (db: Database = openDb()): number =>
 	db
@@ -224,6 +345,10 @@ export const countListQueued = (db: Database = openDb()): number =>
 /**
  * Reboot-/Stuck-Cleanup analog zu email_send_log: haengende `sending`-Eintraege
  * (aelter als `maxAgeSeconds`, oder alle bei `maxAgeSeconds <= 0`) auf `error`.
+ *
+ * Die Altersgrenze kommt aus `dbTimestampBefore` und nicht aus
+ * `datetime('now', …)`: `claimed_at` steht im Datenbankformat, und zwei
+ * Schreibweisen zu vergleichen hiesse, den Kalendertag zu vergleichen.
  */
 export const cleanupStuckListOutbound = (
 	db: Database = openDb(),
@@ -231,26 +356,28 @@ export const cleanupStuckListOutbound = (
 ): number =>
 	maxAgeSeconds <= 0
 		? db
-				.prepare<[string]>(
-					`UPDATE list_outbound
-              SET status = 'error',
-                  error_message = COALESCE(error_message, ?),
-                  sent_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-            WHERE status = 'sending'`,
-				)
-				.run(
-					'Worker-Neustart hat den Versand unterbrochen - bitte erneut senden',
-				).changes
-		: db
 				.prepare<[string, string]>(
 					`UPDATE list_outbound
               SET status = 'error',
                   error_message = COALESCE(error_message, ?),
-                  sent_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                  sent_at = ?
+            WHERE status = 'sending'`,
+				)
+				.run(
+					'Worker-Neustart hat den Versand unterbrochen - mit retry_failed_list_sends erneut einreihen',
+					dbTimestamp(),
+				).changes
+		: db
+				.prepare<[string, string, string]>(
+					`UPDATE list_outbound
+              SET status = 'error',
+                  error_message = COALESCE(error_message, ?),
+                  sent_at = ?
             WHERE status = 'sending'
-              AND (claimed_at IS NULL OR claimed_at < datetime('now', ?))`,
+              AND (claimed_at IS NULL OR claimed_at < ?)`,
 				)
 				.run(
 					`Versand-Timeout (>${maxAgeSeconds}s in sending)`,
-					`-${maxAgeSeconds} seconds`,
+					dbTimestamp(),
+					dbTimestampBefore(maxAgeSeconds),
 				).changes
