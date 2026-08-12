@@ -1,0 +1,124 @@
+/**
+ * Die Auskunft von `/health`: WELCHER Stand läuft hier gerade?
+ *
+ * Der Anlass ist eine Frage, die sich vom Schreibtisch aus nicht beantworten
+ * ließ: Ob in Produktion schon der Stand läuft, der Listenmails mit Ed25519
+ * annimmt. Zu sehen war nur, dass `main` weitergelaufen ist — nicht, was das
+ * Cluster davon hat. Zwischen beidem lagen fünf Tage, in denen jeder Deploy im
+ * Checkout scheiterte, ohne dass es jemandem auffiel.
+ *
+ * Deshalb nennt diese Auskunft nicht nur „ok", sondern den Commit. Ein
+ * Gesundheitsendpunkt, der immer „ok" sagt, beantwortet die einzige Frage
+ * nicht, die man ihm im Ernstfall stellt.
+ *
+ * Zwei Dinge stehen NICHT drin, obwohl sie hierher passen würden:
+ *
+ * - **Keine Zahlen aus der Datenbank.** Der Endpunkt liegt unter `/public/` und
+ *   ist damit ohne Anmeldung erreichbar (`PUBLIC_PATHS` in `config.ts`, dort
+ *   schon für den Kalender). Wie viele Eltern eine Klasse hat, ist niemandes
+ *   Sache außer ihrer eigenen — und der Grund, warum `PUBLIC_PATHS` selbst
+ *   unverändert bleiben durfte: Der Endpunkt fügt keinen neuen offenen Pfad
+ *   hinzu, er nutzt den, der es schon ist.
+ * - **Kein Zustand des Mailversands.** Ein Rückstau in der Warteschlange ist
+ *   kein Grund, den Pod neu zu starten — und genau das täte Kubernetes, wenn
+ *   eine Probe darauf zeigt.
+ *
+ * Die Commits kommen aus der Umgebung, nicht aus git: Im Image gibt es kein
+ * `.git`. Sie werden beim Bauen als `ARG` hineingegeben (siehe `Dockerfile` und
+ * `.github/workflows/deploy.yml` der Klasse). Fehlen sie, steht `unbekannt`
+ * dort — und das ist die ehrliche Antwort, nicht ein Fehler: Ein Build von Hand
+ * hat keinen Commit, den er nennen könnte.
+ */
+
+/** Was dort steht, wenn beim Bauen kein Commit mitgegeben wurde. */
+export const UNBEKANNT = 'unbekannt'
+
+/**
+ * Die Verfahren, mit denen eingehende Listenmails beglaubigt werden können.
+ * Beide gleichzeitig ist der Übergangszustand, siehe
+ * `src/lib/lists/incomingAuth.ts`.
+ */
+export type ListenVerfahren = 'ed25519' | 'hmac'
+
+export type Gesundheit = {
+	status: 'ok'
+	/** Klasse, zu der dieses Deployment gehört. */
+	instanz: string
+	/** Commit des Klassen-Repos, aus dem das Image gebaut wurde. */
+	commit: string
+	/** Commit des geteilten Codes (Stand des Submodules `geteilt/`). */
+	geteilt: string
+	/** Zeitpunkt des Builds, ISO-8601, oder `null`. */
+	gebaut: string | null
+	listen: {
+		/**
+		 * Welche Signaturverfahren `/api/lists/incoming` annimmt. Die
+		 * Reihenfolge ist stabil (Ed25519 zuerst), damit sich die Antwort
+		 * vergleichen lässt.
+		 *
+		 * LEER heißt: Es kommt keine Listenmail durch. Das ist keine Störung des
+		 * Betriebs, sondern eine fehlende Konfiguration — und der Grund, warum
+		 * die Liste hier auftaucht statt in einem Log, das niemand liest.
+		 */
+		verfahren: readonly ListenVerfahren[]
+		/**
+		 * Die Kennungen der akzeptierten Ed25519-Schlüssel. Kein Geheimnis: Sie
+		 * sind aus dem ÖFFENTLICHEN Schlüssel abgeleitet. Beim Schlüsselwechsel
+		 * ist das die Stelle, an der man sieht, welche Klasse den neuen schon
+		 * kennt.
+		 */
+		schluessel: readonly string[]
+	}
+}
+
+/** Die Umgebungswerte, die beim Bauen gesetzt werden. */
+export type BauInfo = {
+	BUILD_COMMIT?: string | undefined
+	BUILD_GETEILT?: string | undefined
+	BUILD_ZEIT?: string | undefined
+	LIST_WEBHOOK_SECRET?: string | undefined
+}
+
+export type GesundheitEingabe = {
+	instanz: string
+	env: BauInfo
+	/** Aus der `KlassenConfig`; leer, wenn kein Schlüssel konfiguriert ist. */
+	listKeyIds: readonly string[]
+	/** Ob ein öffentlicher Schlüssel hinterlegt ist. */
+	hatPublicKey: boolean
+}
+
+const gefuellt = (wert: string | undefined): string | undefined => {
+	const getrimmt = wert?.trim()
+	return getrimmt ? getrimmt : undefined
+}
+
+/**
+ * Baut die Auskunft. Reine Funktion — kein `process.env`, keine Datenbank, kein
+ * Astro. Die Route darunter ist deshalb ein Dreizeiler, und die Regeln oben
+ * sind ohne laufende Anwendung prüfbar.
+ */
+export const gesundheit = (eingabe: GesundheitEingabe): Gesundheit => {
+	const verfahren: ListenVerfahren[] = []
+	// Dieselbe Bedingung wie in `incomingAuth.ts`: ein Verfahren gilt erst als
+	// vorhanden, wenn es auch etwas hat, womit es prüfen kann. Sonst meldete
+	// dieser Endpunkt „ed25519" und die Mail bekäme trotzdem ein 401.
+	if (eingabe.hatPublicKey && eingabe.listKeyIds.length > 0) {
+		verfahren.push('ed25519')
+	}
+	if (gefuellt(eingabe.env.LIST_WEBHOOK_SECRET)) {
+		verfahren.push('hmac')
+	}
+
+	return {
+		status: 'ok',
+		instanz: eingabe.instanz,
+		commit: gefuellt(eingabe.env.BUILD_COMMIT) ?? UNBEKANNT,
+		geteilt: gefuellt(eingabe.env.BUILD_GETEILT) ?? UNBEKANNT,
+		gebaut: gefuellt(eingabe.env.BUILD_ZEIT) ?? null,
+		listen: {
+			verfahren,
+			schluessel: eingabe.listKeyIds,
+		},
+	}
+}

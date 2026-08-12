@@ -32,6 +32,11 @@ describe('GETEILTE_ROUTEN', () => {
 			// Catch-all den Pfad wieder, die Seite lädt ohne Tabelle, und keine CI
 			// meldet es.
 			'/docs/putzen/putzplan',
+			// Muss unter /public/ liegen: Dieser Pfad ist bereits anmeldefrei.
+			// Wandert der Endpunkt woanders hin, antwortet er einer Probe und jedem
+			// Aufruf von aussen mit einer Weiterleitung zur Anmeldung — und die
+			// sieht wie „Anwendung laeuft" aus, weil sie eine Antwort ist.
+			'/public/health',
 		]) {
 			expect(muster).toContain(pflicht)
 		}

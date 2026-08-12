@@ -101,4 +101,10 @@ export const GETEILTE_ROUTEN: readonly GeteilteRoute[] = [
 		entrypoint: geteilt('src/routes/api/lists/check.ts'),
 		grund: 'Vorabprüfung "darf dieser Absender an diese Liste senden?".',
 	},
+	{
+		pattern: '/public/health',
+		entrypoint: geteilt('src/routes/health.ts'),
+		grund:
+			'Welcher Stand läuft? Nennt Commit des Klassen-Repos, Commit des geteilten Codes und die akzeptierten Signaturverfahren. Liegt bewusst unter /public/, weil dieser Pfad schon anmeldefrei ist — so bleibt PUBLIC_PATHS unverändert.',
+	},
 ]
