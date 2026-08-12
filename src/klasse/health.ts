@@ -1,5 +1,5 @@
 /**
- * Die Auskunft von `/health`: WELCHER Stand läuft hier gerade?
+ * Die Auskunft von `/public/health`: WELCHER Stand läuft hier gerade?
  *
  * Der Anlass ist eine Frage, die sich vom Schreibtisch aus nicht beantworten
  * ließ: Ob in Produktion schon der Stand läuft, der Listenmails mit Ed25519
@@ -10,6 +10,11 @@
  * Deshalb nennt diese Auskunft nicht nur „ok", sondern den Commit. Ein
  * Gesundheitsendpunkt, der immer „ok" sagt, beantwortet die einzige Frage
  * nicht, die man ihm im Ernstfall stellt.
+ *
+ * **Die Feldnamen sind englisch, die Kommentare deutsch.** Das ist kein
+ * Versehen: Die Nutzlast liest ein Programm — eine Probe, ein Skript, ein
+ * Monitoring —, und für Maschinen wird englisch benannt. Die Begründungen
+ * daneben liest ein Mensch.
  *
  * Zwei Dinge stehen NICHT drin, obwohl sie hierher passen würden:
  *
@@ -25,32 +30,32 @@
  *
  * Die Commits kommen aus der Umgebung, nicht aus git: Im Image gibt es kein
  * `.git`. Sie werden beim Bauen als `ARG` hineingegeben (siehe `Dockerfile` und
- * `.github/workflows/deploy.yml` der Klasse). Fehlen sie, steht `unbekannt`
- * dort — und das ist die ehrliche Antwort, nicht ein Fehler: Ein Build von Hand
- * hat keinen Commit, den er nennen könnte.
+ * `.github/workflows/deploy.yml` der Klasse). Fehlen sie, steht `unknown` dort —
+ * und das ist die ehrliche Antwort, nicht ein Fehler: Ein Build von Hand hat
+ * keinen Commit, den er nennen könnte.
  */
 
 /** Was dort steht, wenn beim Bauen kein Commit mitgegeben wurde. */
-export const UNBEKANNT = 'unbekannt'
+export const UNKNOWN = 'unknown'
 
 /**
  * Die Verfahren, mit denen eingehende Listenmails beglaubigt werden können.
  * Beide gleichzeitig ist der Übergangszustand, siehe
  * `src/lib/lists/incomingAuth.ts`.
  */
-export type ListenVerfahren = 'ed25519' | 'hmac'
+export type SignatureScheme = 'ed25519' | 'hmac'
 
-export type Gesundheit = {
+export type HealthReport = {
 	status: 'ok'
 	/** Klasse, zu der dieses Deployment gehört. */
-	instanz: string
+	instance: string
 	/** Commit des Klassen-Repos, aus dem das Image gebaut wurde. */
 	commit: string
 	/** Commit des geteilten Codes (Stand des Submodules `geteilt/`). */
-	geteilt: string
+	shared: string
 	/** Zeitpunkt des Builds, ISO-8601, oder `null`. */
-	gebaut: string | null
-	listen: {
+	builtAt: string | null
+	lists: {
 		/**
 		 * Welche Signaturverfahren `/api/lists/incoming` annimmt. Die
 		 * Reihenfolge ist stabil (Ed25519 zuerst), damit sich die Antwort
@@ -60,35 +65,35 @@ export type Gesundheit = {
 		 * Betriebs, sondern eine fehlende Konfiguration — und der Grund, warum
 		 * die Liste hier auftaucht statt in einem Log, das niemand liest.
 		 */
-		verfahren: readonly ListenVerfahren[]
+		schemes: readonly SignatureScheme[]
 		/**
 		 * Die Kennungen der akzeptierten Ed25519-Schlüssel. Kein Geheimnis: Sie
 		 * sind aus dem ÖFFENTLICHEN Schlüssel abgeleitet. Beim Schlüsselwechsel
 		 * ist das die Stelle, an der man sieht, welche Klasse den neuen schon
 		 * kennt.
 		 */
-		schluessel: readonly string[]
+		keyIds: readonly string[]
 	}
 }
 
 /** Die Umgebungswerte, die beim Bauen gesetzt werden. */
-export type BauInfo = {
+export type BuildEnv = {
 	BUILD_COMMIT?: string | undefined
-	BUILD_GETEILT?: string | undefined
-	BUILD_ZEIT?: string | undefined
+	BUILD_SHARED?: string | undefined
+	BUILD_TIME?: string | undefined
 	LIST_WEBHOOK_SECRET?: string | undefined
 }
 
-export type GesundheitEingabe = {
-	instanz: string
-	env: BauInfo
+export type HealthInput = {
+	instance: string
+	env: BuildEnv
 	/** Aus der `KlassenConfig`; leer, wenn kein Schlüssel konfiguriert ist. */
 	listKeyIds: readonly string[]
 	/** Ob ein öffentlicher Schlüssel hinterlegt ist. */
-	hatPublicKey: boolean
+	hasPublicKey: boolean
 }
 
-const gefuellt = (wert: string | undefined): string | undefined => {
+const filled = (wert: string | undefined): string | undefined => {
 	const getrimmt = wert?.trim()
 	return getrimmt ? getrimmt : undefined
 }
@@ -98,27 +103,27 @@ const gefuellt = (wert: string | undefined): string | undefined => {
  * Astro. Die Route darunter ist deshalb ein Dreizeiler, und die Regeln oben
  * sind ohne laufende Anwendung prüfbar.
  */
-export const gesundheit = (eingabe: GesundheitEingabe): Gesundheit => {
-	const verfahren: ListenVerfahren[] = []
+export const healthReport = (input: HealthInput): HealthReport => {
+	const schemes: SignatureScheme[] = []
 	// Dieselbe Bedingung wie in `incomingAuth.ts`: ein Verfahren gilt erst als
 	// vorhanden, wenn es auch etwas hat, womit es prüfen kann. Sonst meldete
 	// dieser Endpunkt „ed25519" und die Mail bekäme trotzdem ein 401.
-	if (eingabe.hatPublicKey && eingabe.listKeyIds.length > 0) {
-		verfahren.push('ed25519')
+	if (input.hasPublicKey && input.listKeyIds.length > 0) {
+		schemes.push('ed25519')
 	}
-	if (gefuellt(eingabe.env.LIST_WEBHOOK_SECRET)) {
-		verfahren.push('hmac')
+	if (filled(input.env.LIST_WEBHOOK_SECRET)) {
+		schemes.push('hmac')
 	}
 
 	return {
 		status: 'ok',
-		instanz: eingabe.instanz,
-		commit: gefuellt(eingabe.env.BUILD_COMMIT) ?? UNBEKANNT,
-		geteilt: gefuellt(eingabe.env.BUILD_GETEILT) ?? UNBEKANNT,
-		gebaut: gefuellt(eingabe.env.BUILD_ZEIT) ?? null,
-		listen: {
-			verfahren,
-			schluessel: eingabe.listKeyIds,
+		instance: input.instance,
+		commit: filled(input.env.BUILD_COMMIT) ?? UNKNOWN,
+		shared: filled(input.env.BUILD_SHARED) ?? UNKNOWN,
+		builtAt: filled(input.env.BUILD_TIME) ?? null,
+		lists: {
+			schemes,
+			keyIds: input.listKeyIds,
 		},
 	}
 }

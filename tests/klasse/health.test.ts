@@ -6,88 +6,106 @@
  * war weitergelaufen, jeder Deploy scheiterte still im Checkout, und von außen
  * sah beides gleich aus. Die Tests hier halten genau die Eigenschaften fest,
  * die diese Frage beantwortbar machen.
+ *
+ * Der letzte Test bewacht die Feldnamen. Er ist stumpf und soll es sein: Die
+ * Nutzlast ist eine Maschinenschnittstelle, also englisch benannt, und ein
+ * eingedeutschtes Feld soll rot werden statt in Umlauf zu kommen.
  */
 import { describe, expect, test } from 'vitest'
-import { gesundheit, UNBEKANNT } from '../../src/klasse/health.ts'
+import { healthReport, UNKNOWN } from '../../src/klasse/health.ts'
 
-const eingabe = (
+const input = (
 	env: Record<string, string | undefined> = {},
-	rest: { listKeyIds?: readonly string[]; hatPublicKey?: boolean } = {},
+	rest: { listKeyIds?: readonly string[]; hasPublicKey?: boolean } = {},
 ) => ({
-	instanz: 'klasse-wiesen',
+	instance: 'klasse-wiesen',
 	env,
 	listKeyIds: rest.listKeyIds ?? (['bf2226d575ece8c8'] as const),
-	hatPublicKey: rest.hatPublicKey ?? true,
+	hasPublicKey: rest.hasPublicKey ?? true,
 })
 
-describe('gesundheit', () => {
+describe('healthReport', () => {
 	test('nennt die Commits aus der Bau-Umgebung', () => {
-		const auskunft = gesundheit(
-			eingabe({
+		const report = healthReport(
+			input({
 				BUILD_COMMIT: 'abc1234',
-				BUILD_GETEILT: 'def5678',
-				BUILD_ZEIT: '2026-08-12T06:00:00Z',
+				BUILD_SHARED: 'def5678',
+				BUILD_TIME: '2026-08-12T06:00:00Z',
 			}),
 		)
-		expect(auskunft.commit).toBe('abc1234')
-		expect(auskunft.geteilt).toBe('def5678')
-		expect(auskunft.gebaut).toBe('2026-08-12T06:00:00Z')
-		expect(auskunft.instanz).toBe('klasse-wiesen')
-		expect(auskunft.status).toBe('ok')
+		expect(report.commit).toBe('abc1234')
+		expect(report.shared).toBe('def5678')
+		expect(report.builtAt).toBe('2026-08-12T06:00:00Z')
+		expect(report.instance).toBe('klasse-wiesen')
+		expect(report.status).toBe('ok')
 	})
 
-	test('ohne Bau-Angaben steht dort "unbekannt" und nicht etwas Erfundenes', () => {
-		const auskunft = gesundheit(eingabe())
-		expect(auskunft.commit).toBe(UNBEKANNT)
-		expect(auskunft.geteilt).toBe(UNBEKANNT)
-		expect(auskunft.gebaut).toBeNull()
+	test('ohne Bau-Angaben steht dort "unknown" und nicht etwas Erfundenes', () => {
+		const report = healthReport(input())
+		expect(report.commit).toBe(UNKNOWN)
+		expect(report.shared).toBe(UNKNOWN)
+		expect(report.builtAt).toBeNull()
 	})
 
 	test('leere Zeichenketten gelten als fehlend', () => {
 		// Ein `--build-arg BUILD_COMMIT=` liefert einen leeren Wert. Ohne diese
 		// Regel stünde im Endpunkt eine leere Zeichenkette, und die sieht in einer
 		// JSON-Antwort wie eine Angabe aus.
-		const auskunft = gesundheit(
-			eingabe({ BUILD_COMMIT: '   ', BUILD_ZEIT: '' }),
-		)
-		expect(auskunft.commit).toBe(UNBEKANNT)
-		expect(auskunft.gebaut).toBeNull()
+		const report = healthReport(input({ BUILD_COMMIT: '   ', BUILD_TIME: '' }))
+		expect(report.commit).toBe(UNKNOWN)
+		expect(report.builtAt).toBeNull()
 	})
 
 	test('meldet Ed25519 nur, wenn Schluessel UND Kennung da sind', () => {
-		expect(gesundheit(eingabe()).listen.verfahren).toEqual(['ed25519'])
+		expect(healthReport(input()).lists.schemes).toEqual(['ed25519'])
 		expect(
-			gesundheit(eingabe({}, { hatPublicKey: false })).listen.verfahren,
+			healthReport(input({}, { hasPublicKey: false })).lists.schemes,
 		).toEqual([])
-		expect(
-			gesundheit(eingabe({}, { listKeyIds: [] })).listen.verfahren,
-		).toEqual([])
+		expect(healthReport(input({}, { listKeyIds: [] })).lists.schemes).toEqual(
+			[],
+		)
 	})
 
 	test('meldet beide Verfahren im Uebergang, Ed25519 zuerst', () => {
-		const auskunft = gesundheit(eingabe({ LIST_WEBHOOK_SECRET: 'geheim' }))
-		expect(auskunft.listen.verfahren).toEqual(['ed25519', 'hmac'])
+		const report = healthReport(input({ LIST_WEBHOOK_SECRET: 'geheim' }))
+		expect(report.lists.schemes).toEqual(['ed25519', 'hmac'])
 	})
 
 	test('ohne jedes Verfahren bleibt die Liste leer statt "ok" zu behaupten', () => {
 		// Genau dieser Zustand liesse jede Listenmail an einem 401 scheitern,
 		// waehrend die Seite selbst tadellos aussieht.
-		const auskunft = gesundheit(
-			eingabe({}, { hatPublicKey: false, listKeyIds: [] }),
+		const report = healthReport(
+			input({}, { hasPublicKey: false, listKeyIds: [] }),
 		)
-		expect(auskunft.listen.verfahren).toEqual([])
-		expect(auskunft.status).toBe('ok')
+		expect(report.lists.schemes).toEqual([])
+		expect(report.status).toBe('ok')
 	})
 
 	test('gibt die Schluesselkennungen weiter, aber keine Zahlen aus der Datenbank', () => {
-		const auskunft = gesundheit(eingabe())
-		expect(auskunft.listen.schluessel).toEqual(['bf2226d575ece8c8'])
+		const report = healthReport(input())
+		expect(report.lists.keyIds).toEqual(['bf2226d575ece8c8'])
 		// Der Endpunkt ist ohne Anmeldung erreichbar. Was hier NICHT auftaucht,
 		// ist der eigentliche Test: keine Mitgliederzahl, keine Adresse, kein
 		// Listenname.
-		const felder = JSON.stringify(auskunft)
+		const felder = JSON.stringify(report)
 		for (const verboten of ['mitglieder', 'count', '@', 'eltern']) {
 			expect(felder.toLowerCase()).not.toContain(verboten)
 		}
+	})
+
+	test('die Nutzlast ist englisch benannt', () => {
+		// Maschinenschnittstelle: Ein Programm liest das, kein Mensch. Ein
+		// deutsches Feld hier waere kein Stilfehler, sondern ein Vertragsbruch —
+		// und der faellt sonst erst auf, wenn eine Probe danach greift.
+		const report = healthReport(input({ BUILD_COMMIT: 'abc' }))
+		expect(Object.keys(report).sort()).toEqual([
+			'builtAt',
+			'commit',
+			'instance',
+			'lists',
+			'shared',
+			'status',
+		])
+		expect(Object.keys(report.lists).sort()).toEqual(['keyIds', 'schemes'])
 	})
 })
