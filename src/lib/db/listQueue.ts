@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3'
-import { openDb } from './index.ts'
+import { dbTimestamp, dbTimestampBefore, openDb } from './index.ts'
 import type {
 	ListAttachmentRow,
 	ListMessageRow,
@@ -163,10 +163,10 @@ export const claimListOutbound = (
 	db: Database = openDb(),
 ): boolean =>
 	db
-		.prepare<[number]>(
-			"UPDATE list_outbound SET status = 'sending', claimed_at = datetime('now') WHERE id = ? AND status = 'queued'",
+		.prepare<[string, number]>(
+			"UPDATE list_outbound SET status = 'sending', claimed_at = ? WHERE id = ? AND status = 'queued'",
 		)
-		.run(id).changes === 1
+		.run(dbTimestamp(), id).changes === 1
 
 export const completeListOutbound = (
 	id: number,
@@ -182,18 +182,20 @@ export const completeListOutbound = (
 		status: string
 		sent_message_id: string | null
 		error_message: string | null
+		sent_at: string
 	}>(
 		`UPDATE list_outbound
         SET status = @status,
             sent_message_id = @sent_message_id,
             error_message = @error_message,
-            sent_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            sent_at = @sent_at
       WHERE id = @id`,
 	).run({
 		id,
 		status: patch.status,
 		sent_message_id: patch.sent_message_id ?? null,
 		error_message: patch.error_message ?? null,
+		sent_at: dbTimestamp(),
 	})
 }
 
@@ -315,12 +317,23 @@ export const requeueListErrors = (
 				)
 				.run(messageId).changes
 
-export const countListSentInLastHour = (db: Database = openDb()): number =>
+/**
+ * Erfolgreiche Zustellungen im GLEITENDEN Fenster der letzten Stunde.
+ *
+ * Die Grenze wird in JS gerechnet und als Parameter uebergeben — siehe
+ * `dbTimestamp` in `./index.ts`. Ein `datetime('now','-1 hour')` in der
+ * Abfrage waere ein anderes Textformat als das gespeicherte `sent_at` und
+ * verglich frueher faktisch den KALENDERTAG.
+ */
+export const countListSentInLastHour = (
+	db: Database = openDb(),
+	now: Date = new Date(),
+): number =>
 	db
-		.prepare<[], { c: number }>(
-			"SELECT COUNT(*) AS c FROM list_outbound WHERE status = 'sent' AND sent_at >= datetime('now', '-1 hour')",
+		.prepare<[string], { c: number }>(
+			"SELECT COUNT(*) AS c FROM list_outbound WHERE status = 'sent' AND sent_at >= ?",
 		)
-		.get()?.c ?? 0
+		.get(dbTimestampBefore(3600, now))?.c ?? 0
 
 export const countListQueued = (db: Database = openDb()): number =>
 	db
@@ -332,6 +345,10 @@ export const countListQueued = (db: Database = openDb()): number =>
 /**
  * Reboot-/Stuck-Cleanup analog zu email_send_log: haengende `sending`-Eintraege
  * (aelter als `maxAgeSeconds`, oder alle bei `maxAgeSeconds <= 0`) auf `error`.
+ *
+ * Die Altersgrenze kommt aus `dbTimestampBefore` und nicht aus
+ * `datetime('now', …)`: `claimed_at` steht im Datenbankformat, und zwei
+ * Schreibweisen zu vergleichen hiesse, den Kalendertag zu vergleichen.
  */
 export const cleanupStuckListOutbound = (
 	db: Database = openDb(),
@@ -339,26 +356,28 @@ export const cleanupStuckListOutbound = (
 ): number =>
 	maxAgeSeconds <= 0
 		? db
-				.prepare<[string]>(
-					`UPDATE list_outbound
-              SET status = 'error',
-                  error_message = COALESCE(error_message, ?),
-                  sent_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-            WHERE status = 'sending'`,
-				)
-				.run(
-					'Worker-Neustart hat den Versand unterbrochen - mit retry_failed_list_sends erneut einreihen',
-				).changes
-		: db
 				.prepare<[string, string]>(
 					`UPDATE list_outbound
               SET status = 'error',
                   error_message = COALESCE(error_message, ?),
-                  sent_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                  sent_at = ?
+            WHERE status = 'sending'`,
+				)
+				.run(
+					'Worker-Neustart hat den Versand unterbrochen - mit retry_failed_list_sends erneut einreihen',
+					dbTimestamp(),
+				).changes
+		: db
+				.prepare<[string, string, string]>(
+					`UPDATE list_outbound
+              SET status = 'error',
+                  error_message = COALESCE(error_message, ?),
+                  sent_at = ?
             WHERE status = 'sending'
-              AND (claimed_at IS NULL OR claimed_at < datetime('now', ?))`,
+              AND (claimed_at IS NULL OR claimed_at < ?)`,
 				)
 				.run(
 					`Versand-Timeout (>${maxAgeSeconds}s in sending)`,
-					`-${maxAgeSeconds} seconds`,
+					dbTimestamp(),
+					dbTimestampBefore(maxAgeSeconds),
 				).changes

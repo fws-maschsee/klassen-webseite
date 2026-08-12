@@ -15,7 +15,24 @@ import type { EmailTransport } from '../email/transport.ts'
 import { sesTransport } from '../email/transport.ts'
 import { buildListSendInput } from './redistribute.ts'
 
-const DEFAULT_HOURLY_CAP = 250
+/**
+ * Obergrenze je gleitender Stunde, geteilt mit dem Rundmail-Versand.
+ *
+ * Was sie ist: eine Reissleine gegen eine Schleife, die das SES-Kontingent der
+ * verifizierten Domain verbrennt und damit den Versand ALLER Klassen anhaelt.
+ * Was sie NICHT ist: eine Spam-Bremse fuer Eltern. Wer an den Verteiler
+ * schreibt, ist bereits autorisiert.
+ *
+ * 250 war dafuer zu eng gedacht. Eine Liste mit 59 Eltern ist EINE Mail =
+ * 59 Zustellungen; das Cap liess also vier Elternmails pro Stunde durch, und an
+ * einem lebhaften Tag stand der Verteiler. 1000 sind rund siebzehn volle
+ * Rundgaenge in der Stunde — weit jenseits dessen, was eine Klasse je schreibt,
+ * und immer noch weit unter dem SES-Kontingent.
+ *
+ * Die echte Grenze ist das Sendekontingent des SES-Kontos. Wer das kennt,
+ * setzt `MAIL_HOURLY_CAP` und nimmt diesen Vorgabewert aus dem Spiel.
+ */
+const DEFAULT_HOURLY_CAP = 1000
 const DEFAULT_PARALLEL_BURST = 25
 
 const hourlyCap = (): number =>

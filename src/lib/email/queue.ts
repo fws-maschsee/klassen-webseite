@@ -34,7 +34,14 @@ import { sesTransport } from './transport.ts'
  * das sind genau die harten Bounces und Beschwerden.
  */
 
-const DEFAULT_HOURLY_CAP = 250
+/**
+ * Obergrenze je gleitender Stunde. Sie gilt fuer BEIDE Warteschlangen
+ * gemeinsam, damit die verifizierte Absenderdomain insgesamt unter dem
+ * SES-Kontingent bleibt — die Begruendung des Wertes steht bei derselben
+ * Konstante in `../lists/queue.ts`. Beide Zahlen gehoeren zusammen; wer eine
+ * aendert, aendert die andere mit (oder setzt `MAIL_HOURLY_CAP`).
+ */
+const DEFAULT_HOURLY_CAP = 1000
 const DEFAULT_PARALLEL_BURST = 25
 
 const hourlyCap = (): number =>

@@ -710,6 +710,40 @@ Wiederholung eine zweite Mail beim Empfänger. Eine doppelte Mail ist der
 erträglichere Fehler gegenüber einer verlorenen — deshalb gibt es die
 Wiederholung, und deshalb löst sie ein Mensch aus und kein Automatismus.
 
+### Das Stunden-Cap ist ein gleitendes Fenster — und war es einmal nicht
+
+Der Versand deckelt sich selbst: höchstens `MAIL_HOURLY_CAP` Zustellungen je
+**gleitender** Stunde, geteilt zwischen Rundmails und Listenmails. Das ist eine
+Reißleine gegen eine Schleife, die das SES-Kontingent der verifizierten Domain
+verbrennt — keine Spam-Bremse für Eltern.
+
+Gezählt wurde bis hierher `sent_at >= datetime('now','-1 hour')`, und das
+vergleicht in SQLite zwei verschiedene Schreibweisen als **Text**:
+
+```
+gespeichert  2026-08-11T21:00:00.000Z   (strftime, mit T und Z)
+verglichen   2026-08-11 20:30:00        (datetime, mit Leerzeichen)
+```
+
+An Stelle 10 steht `T` (0x54) gegen ` ` (0x20). `T` ist größer, also galt
+**jede Zustellung des laufenden UTC-Tages** als „in der letzten Stunde". Aus dem
+Stundenfenster wurde damit ein Tagesfenster, und es fiel erst, wenn die Grenze
+über Mitternacht UTC rollte — um **01:00 UTC, in der Sommerzeit 03:00
+Ortszeit**. Dort flossen die gestauten Mails ab, alle auf einmal.
+
+Deshalb gibt es `dbTimestamp`/`dbTimestampBefore` in
+[`src/lib/db/index.ts`](src/lib/db/index.ts): **ein** Format für alle
+Zeitstempel dieser Datenbank, und jede Zeitgrenze wird in JS gerechnet und als
+Parameter übergeben. Ein `datetime('now', …)` gegen eine mit `strftime`
+geschriebene Spalte ist ab jetzt der Fehler, den man am Diff erkennt.
+Festgehalten in [`tests/lists/stundencap.test.ts`](tests/lists/stundencap.test.ts),
+inklusive des Falls „kurz nach Mitternacht".
+
+Die Vorgabe steht bei **1000** je Stunde. 250 war zu eng gedacht: Eine Liste mit
+59 Eltern ist EINE Mail = 59 Zustellungen, das Cap ließ also vier Elternmails
+pro Stunde durch. Die echte Grenze ist das Sendekontingent des SES-Kontos — wer
+es kennt, setzt `MAIL_HOURLY_CAP` und nimmt den Vorgabewert aus dem Spiel.
+
 Anhänge haben an dieser Stelle keinen eigenen Weg: Sie liegen als BLOB in
 `list_attachments`, werden je Empfänger unverändert an die Mail gehängt und sind
 mit [`tests/lists/anhaenge.test.ts`](tests/lists/anhaenge.test.ts) vom Eingang
