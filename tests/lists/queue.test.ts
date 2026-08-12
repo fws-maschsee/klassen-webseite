@@ -38,7 +38,7 @@ let scheitert: Set<string>
 
 const transport = {
 	send: async (input: SendInput) => {
-		if (scheitert.has(input.to)) {
+		if (scheitert.has(input.envelope?.to ?? input.to)) {
 			throw new Error('454 Throttling failure: Maximum sending rate exceeded')
 		}
 		sent.push(input)
@@ -159,7 +159,8 @@ describe('Wiederholung gescheiterter Zustellungen', () => {
 		expect(requeueListErrors(1, db)).toBe(1)
 		await queueLeeren()
 
-		expect(sent.map((m) => m.to).sort()).toEqual([
+		// Der Empfaenger steht im KUVERT; `to` traegt die Listenadresse.
+		expect(sent.map((m) => m.envelope?.to).sort()).toEqual([
 			'anna@example.org',
 			'jan@example.org',
 		])
@@ -180,7 +181,7 @@ describe('Wiederholung gescheiterter Zustellungen', () => {
 		requeueListErrors(1, db)
 		await queueLeeren()
 
-		const anJan = sent.filter((m) => m.to === 'jan@example.org')
+		const anJan = sent.filter((m) => m.envelope?.to === 'jan@example.org')
 		expect(anJan).toHaveLength(1)
 	})
 

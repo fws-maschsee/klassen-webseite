@@ -1,10 +1,11 @@
+import { klassenConfig } from '../../klasse/config.ts'
 import { listPosterPolicy } from '../db/mailingLists.ts'
 import type {
 	ListAttachmentRow,
 	ListMessageRow,
 	MailingListRow,
 } from '../db/types.ts'
-import { listDomain, listEnvelopeFrom, mailReplyTo } from '../email/config.ts'
+import { listDomain, listEnvelopeFrom } from '../email/config.ts'
 import type { SendInput } from '../email/transport.ts'
 
 /** Vollstaendige Adresse einer Liste, z.B. `eltern@fws-maschsee-test.de`. */
@@ -119,13 +120,6 @@ export const isSignedMessage = (
 	})
 }
 
-/** Betreff einer privaten Antwort — `Re: ` genau einmal. */
-const replySubject = (subject: string): string => {
-	const trimmed = subject.trim()
-	if (!trimmed) return 'Re:'
-	return /^re:\s/i.test(trimmed) ? trimmed : `Re: ${trimmed}`
-}
-
 /**
  * `mailto:`-Ziel mit vorbelegtem Betreff. Die Adresse wird kodiert wie ein
  * URL-Bestandteil, das `@` danach aber zurueckgedreht: ein `?` oder `&` im
@@ -177,65 +171,59 @@ type ReplyFooter = {
 }
 
 /**
- * Der zweite Antwortweg — und zwar der, der NICHT auf dem „Antworten"-Knopf
- * liegt. Welcher das ist, sagt `reply_mode`:
+ * Der unveraenderliche Anfang des Fusses — und das Erkennungsmerkmal.
  *
- * - `list`:   `Reply-To` ist die Liste. „Antworten" geht an alle, der Fuss
- *             bietet den Weg zur einen Person an.
- * - `sender`: `Reply-To` ist der Absender. „Antworten" geht nur an ihn, der Fuss
- *             bietet den Weg an die ganze Liste an.
+ * Er enthaelt bewusst KEINEN Listennamen, keine Adresse und keinen Betreff, also
+ * nichts, was sich von Mail zu Mail aendert. Genau daran haengt die
+ * Eigenschaft, um die es hier geht: In einem langen Faden zitiert jede Antwort
+ * den vorigen Text mitsamt Fuss. Waere das Merkmal je Nachricht verschieden,
+ * erkennte es den zitierten Fuss nicht wieder, und nach fuenf Antworten stuenden
+ * fuenf Fuesse untereinander.
  *
- * Der Fuss nennt IMMER beide Wege, in beiden Richtungen. Ein Link allein liesse
- * offen, wohin die gewoehnliche Antwort geht — und die Verwechslung hat eine
- * teure Richtung: Eine private Antwort an fuenfzig Elternhaeuser laesst sich
- * nicht zurueckholen. Deshalb steht der Satz „‚Antworten' geht an ..." da, auch
- * wenn er dem Kundigen selbstverstaendlich vorkommt.
- *
- * Bei `sender` auf einer Liste, in die der Empfaenger gar nicht posten darf
- * (`listAllowsPosting` ist falsch — Ankuendigungsliste), gibt es keinen
- * Listen-Link: Eine Adresse anzubieten, an der die Mail abprallt, ist schlechter
- * als keine. Dann traegt der Hinweis allein den Fuss, und weil er dann das
- * Erkennungsmerkmal ist, wird er ueber `escapeHtml` gefuehrt wie im HTML-Teil —
- * sonst wuerde ein `&` im Namen die Wiedererkennung zerreissen.
+ * Und er enthaelt keines der Zeichen, die `escapeHtml` anfasst (`& < > "`) —
+ * sonst stuende im Textteil ein anderer String als im HTML, und die
+ * Wiedererkennung griffe nur in einer der beiden Fassungen.
  */
-const buildReplyFooter = (
-	message: ListMessageRow,
-	list: MailingListRow,
-): ReplyFooter => {
-	const anDieListe = list.reply_mode !== 'list'
+const OPT_OUT_MARKER =
+	'Sie erhalten diese Nachricht, weil Ihre Adresse im Verteiler'
 
-	const hint = anDieListe
-		? `„Antworten“ geht nur an ${senderDisplay(message)}.`
-		: `„Antworten“ geht an alle Empfänger der Liste ${sanitizeDisplay(list.label)} (${listAddressFull(list)}).`
+/**
+ * Der Fuss: Warum bekommt jemand diese Mail, und wie kommt er wieder heraus.
+ *
+ * Vorher stand hier eine Erklaerung der Antwortwege. Die ist entfallen, weil sie
+ * ueberfluessig geworden ist: `To:` traegt die Listenadresse, `Reply-To` den
+ * Absender — „Antworten" erreicht damit die Person und „Allen antworten" die
+ * Liste, und zwar in JEDEM Mailprogramm, ohne dass es dazu etwas lesen muesste.
+ *
+ * Was bleibt, ist die Angabe, die in eine Rundmail an Eltern gehoert und die
+ * kein Header ersetzt: dass die eigene Adresse in einem Verteiler steht, und bei
+ * wem man sich meldet, um sie herausnehmen zu lassen. `List-Unsubscribe` sagt
+ * dasselbe maschinenlesbar — aber der Knopf dafuer ist in vielen
+ * Mailprogrammen gut versteckt oder gar nicht da.
+ *
+ * Die Angaben sind fuer die ganze Liste gleich, nicht je Nachricht. Deshalb
+ * nimmt diese Funktion die Nachricht nicht mehr an: Was nicht eingeht, kann auch
+ * nicht versehentlich in einem Fuss landen, der bei fuenfzig Familien ankommt.
+ */
+const buildOptOutFooter = (list: MailingListRow): ReplyFooter => {
+	const { contactMail, contactName, label: klasse } = klassenConfig()
+	const kontakt = contactName
+		? `${sanitizeDisplay(contactName)} (${contactMail})`
+		: contactMail
+	const href = mailtoHref(contactMail, `Austragen ${list.address}`)
 
-	const link =
-		anDieListe && !listAllowsPosting(list)
-			? null
-			: anDieListe
-				? {
-						href: mailtoHref(listAddressFull(list), message.subject),
-						label: `An alle in der Liste ${sanitizeDisplay(list.label)} antworten`,
-					}
-				: {
-						href: mailtoHref(message.from_email, replySubject(message.subject)),
-						label: `Nur an ${senderDisplay(message)} antworten`,
-					}
-
-	if (!link) {
-		return {
-			marker: escapeHtml(hint),
-			text: `\n\n${FOOTER_RULE}\n${hint}`,
-			html: `<div style="${FOOTER_STYLE}">${escapeHtml(hint)}</div>`,
-		}
-	}
+	const grund = `${OPT_OUT_MARKER} „${sanitizeDisplay(list.label)}“ der ${sanitizeDisplay(klasse)} steht (${listAddressFull(list)}).`
+	const ausweg = `Wenn Sie dort nicht mehr stehen möchten, genügt eine Nachricht an ${kontakt} — dann nehme ich Ihre Adresse heraus.`
 
 	return {
-		marker: link.href,
-		text: `\n\n${FOOTER_RULE}\n${link.label}: ${link.href}\n${hint}`,
+		marker: OPT_OUT_MARKER,
+		text: `\n\n${FOOTER_RULE}\n${grund}\n${ausweg}`,
 		html:
 			`<div style="${FOOTER_STYLE}">` +
-			`<a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a><br />` +
-			`${escapeHtml(hint)}</div>`,
+			`${escapeHtml(grund)}<br />` +
+			`Wenn Sie dort nicht mehr stehen möchten, genügt eine Nachricht an ` +
+			`<a href="${escapeHtml(href)}">${escapeHtml(kontakt)}</a> — dann nehme ich Ihre Adresse heraus.` +
+			`</div>`,
 	}
 }
 
@@ -260,11 +248,24 @@ const appendHtmlFooter = (html: string, footer: ReplyFooter): string => {
 
 /**
  * Baut die auszuliefernde Mail fuer EINEN Empfaenger. Die Anhaenge bleiben
- * unveraendert; der Rumpf bekommt einen Fuss mit dem zweiten Antwortweg
- * (`mailto:` an den Originalabsender) — ausser bei signierten Nachrichten, die
- * unangetastet durchgehen. Dazu kommen die Listen-Header, damit Mailprogramme
- * die Nachricht als Listenmail erkennen und Mailfilter sie nicht fuer eine
- * Spoofing-Mail halten.
+ * unveraendert; der Rumpf bekommt den Opt-out-Fuss — ausser bei signierten
+ * Nachrichten, die unangetastet durchgehen. Dazu kommen die Listen-Header, damit
+ * Mailprogramme die Nachricht als Listenmail erkennen und Mailfilter sie nicht
+ * fuer eine Spoofing-Mail halten.
+ *
+ * **`To:` ist die LISTE, nicht der Empfaenger** — obwohl genau dieser eine
+ * Empfaenger die Mail bekommt (das steht im Kuvert, `envelope.to`, und danach
+ * wird zugestellt). Das ist der Kern der Antwortwege:
+ *
+ *   Antworten       -> `Reply-To`  -> je `reply_mode` Absender oder Liste
+ *   Allen antworten -> `To` + `Reply-To` -> Absender UND Liste
+ *
+ * Damit hat jedes Mailprogramm beide Wege, auch die ohne Listen-Knopf: Apple
+ * Mail auf macOS und iOS, Gmail im Web und auf Android, Outlook. `List-Post`
+ * lesen im Wesentlichen Thunderbird und die Linux-Programme; darauf ist kein
+ * Verlass, wenn fuenfzig Familien mitlesen. Stand hier der Empfaenger, ginge
+ * „Allen antworten" an den Absender und an ihn selbst — die Liste waere von
+ * ueberall ausser Thunderbird nur per abgeschriebener Adresse erreichbar.
  */
 export const buildListSendInput = (
 	message: ListMessageRow,
@@ -275,18 +276,24 @@ export const buildListSendInput = (
 	const full = listAddressFull(list)
 	const envelopeFrom = listEnvelopeFrom()
 	const replyTo = list.reply_mode === 'list' ? full : message.from_email
-	const unsubscribeContact = mailReplyTo()
+	// Der Kontakt fuer das Austragen ist die KLASSENKONTAKTADRESSE, nicht
+	// `mailReplyTo()`. Das war ein Fehler mit Folgen: `MAIL_REPLY_TO` ist im
+	// Deployment nicht gesetzt, also fiel der Wert auf `mailFrom()` zurueck —
+	// `noreply@`, und genau diese Adresse verwirft das Email Routing der Zone.
+	// Der Knopf „Abbestellen" im Mailprogramm schickte damit eine Mail ins
+	// Nichts, und niemand konnte es merken.
+	const unsubscribeContact = klassenConfig().contactMail
 	const unsubscribeSubject = encodeURIComponent(`Austragen ${list.address}`)
 
 	const html = message.body_html ?? ''
 	const text = message.body_text ?? message.body_html ?? ''
 	const footer = isSignedMessage(message, attachments)
 		? null
-		: buildReplyFooter(message, list)
+		: buildOptOutFooter(list)
 
 	return {
 		from: buildListFrom(message, list),
-		to: recipientEmail,
+		to: full,
 		replyTo,
 		sender: envelopeFrom,
 		envelope: { from: envelopeFrom, to: recipientEmail },

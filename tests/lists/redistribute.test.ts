@@ -18,10 +18,10 @@ import { createTestDb } from '../helpers/db.ts'
  * Wachtern gibt es fuer einen Fehler keine zweite Zustellung: eine Mail ist
  * draussen, und die Absenderadresse darin ist bei fuenfzig Elternhaeusern.
  *
- * Geprueft wird deshalb beides — dass die Angaben DA sind (Adresse im
- * Anzeigenamen, `mailto:`-Link an den Absender) und dass sie NICHT verrutschen
- * (kein doppelter Fuss, keine Anfuehrungszeichen im Anzeigenamen, kein Fuss an
- * einer signierten Nachricht).
+ * Geprueft wird deshalb beides — dass die Angaben DA sind (Absenderadresse im
+ * Anzeigenamen, Liste in `To`, Opt-out im Fuss) und dass sie NICHT verrutschen
+ * (kein gestapelter Fuss in einem langen Faden, keine Anfuehrungszeichen im
+ * Anzeigenamen, kein Fuss an einer signierten Nachricht).
  *
  * DATENSCHUTZ: ausschliesslich erfundene Namen und example.org-Adressen.
  */
@@ -101,9 +101,6 @@ const bauen = (options: BauenOptions = {}) =>
 const vorkommen = (haystack: string, needle: string): number =>
 	haystack.split(needle).length - 1
 
-/** Der `mailto:`-Link, den der Fuss auf Vera zeigen laesst. */
-const NUR_AN_VERA = 'mailto:vera@example.org?subject=Re%3A%20Termin'
-
 /**
  * Die Trennlinie des Fusses. Absichtlich nicht `-- `: Alles hinter der
  * Signatur-Trennzeile klappen viele Mailprogramme zu, und der Hinweis stuende
@@ -144,67 +141,85 @@ describe('From zeigt auf die Liste und nennt den Absender', () => {
 	})
 })
 
-describe('Der Fuss mit dem zweiten Antwortweg', () => {
-	test('Textteil traegt den kodierten mailto:-Link und nennt die Liste', () => {
+describe('Der Fuss: warum diese Mail kommt und wie man herauskommt', () => {
+	const GRUND =
+		'Sie erhalten diese Nachricht, weil Ihre Adresse im Verteiler „Eltern“ der Klasse Beispiel steht (eltern@klasse-beispiel.lists.example.org).'
+	const AUSWEG =
+		'Wenn Sie dort nicht mehr stehen möchten, genügt eine Nachricht an verwaltung@example.org — dann nehme ich Ihre Adresse heraus.'
+
+	test('Textteil nennt Verteiler, Klasse, Listenadresse und den Ausweg', () => {
 		const sent = bauen()
 		expect(sent.text).toContain('Inhalt')
-		expect(sent.text).toContain(
-			`Nur an Vera Beispiel (vera@example.org) antworten: ${NUR_AN_VERA}`,
-		)
-		expect(sent.text).toContain(`Liste Eltern (${LIST_ADDRESS})`)
+		expect(sent.text).toContain(GRUND)
+		expect(sent.text).toContain(AUSWEG)
 	})
 
-	test('HTML-Teil traegt denselben Link als Anker und nennt die Liste', () => {
+	test('HTML-Teil sagt dasselbe, die Kontaktadresse als Anker', () => {
 		const sent = bauen()
-		expect(sent.html).toContain(`<a href="${NUR_AN_VERA}">`)
+		expect(sent.html).toContain('Sie erhalten diese Nachricht')
 		expect(sent.html).toContain(
-			'Nur an Vera Beispiel (vera@example.org) antworten',
+			'<a href="mailto:verwaltung@example.org?subject=Austragen%20eltern">',
 		)
-		expect(sent.html).toContain(`Liste Eltern (${LIST_ADDRESS})`)
 	})
 
-	test('der Fuss steht genau einmal in Text und HTML', () => {
+	test('der Fuss erklaert NICHT mehr die Antwortwege', () => {
+		// Die uebernehmen `To` und `Reply-To`, und zwar in jedem Mailprogramm.
+		// Ein Absatz darueber war Text, den fuenfzig Familien unter jeder Mail
+		// lesen mussten, um zu erfahren, was ihre Knoepfe ohnehin tun.
 		const sent = bauen()
-		expect(vorkommen(sent.text, NUR_AN_VERA)).toBe(1)
-		expect(vorkommen(sent.html, NUR_AN_VERA)).toBe(1)
+		expect(sent.text).not.toContain('„Antworten“ geht')
+		expect(sent.text).not.toContain('antworten:')
+	})
+
+	test('er haengt nicht am Absender und nicht am Betreff', () => {
+		// Sonst waere er je Nachricht verschieden — und genau daran scheiterte die
+		// Wiedererkennung im zitierten Text.
+		const a = bauen()
+		const b = bauen({
+			message: { from_email: 'jemand@example.org', subject: 'Anderes' },
+		})
+		const fuss = (t: string) => t.slice(t.indexOf(FOOTER_RULE_ANFANG))
+		expect(fuss(b.text)).toBe(fuss(a.text))
+	})
+
+	test('in einem langen Faden stapelt er sich nicht', () => {
+		// Der Fall, um den es geht: Jede Antwort zitiert den Text der vorigen Mail
+		// mitsamt Fuss. Nach fuenf Runden stuenden sonst fuenf Fuesse
+		// untereinander — der Grund, warum das Erkennungsmerkmal nichts enthaelt,
+		// was sich von Mail zu Mail aendert.
+		let text = bauen().text
+		let html = bauen().html
+		for (const runde of [1, 2, 3, 4, 5]) {
+			const antwort = bauen({
+				message: {
+					subject: `Re: Termin (${runde})`,
+					from_email: `person${runde}@example.org`,
+					body_text: `Antwort ${runde}\n\n> ${text}`,
+					body_html: `<p>Antwort ${runde}</p><blockquote>${html}</blockquote>`,
+				},
+			})
+			text = antwort.text
+			html = antwort.html
+		}
+		expect(vorkommen(text, 'Sie erhalten diese Nachricht')).toBe(1)
+		expect(vorkommen(html, 'Sie erhalten diese Nachricht')).toBe(1)
 	})
 
 	test('erneute Zustellung derselben Nachricht ergibt denselben einen Fuss', () => {
-		// Der Fuss wird beim Versand gerechnet und nie gespeichert. Ein neuer
-		// Versuch aus `list_outbound` baut die Mail neu — und muss Zeichen fuer
-		// Zeichen dieselbe ergeben.
 		const erste = bauen()
 		const zweite = bauen()
 		expect(zweite.text).toBe(erste.text)
-		expect(zweite.html).toBe(erste.html)
-		expect(vorkommen(zweite.text, NUR_AN_VERA)).toBe(1)
-	})
-
-	test('ein Rumpf, der den Fuss schon traegt, bekommt keinen zweiten', () => {
-		const erste = bauen()
-		const zweite = bauen({
-			message: { body_text: erste.text, body_html: erste.html },
-		})
-		expect(vorkommen(zweite.text, NUR_AN_VERA)).toBe(1)
-		expect(vorkommen(zweite.html, NUR_AN_VERA)).toBe(1)
+		expect(vorkommen(zweite.text, 'Sie erhalten diese Nachricht')).toBe(1)
 	})
 
 	test('im vollstaendigen HTML-Dokument steht der Fuss vor </body>', () => {
 		const sent = bauen({
-			message: {
-				body_html: '<html><body><p>Inhalt</p></body></html>',
-			},
+			message: { body_html: '<html><body><p>Inhalt</p></body></html>' },
 		})
-		expect(sent.html.indexOf(NUR_AN_VERA)).toBeLessThan(
+		expect(sent.html.indexOf('Sie erhalten diese Nachricht')).toBeLessThan(
 			sent.html.indexOf('</body>'),
 		)
 		expect(sent.html.endsWith('</body></html>')).toBe(true)
-	})
-
-	test('ohne </body> wird angehaengt', () => {
-		const sent = bauen({ message: { body_html: '<p>Inhalt</p>' } })
-		expect(sent.html.startsWith('<p>Inhalt</p>')).toBe(true)
-		expect(sent.html).toContain(NUR_AN_VERA)
 	})
 
 	test('ein leerer HTML-Teil bleibt leer', () => {
@@ -212,106 +227,13 @@ describe('Der Fuss mit dem zweiten Antwortweg', () => {
 		// nur aus dem Fuss besteht und den Inhalt nicht zeigt.
 		const sent = bauen({ message: { body_html: null } })
 		expect(sent.html).toBe('')
-		expect(sent.text).toContain(NUR_AN_VERA)
+		expect(sent.text).toContain('Sie erhalten diese Nachricht')
 	})
 
-	test('der Betreff bekommt Re: nicht zweimal', () => {
-		const sent = bauen({ message: { subject: 'Re: Termin' } })
-		expect(sent.text).toContain(
-			'mailto:vera@example.org?subject=Re%3A%20Termin',
-		)
-		expect(sent.text).not.toContain('Re%3A%20Re%3A')
-	})
-
-	test('Sonderzeichen im Betreff werden prozentkodiert', () => {
-		const sent = bauen({ message: { subject: 'Bänke & Stühle?' } })
-		expect(sent.text).toContain(
-			`mailto:vera@example.org?subject=${encodeURIComponent('Re: Bänke & Stühle?')}`,
-		)
-		// Ein rohes & wuerde einen zweiten mailto-Parameter beginnen.
-		expect(sent.html).not.toContain('& Stühle')
-	})
-
-	test('Markup im Anzeigenamen landet escaped im HTML', () => {
-		const sent = bauen({ message: { from_name: '<script>alert(1)</script>' } })
+	test('Markup im Listennamen landet escaped im HTML', () => {
+		const sent = bauen({ list: { label: '<script>alert(1)</script>' } })
 		expect(sent.html).not.toContain('<script>')
 		expect(sent.html).toContain('&lt;script&gt;')
-	})
-
-	test('der Fuss ist auch bei reply_mode sender da — nur zeigt er anders', () => {
-		// Es gibt keinen Fall ohne Fuss (ausser signiert): Bei `list` fehlte sonst
-		// der Weg zur einen Person, bei `sender` der Weg an die Liste.
-		expect(bauen({ list: { reply_mode: 'sender' } }).text).toContain(
-			FOOTER_RULE_ANFANG,
-		)
-		expect(bauen({ list: { reply_mode: 'list' } }).text).toContain(NUR_AN_VERA)
-	})
-})
-
-/**
- * Der umgekehrte Fall, und der Grund fuer diesen Block: Bei `reply_mode =
- * 'sender'` liegt auf „Antworten" der Absender. Ein Fuss, der dann „Nur an Vera
- * antworten" anbietet, waere nicht falsch, sondern sinnlos — er benennt den Weg,
- * auf dem man schon ist, und laesst den anderen weg. Genau so war es, bis
- * jemandem auffiel, dass in Thunderbird beide Knoepfe dasselbe tun.
- */
-describe('reply_mode sender: der Fuss zeigt an die Liste', () => {
-	const AN_DIE_LISTE = `mailto:${LIST_ADDRESS}?subject=Termin`
-
-	test('Text und HTML tragen den Link an die Liste', () => {
-		const sent = bauen({ list: { reply_mode: 'sender' } })
-		expect(sent.text).toContain(
-			`An alle in der Liste Eltern antworten: ${AN_DIE_LISTE}`,
-		)
-		expect(sent.html).toContain(`<a href="${AN_DIE_LISTE}">`)
-	})
-
-	test('der Hinweis nennt, wohin „Antworten" geht — naemlich an Vera', () => {
-		const sent = bauen({ list: { reply_mode: 'sender' } })
-		expect(sent.text).toContain(
-			'„Antworten“ geht nur an Vera Beispiel (vera@example.org).',
-		)
-		expect(sent.text).not.toContain(NUR_AN_VERA)
-	})
-
-	test('der Betreff der Listenantwort bekommt KEIN Re:', () => {
-		// Eine Antwort an die Liste ist eine Fortsetzung desselben Fadens; ein
-		// zweites „Re:" davor waere nur Rauschen, und die Mailprogramme setzen es
-		// beim Antworten selbst.
-		expect(bauen({ list: { reply_mode: 'sender' } }).text).toContain(
-			'?subject=Termin',
-		)
-	})
-
-	test('auf einer Ankuendigungsliste gibt es keinen Listen-Link', () => {
-		// Dort darf der gewoehnliche Empfaenger nicht posten (`List-Post: NO`).
-		// Eine Adresse anzubieten, an der seine Mail abprallt, waere schlechter als
-		// keine — der Hinweis allein bleibt.
-		const sent = bauen({
-			list: {
-				reply_mode: 'sender',
-				poster_policy: 'eingeschraenkt',
-				broadcast: false,
-			},
-		})
-		expect(sent.headers?.['List-Post']).toBe('NO')
-		expect(sent.text).not.toContain('mailto:')
-		expect(sent.text).toContain('„Antworten“ geht nur an Vera Beispiel')
-	})
-
-	test('auch ohne Link bekommt eine erneute Zustellung keinen zweiten Fuss', () => {
-		const liste = {
-			reply_mode: 'sender' as const,
-			poster_policy: 'eingeschraenkt' as const,
-			broadcast: false,
-		}
-		const erste = bauen({ list: liste })
-		const zweite = bauen({
-			list: liste,
-			message: { body_text: erste.text, body_html: erste.html },
-		})
-		expect(vorkommen(zweite.text, 'geht nur an Vera Beispiel')).toBe(1)
-		expect(vorkommen(zweite.html, 'geht nur an Vera Beispiel')).toBe(1)
 	})
 })
 
@@ -354,13 +276,13 @@ describe('Signierte Nachrichten bleiben unberuehrt', () => {
 
 	test('ein gewoehnlicher Anhang verhindert den Fuss NICHT', () => {
 		const sent = bauen({ attachments: [anhang('application/pdf')] })
-		expect(sent.text).toContain(NUR_AN_VERA)
-		expect(sent.html).toContain(NUR_AN_VERA)
+		expect(sent.text).toContain('Sie erhalten diese Nachricht')
+		expect(sent.html).toContain('Sie erhalten diese Nachricht')
 	})
 
 	test('ein Anhang ohne Content-Type verhindert den Fuss NICHT', () => {
 		const sent = bauen({ attachments: [anhang(null)] })
-		expect(sent.text).toContain(NUR_AN_VERA)
+		expect(sent.text).toContain('Sie erhalten diese Nachricht')
 	})
 })
 
@@ -469,7 +391,24 @@ describe('Die uebrigen Listen-Header', () => {
 		)
 		expect(sent.headers?.Precedence).toBe('list')
 		expect(sent.subject).toBe('[Eltern] Termin')
-		expect(sent.to).toBe(EMPFAENGERIN)
+	})
+
+	test('List-Unsubscribe zeigt auf die Kontaktadresse der Klasse', () => {
+		// Nicht auf `mailReplyTo()`: Das ist ohne `MAIL_REPLY_TO` die
+		// Absenderadresse `noreply@`, und die verwirft das Email Routing der Zone.
+		// Der Knopf „Abbestellen" schickte damit eine Mail ins Nichts.
+		expect(bauen().headers?.['List-Unsubscribe']).toBe(
+			'<mailto:verwaltung@example.org?subject=Austragen%20eltern>',
+		)
+	})
+
+	test('To ist die LISTE, das Kuvert der Empfaenger', () => {
+		// Daran haengen die Antwortwege in Mailprogrammen OHNE Listen-Knopf —
+		// Apple Mail, Gmail, Outlook: „Antworten" folgt `Reply-To` (der Absender),
+		// „Allen antworten" nimmt `To` mit und erreicht damit die Liste. Stand hier
+		// der Empfaenger, ginge „Allen antworten" an ihn selbst.
+		const sent = bauen()
+		expect(sent.to).toBe(LIST_ADDRESS)
 		expect(sent.envelope?.to).toBe(EMPFAENGERIN)
 	})
 

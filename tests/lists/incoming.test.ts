@@ -111,10 +111,8 @@ beforeEach(() => {
 
 			poster_policy: 'eingeschraenkt',
 			subject_prefix: '[Eltern]',
-			// Wie die echten Listen der Klassen: „Antworten" geht an die Liste.
-			// Damit bietet der Fuss den Weg zur einen Person an — und genau der
-			// soll unten bis in den Versand durchkommen.
-			reply_mode: 'list',
+			// Wie die echten Listen der Klassen.
+			reply_mode: 'sender',
 		},
 		db,
 	)
@@ -131,7 +129,8 @@ describe('Annahme und Verteilung', () => {
 		expect(result.kind).toBe('enqueued')
 		expect(statusForResult(result)).toBe(202)
 		expect(sent).toHaveLength(2)
-		expect(sent.map((m) => m.to).sort()).toEqual([
+		// Der Empfaenger steht im KUVERT; `to` traegt die Listenadresse.
+		expect(sent.map((m) => m.envelope?.to).sort()).toEqual([
 			'anna@example.org',
 			'vera@example.org',
 		])
@@ -147,36 +146,35 @@ describe('Annahme und Verteilung', () => {
 		expect(sent[0]?.headers?.['List-Id']).toContain('eltern.')
 	})
 
-	test('der Fuss mit dem zweiten Antwortweg kommt bis in den Versand', async () => {
+	test('der Opt-out-Fuss kommt bis in den Versand', async () => {
 		// Denselben Weg wie im Betrieb: rohe Mail rein, `SendInput` raus. Der
 		// Wachter fuer die Einzelheiten steht in `redistribute.test.ts`; hier geht
 		// es darum, dass der Fuss nicht auf dem Weg durch die Warteschlange
-		// verlorengeht.
+		// verlorengeht — er ist die Angabe, die in einer Rundmail an Eltern
+		// stehen MUSS.
 		await deliver({
 			headerFrom: 'Vera Beispiel <vera@example.org>',
 			subject: 'Termin',
 			messageId: '<fuss@example.org>',
 		})
 		expect(sent[0]?.text).toContain(
-			'mailto:vera@example.org?subject=Re%3A%20Termin',
+			'Sie erhalten diese Nachricht, weil Ihre Adresse im Verteiler',
 		)
-		expect(sent[0]?.text).toContain('Nur an Vera Beispiel (vera@example.org)')
-		expect(sent[0]?.text).toContain('Liste Eltern')
+		expect(sent[0]?.text).toContain('verwaltung@example.org')
+	})
+
+	test('To traegt die Liste, das Kuvert den Empfaenger', async () => {
+		// Damit „Allen antworten" auch in Apple Mail, Gmail und Outlook die Liste
+		// erreicht — die haben keinen Listen-Knopf und lesen `List-Post` nicht.
+		await deliver({ messageId: '<to@example.org>' })
+		expect(sent[0]?.to).toContain('eltern@')
+		expect(sent.map((m) => m.envelope?.to).sort()).toEqual([
+			'anna@example.org',
+			'vera@example.org',
+		])
 	})
 
 	test('reply_mode sender laesst Antworten an den Absender gehen', async () => {
-		// Umstellen, weil die Liste oben auf `list` steht — wie die echten.
-		upsertMailingList(
-			{
-				address: 'eltern',
-				label: 'Eltern',
-				recipient_groups: ['eltern'],
-				poster_groups: ['elternvertretung'],
-				poster_policy: 'eingeschraenkt',
-				reply_mode: 'sender',
-			},
-			db,
-		)
 		await deliver({ messageId: '<a2@example.org>' })
 		expect(sent[0]?.replyTo).toBe('vera@example.org')
 	})

@@ -147,7 +147,8 @@ describe('Mail mit Anhang', () => {
 		const result = await zustellen(mitAnhang(pdf(217_800)))
 
 		expect(result.kind).toBe('enqueued')
-		expect(sent.map((m) => m.to).sort()).toEqual([
+		// Der Empfaenger steht im KUVERT; `to` traegt die Listenadresse.
+		expect(sent.map((m) => m.envelope?.to).sort()).toEqual([
 			'anna@example.org',
 			'jan@example.org',
 		])
