@@ -65,7 +65,7 @@ export const buildQuittung = (
 
 	zeilen.push(
 		'',
-		'Diese Quittung bekommst du, weil du für diese Liste „Bestätigung“ eingestellt hast. Dafür kommt deine eigene Nachricht nicht mehr an dich zurück.',
+		'Diese Quittung bekommst du, weil du für diese Liste „Bestätigung statt Kopie“ eingestellt hast. Dafür kommt deine eigene Nachricht nicht mehr an dich zurück.',
 	)
 
 	return {

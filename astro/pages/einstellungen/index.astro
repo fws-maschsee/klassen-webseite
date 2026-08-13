@@ -82,17 +82,21 @@ const stehtImVerteiler = listMailingLists(db).some((liste) =>
 	),
 )
 
+/**
+ * Die Beschriftungen. Sie sind deutsch, die WERTE daneben englisch — das ist
+ * die Trennlinie: `copy` liest das Programm, „Kopie an mich" liest ein Mensch.
+ */
 const BEZEICHNUNG: Record<(typeof EIGENE_POST)[number], string> = {
-	kopie: 'Kopie an mich',
-	bestaetigung: 'Bestätigung, sobald sie zugestellt ist',
-	nichts: 'Nichts',
+	copy: 'Kopie an mich',
+	confirmation: 'Bestätigung, sobald sie zugestellt ist',
+	none: 'Nichts',
 }
 
 const ERKLAERUNG: Record<(typeof EIGENE_POST)[number], string> = {
-	kopie: 'Die eigene Nachricht kommt wie bei allen anderen zurück.',
-	bestaetigung:
+	copy: 'Die eigene Nachricht kommt wie bei allen anderen zurück.',
+	confirmation:
 		'Statt der eigenen Nachricht eine kurze Meldung: an wie viele zugestellt, und was gescheitert ist.',
-	nichts: 'Weder die eigene Nachricht noch eine Meldung.',
+	none: 'Weder die eigene Nachricht noch eine Meldung.',
 }
 ---
 

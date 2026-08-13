@@ -211,7 +211,7 @@ export const handleIncomingListMail = async (
 	// Zustellung nehmen.
 	const absender = normalizeEmail(envelopeFrom)
 	const ohneAbsender =
-		einstellungFuer(list.address, absender, db).ownMail !== 'kopie'
+		einstellungFuer(list.address, absender, db).ownMail !== 'copy'
 
 	const recipients = resolveListRecipients(list, db)
 		.filter((r) => !(ohneAbsender && normalizeEmail(r.email) === absender))

@@ -37,7 +37,7 @@ export const registerRecipientSettingsTools = (
 		{
 			title: 'Empfangs-Einstellungen einer Adresse',
 			description:
-				'Was diese Adresse von jedem Verteiler der Klasse bekommt. ZWEI unabhaengige Angaben je Verteiler: `subscribed` (bekommt sie die Post ueberhaupt?) und `ownMail` (was mit ihrer EIGENEN Nachricht passiert, wenn sie an den Verteiler schreibt: kopie = kommt zurueck, bestaetigung = stattdessen eine Quittung nach der Zustellung, nichts = weder noch). Beide sind unabhaengig: Wer abgemeldet ist, darf weiter an den Verteiler schreiben. Zeigt ALLE aktiven Verteiler, auch die, von denen die Adresse abgemeldet ist.',
+				'Was diese Adresse von jedem Verteiler der Klasse bekommt. ZWEI unabhaengige Angaben je Verteiler: `subscribed` (bekommt sie die Post ueberhaupt?) und `ownMail` (was mit ihrer EIGENEN Nachricht passiert, wenn sie an den Verteiler schreibt: copy = kommt zurueck, confirmation = stattdessen eine Quittung nach der Zustellung, none = weder noch). Beide sind unabhaengig: Wer abgemeldet ist, darf weiter an den Verteiler schreiben. Zeigt ALLE aktiven Verteiler, auch die, von denen die Adresse abgemeldet ist.',
 			inputSchema: { email: z.string().email() },
 		},
 		({ email }) => ({

@@ -74,7 +74,7 @@ const abo = (liste: string, mail: string, an: boolean) =>
 const eigene = (
 	liste: string,
 	mail: string,
-	wert: 'kopie' | 'bestaetigung' | 'nichts',
+	wert: 'copy' | 'confirmation' | 'none',
 ) =>
 	setzeEinstellung(
 		liste,
@@ -86,7 +86,7 @@ const eigene = (
 describe('Die Einstellung einer Adresse', () => {
 	test('ohne Eintrag gilt die Vorgabe', () => {
 		expect(einstellungFuer('eltern', 'vera@example.org', db)).toEqual(VORGABE)
-		expect(VORGABE).toEqual({ subscribed: true, ownMail: 'kopie' })
+		expect(VORGABE).toEqual({ subscribed: true, ownMail: 'copy' })
 	})
 
 	test('Abo und eigene Post sind unabhaengig voneinander', () => {
@@ -94,22 +94,22 @@ describe('Die Einstellung einer Adresse', () => {
 		// Verteiler schreiben — und will dann womoeglich gerade DESHALB eine
 		// Bestaetigung. In einem Feld mit vier Werten war das nicht ausdrueckbar.
 		liste()
-		eigene('eltern', 'vera@example.org', 'bestaetigung')
+		eigene('eltern', 'vera@example.org', 'confirmation')
 		abo('eltern', 'vera@example.org', false)
 
 		expect(einstellungFuer('eltern', 'vera@example.org', db)).toEqual({
 			subscribed: false,
-			ownMail: 'bestaetigung',
+			ownMail: 'confirmation',
 		})
 	})
 
 	test('eine Abmeldung vergisst die Versand-Einstellung nicht', () => {
 		liste()
-		eigene('eltern', 'vera@example.org', 'nichts')
+		eigene('eltern', 'vera@example.org', 'none')
 		abo('eltern', 'vera@example.org', false)
 		abo('eltern', 'vera@example.org', true)
 		expect(einstellungFuer('eltern', 'vera@example.org', db).ownMail).toBe(
-			'nichts',
+			'none',
 		)
 	})
 
@@ -134,9 +134,9 @@ describe('Die Einstellung einer Adresse', () => {
 	})
 
 	test('gilt unabhaengig von der Schreibweise der Adresse', () => {
-		eigene('eltern', 'Vera@Example.ORG', 'nichts')
+		eigene('eltern', 'Vera@Example.ORG', 'none')
 		expect(einstellungFuer('eltern', 'vera@example.org', db).ownMail).toBe(
-			'nichts',
+			'none',
 		)
 	})
 })
@@ -158,7 +158,7 @@ describe('Abgemeldete bekommen keine Post', () => {
 
 	test('der Umgang mit der eigenen Post aendert an der Zustellung nichts', () => {
 		const l = liste()
-		for (const wert of ['kopie', 'bestaetigung', 'nichts'] as const) {
+		for (const wert of ['copy', 'confirmation', 'none'] as const) {
 			eigene('eltern', 'anna@example.org', wert)
 			expect(resolveListRecipients(l, db)).toHaveLength(2)
 		}

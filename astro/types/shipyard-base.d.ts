@@ -16,6 +16,13 @@ import type { AstroIntegration } from 'astro'
  * falsch beschreibt, fällt erst im `astro build` der Verifikation auf — und
  * genau dafür gibt es sie.
  */
+export type NavigationEintrag = {
+	label?: string
+	href?: string
+	subEntry?: Record<string, NavigationEintrag>
+}
+export type NavigationTree = Record<string, NavigationEintrag>
+
 declare const shipyard: (config: {
 	brand: string
 	title: string
@@ -27,7 +34,14 @@ declare const shipyard: (config: {
 	 */
 	css: string
 	tagline?: string
-	navigation?: Record<string, { label: string; href: string }>
+	/**
+	 * Ein Eintrag mit `subEntry` wird als Aufklappmenue gerendert, in der
+	 * Leiste wie in der Seitenleiste; ein Elternteil ohne `href` ist reine
+	 * Gruppierung und selbst kein Ziel. Stand hier `{ label, href }`, war das
+	 * eine Einschraenkung DIESER Deklaration und keine von shipyard — die
+	 * Navigation liess sich damit nicht gruppieren, obwohl sie es koennte.
+	 */
+	navigation?: NavigationTree
 	scripts?: Array<Record<string, unknown>>
 	onBrokenLinks?: 'ignore' | 'warn' | 'throw'
 	footer?: { copyright?: string }

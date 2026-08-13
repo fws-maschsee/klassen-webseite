@@ -1,5 +1,5 @@
 /**
- * Der Weg einer Rundmail bei `bestaetigung`: Die Absenderin bekommt ihre eigene
+ * Der Weg einer Rundmail bei `confirmation`: Die Absenderin bekommt ihre eigene
  * Nachricht NICHT zurueck, sondern eine Quittung — und zwar erst, wenn die
  * Warteschlange die Liste durch hat.
  *
@@ -60,7 +60,7 @@ const verteilen = async (
 }
 
 /** Nur den Umgang mit der eigenen Post setzen. */
-const eigene = (mail: string, wert: 'kopie' | 'bestaetigung' | 'nichts') =>
+const eigene = (mail: string, wert: 'copy' | 'confirmation' | 'none') =>
 	setzeEinstellung(
 		'eltern',
 		mail,
@@ -113,7 +113,7 @@ beforeEach(() => {
 	)
 })
 
-describe('kopie — der Vorgabewert', () => {
+describe('copy — der Vorgabewert', () => {
 	test('die Absenderin bekommt ihre eigene Mail zurueck, keine Quittung', async () => {
 		await verteilen()
 		expect(
@@ -125,9 +125,9 @@ describe('kopie — der Vorgabewert', () => {
 	})
 })
 
-describe('nichts — ohne eigene Kopie, ohne Quittung', () => {
+describe('none — ohne eigene Kopie, ohne Quittung', () => {
 	test('die Absenderin faellt aus der Zustellung, die anderen nicht', async () => {
-		eigene('vera@example.org', 'nichts')
+		eigene('vera@example.org', 'none')
 		await verteilen()
 		expect(
 			rundmails()
@@ -138,9 +138,9 @@ describe('nichts — ohne eigene Kopie, ohne Quittung', () => {
 	})
 })
 
-describe('bestaetigung — Quittung statt Kopie', () => {
+describe('confirmation — Quittung statt Kopie', () => {
 	test('keine eigene Kopie, dafuer genau eine Quittung mit Zahlen', async () => {
-		eigene('vera@example.org', 'bestaetigung')
+		eigene('vera@example.org', 'confirmation')
 		await verteilen('Elternabend')
 
 		expect(
@@ -159,7 +159,7 @@ describe('bestaetigung — Quittung statt Kopie', () => {
 	})
 
 	test('nennt gescheiterte Zustellungen mit Adresse', async () => {
-		eigene('vera@example.org', 'bestaetigung')
+		eigene('vera@example.org', 'confirmation')
 		scheitert.add('bea@example.org')
 		await verteilen('Ausflug')
 
@@ -174,7 +174,7 @@ describe('bestaetigung — Quittung statt Kopie', () => {
 		// Der Fall, in dem eine Quittung am ehesten ausbliebe — und der, in dem
 		// sie am wichtigsten ist: Die Absenderin wartet sonst auf eine Nachricht,
 		// die nie kommt.
-		eigene('vera@example.org', 'bestaetigung')
+		eigene('vera@example.org', 'confirmation')
 		scheitert.add('anna@example.org')
 		scheitert.add('bea@example.org')
 		await verteilen()
@@ -185,7 +185,7 @@ describe('bestaetigung — Quittung statt Kopie', () => {
 	})
 
 	test('genau eine Quittung, auch wenn die Warteschlange erneut laeuft', async () => {
-		eigene('vera@example.org', 'bestaetigung')
+		eigene('vera@example.org', 'confirmation')
 		await verteilen()
 		for (;;) {
 			const batch = await processListBatch({ db, transport })
@@ -198,7 +198,7 @@ describe('bestaetigung — Quittung statt Kopie', () => {
 		// Die Rundmail ist zu diesem Zeitpunkt draussen. Ein Fehler beim
 		// Quittieren darf daran nichts mehr aendern und schon gar keinen erneuten
 		// Rundgang ausloesen.
-		eigene('vera@example.org', 'bestaetigung')
+		eigene('vera@example.org', 'confirmation')
 		scheitert.add('vera@example.org')
 		const ergebnis = await verteilen()
 

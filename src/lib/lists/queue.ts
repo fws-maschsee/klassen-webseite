@@ -91,7 +91,7 @@ export const processListOne = async (
 		// den Verteiler schreiben — und sieht das Ergebnis dann nirgends sonst.
 		if (
 			einstellungFuer(list.address, message.from_email, db).ownMail !==
-			'bestaetigung'
+			'confirmation'
 		) {
 			return
 		}

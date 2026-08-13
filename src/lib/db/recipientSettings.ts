@@ -10,9 +10,9 @@ import type { MailingListRow } from './types.ts'
  *
  *   subscribed   Bekomme ich die Post dieses Verteilers?     an / aus
  *   ownMail      Was passiert mit MEINER eigenen Nachricht,
- *                wenn ich an den Verteiler schreibe?         kopie /
- *                                                            bestaetigung /
- *                                                            nichts
+ *                wenn ich an den Verteiler schreibe?         copy /
+ *                                                            confirmation /
+ *                                                            none
  *
  * Anfangs war das EIN Feld mit vier Werten, `abgemeldet` als vierter. Das war
  * falsch, und zwar nicht bloß in der Darstellung: Wer abgemeldet ist, darf
@@ -27,12 +27,20 @@ import type { MailingListRow } from './types.ts'
  * nichts.
  */
 
-/** Was mit der eigenen Nachricht passiert, wenn man an die Liste schreibt. */
-export const EIGENE_POST = ['kopie', 'bestaetigung', 'nichts'] as const
+/**
+ * Was mit der eigenen Nachricht passiert, wenn man an die Liste schreibt.
+ *
+ * Die WERTE sind englisch, die Bezeichner drumherum deutsch — kein
+ * Widerspruch, sondern die Regel: Diese Werte stehen in der JSON-Antwort der
+ * MCP-Werkzeuge, in Formularwerten und in der CHECK-Bedingung der Datenbank,
+ * also ueberall dort, wo ein PROGRAMM liest. Was ein Mensch liest, steht als
+ * Beschriftung in der Oberflaeche.
+ */
+export const EIGENE_POST = ['copy', 'confirmation', 'none'] as const
 export type EigenePost = (typeof EIGENE_POST)[number]
 
 /** Was gilt, solange niemand etwas eingestellt hat. */
-export const VORGABE: Einstellung = { subscribed: true, ownMail: 'kopie' }
+export const VORGABE: Einstellung = { subscribed: true, ownMail: 'copy' }
 
 export type Einstellung = {
 	/** Bekommt diese Adresse die Post des Verteilers? */

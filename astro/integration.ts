@@ -14,6 +14,7 @@ import {
 } from '../src/klasse/config.ts'
 import { GETEILTE_ROUTEN } from '../src/klasse/routes.ts'
 import { remarkAdmonitionLabels } from '../src/remark/admonitionLabels.ts'
+import type { NavigationTree } from './types/shipyard-base.js'
 
 /**
  * Diese Datei ist TypeScript und bleibt es — es gibt hier nichts mehr, was
@@ -52,8 +53,11 @@ export type FwsKlasseOptions = {
 	 * Zusätzliche Einträge in der Hauptnavigation, zwischen „Berichte" und
 	 * „Mailverteiler". Für Klassen mit einer eigenen Seite; die Regelklasse
 	 * braucht das nicht.
+	 *
+	 * Ein Eintrag darf ein `subEntry` tragen und wird dann als Aufklappmenü
+	 * gerendert — der Typ kommt aus `astro/types/shipyard-base.d.ts`.
 	 */
-	navigation?: Record<string, { label: string; href: string }>
+	navigation?: NavigationTree
 }
 
 const VIRTUELLES_MODUL = 'virtual:fws-klasse/config'
@@ -214,13 +218,41 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 			// vergisst oder überschreibt, hätte eine Seite ohne Anbieterangabe.
 			// Ändert sich die Anschrift, ändert sie sich hier einmal.
 			footer: { copyright: BETREIBER },
+			// Zwei Untermenues statt sieben Eintraegen nebeneinander. shipyard
+			// rendert einen Eintrag mit `subEntry` als Aufklappmenue (in der
+			// Leiste wie in der Seitenleiste); ein Elternteil ohne `href` ist
+			// reine Gruppierung und selbst kein Ziel.
+			//
+			// Gruppiert ist nach Zustaendigkeit, nicht nach Technik:
+			//
+			//   Mailverteiler  was die Klasse als Ganzes betrifft (welche Listen
+			//                  gibt es) UND was nur mich betrifft (was bekomme
+			//                  ich davon). Beides ist derselbe Gegenstand.
+			//   Verwaltung     was nur die pflegt, die die Seite betreiben —
+			//                  daher gehoert der Quelltext dorthin und nicht in
+			//                  die oberste Reihe, wo er fuer Eltern wie ein
+			//                  Angebot aussieht.
 			navigation: {
 				unterlagen: { label: 'Unterlagen', href: '/docs' },
 				berichte: { label: 'Berichte', href: '/blog' },
 				...(options.navigation ?? {}),
-				verteiler: { label: 'Mailverteiler', href: '/verteiler' },
-				github: { label: 'GitHub', href: config.repoUrl },
-				verwaltung: { label: 'Verwaltung', href: '/verwaltung' },
+				verteiler: {
+					label: 'Mailverteiler',
+					subEntry: {
+						uebersicht: { label: 'Übersicht', href: '/verteiler' },
+						einstellungen: {
+							label: 'Meine Einstellungen',
+							href: '/einstellungen',
+						},
+					},
+				},
+				verwaltung: {
+					label: 'Verwaltung',
+					subEntry: {
+						klasse: { label: 'Klasse verwalten', href: '/verwaltung' },
+						quelltext: { label: 'Quelltext (GitHub)', href: config.repoUrl },
+					},
+				},
 				logout: { label: 'Abmelden', href: '/logout' },
 			},
 			scripts: [
