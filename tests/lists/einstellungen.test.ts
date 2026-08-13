@@ -20,8 +20,8 @@ import { upsertMitglied } from '../../src/lib/db/members.ts'
 import {
 	adresseZuToken,
 	einstellungenFuer,
-	modusFuer,
-	setzeModus,
+	einstellungFuer,
+	setzeEinstellung,
 	tokenFuer,
 	VORGABE,
 } from '../../src/lib/db/recipientSettings.ts'
@@ -61,10 +61,56 @@ beforeEach(() => {
 	}
 })
 
-describe('Der Modus einer Adresse', () => {
+/** Nur das Abo umstellen, die eigene Post lassen, wie sie war. */
+const abo = (liste: string, mail: string, an: boolean) =>
+	setzeEinstellung(
+		liste,
+		mail,
+		{ ...einstellungFuer(liste, mail, db), subscribed: an },
+		db,
+	)
+
+/** Nur den Umgang mit der eigenen Post umstellen. */
+const eigene = (
+	liste: string,
+	mail: string,
+	wert: 'kopie' | 'bestaetigung' | 'nichts',
+) =>
+	setzeEinstellung(
+		liste,
+		mail,
+		{ ...einstellungFuer(liste, mail, db), ownMail: wert },
+		db,
+	)
+
+describe('Die Einstellung einer Adresse', () => {
 	test('ohne Eintrag gilt die Vorgabe', () => {
-		expect(modusFuer('eltern', 'vera@example.org', db)).toBe(VORGABE)
-		expect(VORGABE).toBe('kopie')
+		expect(einstellungFuer('eltern', 'vera@example.org', db)).toEqual(VORGABE)
+		expect(VORGABE).toEqual({ subscribed: true, ownMail: 'kopie' })
+	})
+
+	test('Abo und eigene Post sind unabhaengig voneinander', () => {
+		// Der Grund fuer die Trennung: Wer abgemeldet ist, darf weiter an den
+		// Verteiler schreiben — und will dann womoeglich gerade DESHALB eine
+		// Bestaetigung. In einem Feld mit vier Werten war das nicht ausdrueckbar.
+		liste()
+		eigene('eltern', 'vera@example.org', 'bestaetigung')
+		abo('eltern', 'vera@example.org', false)
+
+		expect(einstellungFuer('eltern', 'vera@example.org', db)).toEqual({
+			subscribed: false,
+			ownMail: 'bestaetigung',
+		})
+	})
+
+	test('eine Abmeldung vergisst die Versand-Einstellung nicht', () => {
+		liste()
+		eigene('eltern', 'vera@example.org', 'nichts')
+		abo('eltern', 'vera@example.org', false)
+		abo('eltern', 'vera@example.org', true)
+		expect(einstellungFuer('eltern', 'vera@example.org', db).ownMail).toBe(
+			'nichts',
+		)
 	})
 
 	test('wird je Liste gespeichert, nicht je Adresse', () => {
@@ -77,15 +123,21 @@ describe('Der Modus einer Adresse', () => {
 			db,
 		)
 		liste()
-		setzeModus('nureltern', 'vera@example.org', 'abgemeldet', db)
+		abo('nureltern', 'vera@example.org', false)
 
-		expect(modusFuer('nureltern', 'vera@example.org', db)).toBe('abgemeldet')
-		expect(modusFuer('eltern', 'vera@example.org', db)).toBe('kopie')
+		expect(
+			einstellungFuer('nureltern', 'vera@example.org', db).subscribed,
+		).toBe(false)
+		expect(einstellungFuer('eltern', 'vera@example.org', db).subscribed).toBe(
+			true,
+		)
 	})
 
 	test('gilt unabhaengig von der Schreibweise der Adresse', () => {
-		setzeModus('eltern', 'Vera@Example.ORG', 'nichts', db)
-		expect(modusFuer('eltern', 'vera@example.org', db)).toBe('nichts')
+		eigene('eltern', 'Vera@Example.ORG', 'nichts')
+		expect(einstellungFuer('eltern', 'vera@example.org', db).ownMail).toBe(
+			'nichts',
+		)
 	})
 })
 
@@ -98,21 +150,21 @@ describe('Abgemeldete bekommen keine Post', () => {
 				.sort(),
 		).toEqual(['anna@example.org', 'vera@example.org'])
 
-		setzeModus('eltern', 'anna@example.org', 'abgemeldet', db)
+		abo('eltern', 'anna@example.org', false)
 		expect(resolveListRecipients(l, db).map((r) => r.email)).toEqual([
 			'vera@example.org',
 		])
 	})
 
-	test('die anderen drei Modi aendern an der Zustellung nichts', () => {
+	test('der Umgang mit der eigenen Post aendert an der Zustellung nichts', () => {
 		const l = liste()
-		for (const modus of ['kopie', 'bestaetigung', 'nichts'] as const) {
-			setzeModus('eltern', 'anna@example.org', modus, db)
+		for (const wert of ['kopie', 'bestaetigung', 'nichts'] as const) {
+			eigene('eltern', 'anna@example.org', wert)
 			expect(resolveListRecipients(l, db)).toHaveLength(2)
 		}
 	})
 
-	test('eine Sperre bleibt eine Sperre — auch bei "kopie"', () => {
+	test('eine Sperre bleibt eine Sperre — auch bei aktivem Abo', () => {
 		// Die beiden Ebenen sind getrennt: Was das System festgestellt hat
 		// (Bounce), hebt keine Einstellung auf. Sonst holte sich jemand mit einem
 		// Klick eine tote Adresse zurueck in den Verteiler.
@@ -121,7 +173,7 @@ describe('Abgemeldete bekommen keine Post', () => {
 			{ email: 'anna@example.org', list_address: 'eltern', source: 'bounce' },
 			db,
 		)
-		setzeModus('eltern', 'anna@example.org', 'kopie', db)
+		abo('eltern', 'anna@example.org', true)
 		expect(resolveListRecipients(l, db).map((r) => r.email)).toEqual([
 			'vera@example.org',
 		])
@@ -165,7 +217,7 @@ describe('Die Einstellungsseite zeigt alle aktiven Listen', () => {
 			},
 			db,
 		)
-		setzeModus('eltern', 'vera@example.org', 'abgemeldet', db)
+		abo('eltern', 'vera@example.org', false)
 
 		const zeilen = einstellungenFuer(
 			'vera@example.org',
@@ -173,8 +225,8 @@ describe('Die Einstellungsseite zeigt alle aktiven Listen', () => {
 			db,
 		)
 		expect(zeilen.map((z) => z.address).sort()).toEqual(['eltern', 'nureltern'])
-		expect(zeilen.find((z) => z.address === 'eltern')?.mode).toBe('abgemeldet')
-		expect(zeilen.find((z) => z.address === 'nureltern')?.mode).toBe('kopie')
+		expect(zeilen.find((z) => z.address === 'eltern')?.subscribed).toBe(false)
+		expect(zeilen.find((z) => z.address === 'nureltern')?.subscribed).toBe(true)
 	})
 
 	test('inaktive Listen stehen nicht darauf', () => {

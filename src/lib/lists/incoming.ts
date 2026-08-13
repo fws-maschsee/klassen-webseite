@@ -7,7 +7,7 @@ import {
 	normalizeEmail,
 	resolveListRecipients,
 } from '../db/mailingLists.ts'
-import { modusFuer } from '../db/recipientSettings.ts'
+import { einstellungFuer } from '../db/recipientSettings.ts'
 
 /**
  * Ergebnis der Eingangsverarbeitung. Die vier Fälle sind bewusst unterschieden,
@@ -210,9 +210,8 @@ export const handleIncomingListMail = async (
 	// als jemand anderes ausgibt, koennte damit sonst gezielt eine Person aus der
 	// Zustellung nehmen.
 	const absender = normalizeEmail(envelopeFrom)
-	const absenderModus = modusFuer(list.address, absender, db)
 	const ohneAbsender =
-		absenderModus === 'bestaetigung' || absenderModus === 'nichts'
+		einstellungFuer(list.address, absender, db).ownMail !== 'kopie'
 
 	const recipients = resolveListRecipients(list, db)
 		.filter((r) => !(ohneAbsender && normalizeEmail(r.email) === absender))

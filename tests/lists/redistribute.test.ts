@@ -33,12 +33,13 @@ const LIST_DOMAIN = 'klasse-beispiel.lists.example.org'
 const LIST_ADDRESS = `eltern@${LIST_DOMAIN}`
 const EMPFAENGERIN = 'anna@example.org'
 /**
- * Die persoenliche Einstellungsseite dieser Empfaengerin. Sie gehoert in den
+ * Der persoenliche ABMELDE-Link dieser Empfaengerin. Er gehoert in den
  * `List-Unsubscribe`-Header und NIRGENDWO sonst — der Test unten haelt genau
- * das fest.
+ * das fest. Der Fuss im Rumpf nennt stattdessen den Einstellungsbereich hinter
+ * dem Login, der ohne Schluessel auskommt.
  */
 const EINSTELLUNGS_URL =
-	'https://klasse-beispiel.example.org/public/einstellungen/GEHEIM123'
+	'https://klasse-beispiel.example.org/public/abmelden/GEHEIM123?liste=eltern'
 
 beforeEach(() => {
 	db = createTestDb()
@@ -153,7 +154,7 @@ describe('Der Fuss: warum diese Mail kommt und wie man herauskommt', () => {
 	const GRUND =
 		'Sie erhalten diese Nachricht, weil Ihre Adresse im Verteiler „Eltern“ der Klasse Beispiel steht (eltern@klasse-beispiel.lists.example.org).'
 	const AUSWEG =
-		'Was Sie von diesem Verteiler bekommen — bis hin zum Abmelden — stellen Sie hier selbst ein: https://klasse-beispiel.example.org/public/einstellungen'
+		'Was Sie von diesem Verteiler bekommen, stellen Sie nach der Anmeldung selbst ein: https://klasse-beispiel.example.org/einstellungen'
 	const MENSCH =
 		'Lieber persönlich? Dann genügt eine Nachricht an verwaltung@example.org.'
 
@@ -169,7 +170,7 @@ describe('Der Fuss: warum diese Mail kommt und wie man herauskommt', () => {
 		const sent = bauen()
 		expect(sent.html).toContain('Sie erhalten diese Nachricht')
 		expect(sent.html).toContain(
-			'<a href="https://klasse-beispiel.example.org/public/einstellungen">',
+			'<a href="https://klasse-beispiel.example.org/einstellungen">',
 		)
 	})
 

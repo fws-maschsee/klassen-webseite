@@ -2,9 +2,10 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { listMailingLists } from '../../../lib/db/mailingLists.ts'
 import {
+	EIGENE_POST,
 	einstellungenFuer,
-	MODI,
-	setzeModus,
+	einstellungFuer,
+	setzeEinstellung,
 } from '../../../lib/db/recipientSettings.ts'
 import type { McpAuth } from '../guard.ts'
 import { registerPersonalDataTool, registerWriteTool } from '../guard.ts'
@@ -36,7 +37,7 @@ export const registerRecipientSettingsTools = (
 		{
 			title: 'Empfangs-Einstellungen einer Adresse',
 			description:
-				'Was diese Adresse von jedem Verteiler der Klasse bekommt: kopie (alles, auch die eigene Mail zurueck — der Vorgabewert), bestaetigung (alles ausser der eigenen Mail; stattdessen eine Quittung, sobald die eigene Rundmail zugestellt ist), nichts (alles ausser der eigenen Mail, ohne Quittung), abgemeldet (gar keine Post von diesem Verteiler). Zeigt ALLE aktiven Verteiler, auch die, von denen die Adresse abgemeldet ist.',
+				'Was diese Adresse von jedem Verteiler der Klasse bekommt. ZWEI unabhaengige Angaben je Verteiler: `subscribed` (bekommt sie die Post ueberhaupt?) und `ownMail` (was mit ihrer EIGENEN Nachricht passiert, wenn sie an den Verteiler schreibt: kopie = kommt zurueck, bestaetigung = stattdessen eine Quittung nach der Zustellung, nichts = weder noch). Beide sind unabhaengig: Wer abgemeldet ist, darf weiter an den Verteiler schreiben. Zeigt ALLE aktiven Verteiler, auch die, von denen die Adresse abgemeldet ist.',
 			inputSchema: { email: z.string().email() },
 		},
 		({ email }) => ({
@@ -59,16 +60,17 @@ export const registerRecipientSettingsTools = (
 		{
 			title: 'Empfangs-Einstellung einer Adresse setzen',
 			description:
-				'Setzt fuer EINE Adresse und EINEN Verteiler, was sie bekommt. Werte: kopie, bestaetigung, nichts, abgemeldet (Bedeutung siehe get_recipient_settings). Gilt ab der naechsten Nachricht. ACHTUNG: "abgemeldet" nimmt jemandem die Post, ohne dass er es merkt — dafuer sollte eine Ansage der Person selbst vorliegen. Wer wegen einer unzustellbaren Adresse gesperrt werden soll, gehoert nicht hierher, sondern zu suppress_list_recipient: Das eine ist ein Wunsch, das andere eine Feststellung.',
+				'Setzt fuer EINE Adresse und EINEN Verteiler, was sie bekommt. Beide Angaben sind optional; weggelassen bleibt, was steht. `subscribed: false` nimmt jemandem die Post, OHNE dass er es merkt — dafuer sollte eine Ansage der Person selbst vorliegen. `own_mail` steuert nur die eigene Nachricht und gilt auch fuer Abgemeldete. Wer wegen einer unzustellbaren Adresse gesperrt werden soll, gehoert nicht hierher, sondern zu suppress_list_recipient: Das eine ist ein Wunsch, das andere eine Feststellung.',
 			inputSchema: {
 				email: z.string().email(),
 				list_address: z
 					.string()
 					.regex(/^[a-z0-9]+([._-][a-z0-9]+)*$/, 'Localpart der Liste'),
-				mode: z.enum(MODI),
+				subscribed: z.boolean().optional(),
+				own_mail: z.enum(EIGENE_POST).optional(),
 			},
 		},
-		({ email, list_address, mode }) => {
+		({ email, list_address, subscribed, own_mail }) => {
 			const listen = listMailingLists()
 			const liste = listen.find((l) => l.address === list_address)
 			if (!liste) {
@@ -85,12 +87,20 @@ export const registerRecipientSettingsTools = (
 				}
 			}
 
-			setzeModus(list_address, email, mode)
+			const vorher = einstellungFuer(list_address, email)
+			const nachher = {
+				subscribed: subscribed ?? vorher.subscribed,
+				ownMail: own_mail ?? vorher.ownMail,
+			}
+			setzeEinstellung(list_address, email, nachher)
+
 			return {
 				content: [
 					{
 						type: 'text' as const,
-						text: `${email} auf "${mode}" fuer den Verteiler ${liste.label} (${list_address}) gesetzt.`,
+						text: `${email} beim Verteiler ${liste.label} (${list_address}): ${
+							nachher.subscribed ? 'bekommt Post' : 'ABGEMELDET'
+						}, eigene Nachricht -> ${nachher.ownMail}.`,
 					},
 				],
 			}

@@ -1,0 +1,183 @@
+---
+import Layout from '@levino/shipyard-base/layouts/Page.astro'
+import { klassenConfig } from '../../../src/klasse/config.ts'
+import { openDb } from '../../../src/lib/db/index.ts'
+import {
+	listMailingLists,
+	normalizeEmail,
+	resolveListRecipients,
+} from '../../../src/lib/db/mailingLists.ts'
+import {
+	EIGENE_POST,
+	einstellungenFuer,
+	istEigenePost,
+	setzeEinstellung,
+	VORGABE,
+} from '../../../src/lib/db/recipientSettings.ts'
+
+export const prerender = false
+
+/**
+ * „Was bekomme ich von den Verteilern?" — hinter dem Login, mit der normalen
+ * Navigation. Wer hier ist, ist angemeldet und zu Hause; die Seite gehört zur
+ * Website und nicht in einen Sonderweg.
+ *
+ * ZWEI FRAGEN, GETRENNT:
+ *
+ *   1. Bekomme ich die Post dieses Verteilers?  (an / aus)
+ *   2. Was passiert mit MEINER eigenen Nachricht, wenn ich an den Verteiler
+ *      schreibe?  (Kopie zurück / Bestätigung / nichts)
+ *
+ * Sie sind unabhängig voneinander, und deshalb stehen sie nicht in einer Liste
+ * von vier Möglichkeiten: Wer abgemeldet ist, darf weiter an den Verteiler
+ * schreiben — und will dann womöglich gerade DESHALB eine Bestätigung, weil er
+ * das Ergebnis sonst nirgends zu sehen bekommt.
+ *
+ * WELCHE ADRESSE? Die der Anmeldung. ZITADEL und das Adressbuch sind getrennte
+ * Datenschichten, und das bleibt so: Hier wird nichts gespiegelt und nichts
+ * verknüpft, sondern im Moment des Aufrufs nachgesehen, ob die Anmeldeadresse
+ * auf einem Verteiler steht. Steht sie dort nicht, sagt die Seite das — dann
+ * ist die Adresse im Verteiler eine andere, und das kann nur ein Mensch
+ * auflösen.
+ */
+
+const { label: klasse, contactMail, contactName } = klassenConfig()
+const db = openDb()
+
+// `Astro.locals.user` setzt die Anmelde-Middleware. Ohne sie kommt hier
+// niemand an — dieser Pfad steht nicht in `PUBLIC_PATHS`.
+const adresse = normalizeEmail(Astro.locals.user?.email ?? '')
+
+let gespeichert = false
+
+if (adresse && Astro.request.method === 'POST') {
+	const formular = await Astro.request.formData()
+	for (const liste of listMailingLists(db)) {
+		const eigene = formular.get(`eigene:${liste.address}`)
+		setzeEinstellung(
+			liste.address,
+			adresse,
+			{
+				// Eine nicht angekreuzte Box schickt gar nichts mit — Abwesenheit IST
+				// hier die Angabe „aus".
+				subscribed: formular.get(`abo:${liste.address}`) === 'an',
+				ownMail: istEigenePost(eigene) ? eigene : VORGABE.ownMail,
+			},
+			db,
+		)
+	}
+	gespeichert = true
+}
+
+const listen = adresse ? einstellungenFuer(adresse, listMailingLists(db), db) : []
+
+/**
+ * Steht die Anmeldeadresse überhaupt auf einem Verteiler? Nur dann sind die
+ * Schalter mehr als eine Absichtserklärung — sonst stellt jemand etwas für eine
+ * Adresse ein, die nie angeschrieben wird, und wundert sich.
+ */
+const stehtImVerteiler = listMailingLists(db).some((liste) =>
+	resolveListRecipients(liste, db).some(
+		(empfaenger) => normalizeEmail(empfaenger.email) === adresse,
+	),
+)
+
+const BEZEICHNUNG: Record<(typeof EIGENE_POST)[number], string> = {
+	kopie: 'Kopie an mich',
+	bestaetigung: 'Bestätigung, sobald sie zugestellt ist',
+	nichts: 'Nichts',
+}
+
+const ERKLAERUNG: Record<(typeof EIGENE_POST)[number], string> = {
+	kopie: 'Die eigene Nachricht kommt wie bei allen anderen zurück.',
+	bestaetigung:
+		'Statt der eigenen Nachricht eine kurze Meldung: an wie viele zugestellt, und was gescheitert ist.',
+	nichts: 'Weder die eigene Nachricht noch eine Meldung.',
+}
+---
+
+<Layout title="Einstellungen">
+	<div class="prose max-w-2xl">
+		<h1>Verteiler-Einstellungen</h1>
+
+		<p>
+			Für <strong>{adresse}</strong> — die Adresse, mit der du angemeldet bist.
+		</p>
+
+		{
+			!stehtImVerteiler && (
+				<div class="not-prose rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm">
+					<p>
+						<strong>Diese Adresse steht auf keinem Verteiler der {klasse}.</strong>
+					</p>
+					<p class="mt-2">
+						Anmeldung und Verteiler sind getrennt: Im Verteiler kann eine andere
+						Adresse von dir stehen. Was du hier einstellst, gilt für die
+						Anmeldeadresse und bliebe wirkungslos. Schreib{' '}
+						<a href={`mailto:${contactMail}`}>{contactName ?? contactMail}</a>,
+						dann wird das zusammengeführt.
+					</p>
+				</div>
+			)
+		}
+
+		{
+			gespeichert && (
+				<p class="text-success">
+					<strong>Gespeichert.</strong> Ab der nächsten Nachricht gilt das Neue.
+				</p>
+			)
+		}
+
+		<form method="POST" class="not-prose flex flex-col gap-8">
+			{
+				listen.map((liste) => (
+					<section class="border border-base-300 rounded-lg p-4">
+						<h2 class="font-semibold text-lg">{liste.label}</h2>
+						<p class="text-sm opacity-70 mb-4">{liste.address}</p>
+
+						<label class="flex items-center gap-3 cursor-pointer">
+							<input
+								type="checkbox"
+								name={`abo:${liste.address}`}
+								value="an"
+								checked={liste.subscribed}
+								class="toggle toggle-sm"
+							/>
+							<span>Post von diesem Verteiler bekommen</span>
+						</label>
+
+						{/* Die zweite Frage steht bewusst NICHT unter der ersten als deren
+						    Unterpunkt: Sie gilt auch für Abgemeldete, weil die weiter an
+						    den Verteiler schreiben dürfen. */}
+						<fieldset class="mt-5 border-t border-base-300 pt-4">
+							<legend class="text-sm font-semibold px-1">
+								Wenn ich selbst an diesen Verteiler schreibe
+							</legend>
+							<div class="flex flex-col gap-2 mt-2">
+								{EIGENE_POST.map((wert) => (
+									<label class="flex items-start gap-3 cursor-pointer">
+										<input
+											type="radio"
+											name={`eigene:${liste.address}`}
+											value={wert}
+											checked={liste.ownMail === wert}
+											class="radio radio-sm mt-1"
+										/>
+										<span>
+											<span class="font-medium">{BEZEICHNUNG[wert]}</span>
+											<br />
+											<span class="text-sm opacity-70">{ERKLAERUNG[wert]}</span>
+										</span>
+									</label>
+								))}
+							</div>
+						</fieldset>
+					</section>
+				))
+			}
+
+			<button type="submit" class="btn btn-primary self-start">Speichern</button>
+		</form>
+	</div>
+</Layout>

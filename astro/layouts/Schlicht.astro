@@ -1,0 +1,54 @@
+---
+import 'virtual:shipyard/css'
+import Footer from '@levino/shipyard-base/layouts/Footer.astro'
+
+/**
+ * Eine Seite ohne Navigation — für Leute, die von einem Link aus einer Mail
+ * kommen und mit dieser Website sonst nichts zu tun haben.
+ *
+ * shipyards `Page.astro` rendert die globale Navigation immer; einen Schalter
+ * dagegen gibt es nicht, und es braucht auch keinen: Eine eigene Vorlage ist der
+ * vorgesehene Weg. Sie nimmt sich dasselbe Stylesheet (`virtual:shipyard/css`)
+ * und denselben Fuß, lässt aber alles weg, was woandershin führt.
+ *
+ * WARUM: Wer den Abmelde-Knopf seines Mailprogramms drückt, will eine Sache
+ * erledigen. Eine Navigation mit /docs, /blog, /verteiler und /verwaltung stellt
+ * ihm stattdessen vier Türen hin, hinter denen die Anmeldemaske steht — er hat
+ * ja keine Sitzung. Das sieht nach einem Fehler aus, ist aber nur ein Angebot,
+ * das ihn nichts angeht.
+ *
+ * Der Fuß bleibt: Die Anbieterkennzeichnung gehört auf jede Seite, unabhängig
+ * davon, wer sie aufruft.
+ */
+
+type Props = {
+	title: string
+	/** Kurze Einordnung unter dem Titel; sagt, WO man hier gelandet ist. */
+	untertitel?: string
+}
+
+const { title, untertitel } = Astro.props
+---
+
+<html lang="de">
+	<head>
+		<meta charset="utf-8" />
+		<title>{title}</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		{/* Diese Seite ist für genau eine Person gedacht und hat in keinem
+		    Suchindex etwas verloren — erst recht nicht mit dem Schlüssel im Pfad. */}
+		<meta name="robots" content="noindex, nofollow" />
+	</head>
+	<body class="flex min-h-screen flex-col bg-base-100">
+		<main class="grow">
+			<div class="mx-auto max-w-2xl px-4 py-10">
+				<header class="mb-8">
+					<h1 class="text-2xl font-semibold">{title}</h1>
+					{untertitel && <p class="mt-1 text-sm opacity-70">{untertitel}</p>}
+				</header>
+				<slot />
+			</div>
+		</main>
+		<Footer />
+	</body>
+</html>

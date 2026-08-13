@@ -36,11 +36,11 @@ describe('GETEILTE_ROUTEN', () => {
 			// Aufruf von aussen mit einer Weiterleitung zur Anmeldung — und die
 			// sieht wie „Anwendung laeuft" aus, weil sie eine Antwort ist.
 			'/public/health',
-			// Beide unter /public/, aus demselben Grund wie /public/health: Der Pfad
-			// ist schon anmeldefrei. Wer sich abmelden will, darf dafuer nicht erst
-			// eine Anmeldung durchlaufen muessen.
-			'/public/einstellungen',
-			'/public/einstellungen/[token]',
+			// Der Einstellungsbereich liegt HINTER dem Login und deshalb nicht unter
+			// /public/. Das Abmelden dagegen muss ohne Konto gehen — wer raus will,
+			// soll dafuer nicht erst eines anlegen.
+			'/einstellungen',
+			'/public/abmelden/[token]',
 		]) {
 			expect(muster).toContain(pflicht)
 		}

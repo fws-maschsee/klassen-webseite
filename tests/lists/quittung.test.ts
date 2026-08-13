@@ -14,7 +14,10 @@ import { beforeEach, describe, expect, test } from 'vitest'
 import { upsertGroup } from '../../src/lib/db/groups.ts'
 import { upsertMailingList } from '../../src/lib/db/mailingLists.ts'
 import { upsertMitglied } from '../../src/lib/db/members.ts'
-import { setzeModus } from '../../src/lib/db/recipientSettings.ts'
+import {
+	einstellungFuer,
+	setzeEinstellung,
+} from '../../src/lib/db/recipientSettings.ts'
 import type { SendInput } from '../../src/lib/email/transport.ts'
 import { handleIncomingListMail } from '../../src/lib/lists/incoming.ts'
 import { processListBatch } from '../../src/lib/lists/queue.ts'
@@ -55,6 +58,24 @@ const verteilen = async (
 	}
 	return ergebnis
 }
+
+/** Nur den Umgang mit der eigenen Post setzen. */
+const eigene = (mail: string, wert: 'kopie' | 'bestaetigung' | 'nichts') =>
+	setzeEinstellung(
+		'eltern',
+		mail,
+		{ ...einstellungFuer('eltern', mail, db), ownMail: wert },
+		db,
+	)
+
+/** Nur das Abo setzen. */
+const abo = (mail: string, an: boolean) =>
+	setzeEinstellung(
+		'eltern',
+		mail,
+		{ ...einstellungFuer('eltern', mail, db), subscribed: an },
+		db,
+	)
 
 /** Die Quittung erkennt man am Header, nicht am Betreff. */
 const quittungen = () => sent.filter((m) => m.headers?.['X-List-Receipt'])
@@ -106,7 +127,7 @@ describe('kopie — der Vorgabewert', () => {
 
 describe('nichts — ohne eigene Kopie, ohne Quittung', () => {
 	test('die Absenderin faellt aus der Zustellung, die anderen nicht', async () => {
-		setzeModus('eltern', 'vera@example.org', 'nichts', db)
+		eigene('vera@example.org', 'nichts')
 		await verteilen()
 		expect(
 			rundmails()
@@ -119,7 +140,7 @@ describe('nichts — ohne eigene Kopie, ohne Quittung', () => {
 
 describe('bestaetigung — Quittung statt Kopie', () => {
 	test('keine eigene Kopie, dafuer genau eine Quittung mit Zahlen', async () => {
-		setzeModus('eltern', 'vera@example.org', 'bestaetigung', db)
+		eigene('vera@example.org', 'bestaetigung')
 		await verteilen('Elternabend')
 
 		expect(
@@ -138,7 +159,7 @@ describe('bestaetigung — Quittung statt Kopie', () => {
 	})
 
 	test('nennt gescheiterte Zustellungen mit Adresse', async () => {
-		setzeModus('eltern', 'vera@example.org', 'bestaetigung', db)
+		eigene('vera@example.org', 'bestaetigung')
 		scheitert.add('bea@example.org')
 		await verteilen('Ausflug')
 
@@ -153,7 +174,7 @@ describe('bestaetigung — Quittung statt Kopie', () => {
 		// Der Fall, in dem eine Quittung am ehesten ausbliebe — und der, in dem
 		// sie am wichtigsten ist: Die Absenderin wartet sonst auf eine Nachricht,
 		// die nie kommt.
-		setzeModus('eltern', 'vera@example.org', 'bestaetigung', db)
+		eigene('vera@example.org', 'bestaetigung')
 		scheitert.add('anna@example.org')
 		scheitert.add('bea@example.org')
 		await verteilen()
@@ -164,7 +185,7 @@ describe('bestaetigung — Quittung statt Kopie', () => {
 	})
 
 	test('genau eine Quittung, auch wenn die Warteschlange erneut laeuft', async () => {
-		setzeModus('eltern', 'vera@example.org', 'bestaetigung', db)
+		eigene('vera@example.org', 'bestaetigung')
 		await verteilen()
 		for (;;) {
 			const batch = await processListBatch({ db, transport })
@@ -177,7 +198,7 @@ describe('bestaetigung — Quittung statt Kopie', () => {
 		// Die Rundmail ist zu diesem Zeitpunkt draussen. Ein Fehler beim
 		// Quittieren darf daran nichts mehr aendern und schon gar keinen erneuten
 		// Rundgang ausloesen.
-		setzeModus('eltern', 'vera@example.org', 'bestaetigung', db)
+		eigene('vera@example.org', 'bestaetigung')
 		scheitert.add('vera@example.org')
 		const ergebnis = await verteilen()
 
@@ -193,7 +214,7 @@ describe('bestaetigung — Quittung statt Kopie', () => {
 
 describe('abgemeldet', () => {
 	test('bekommt weder Rundmail noch Quittung', async () => {
-		setzeModus('eltern', 'anna@example.org', 'abgemeldet', db)
+		abo('anna@example.org', false)
 		await verteilen()
 		expect(
 			rundmails()

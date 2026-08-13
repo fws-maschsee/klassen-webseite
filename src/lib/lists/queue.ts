@@ -9,7 +9,7 @@ import {
 	peekListOutbound,
 } from '../db/listQueue.ts'
 import { getMailingList } from '../db/mailingLists.ts'
-import { modusFuer, tokenFuer } from '../db/recipientSettings.ts'
+import { einstellungFuer, tokenFuer } from '../db/recipientSettings.ts'
 import { countSentInLastHour } from '../db/sendLog.ts'
 import type {
 	ListMessageRow,
@@ -20,7 +20,7 @@ import type { EmailTransport } from '../email/transport.ts'
 import { sesTransport } from '../email/transport.ts'
 import { sendeQuittungFallsFaellig } from './receipt.ts'
 import { buildListSendInput } from './redistribute.ts'
-import { persoenlicheUrl } from './settingsLink.ts'
+import { abmeldeUrl } from './settingsLink.ts'
 
 /**
  * Obergrenze je gleitender Stunde, geteilt mit dem Rundmail-Versand.
@@ -87,7 +87,12 @@ export const processListOne = async (
 		message: ListMessageRow,
 		list: MailingListRow,
 	): Promise<void> => {
-		if (modusFuer(list.address, message.from_email, db) !== 'bestaetigung') {
+		// Haengt NUR an `ownMail`, nicht am Abo: Wer abgemeldet ist, darf weiter an
+		// den Verteiler schreiben — und sieht das Ergebnis dann nirgends sonst.
+		if (
+			einstellungFuer(list.address, message.from_email, db).ownMail !==
+			'bestaetigung'
+		) {
 			return
 		}
 		await sendeQuittungFallsFaellig(message, list, db, transport)
@@ -116,7 +121,7 @@ export const processListOne = async (
 			attachments,
 			list,
 			row.recipient_email,
-			persoenlicheUrl(tokenFuer(row.recipient_email, db)),
+			abmeldeUrl(tokenFuer(row.recipient_email, db), list.address),
 		)
 
 		const { messageId } = await transport.send(input)

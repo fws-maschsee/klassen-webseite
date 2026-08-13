@@ -214,8 +214,12 @@ const buildOptOutFooter = (list: MailingListRow): ReplyFooter => {
 	const seite = einstellungenUrl()
 
 	const grund = `${OPT_OUT_MARKER} „${sanitizeDisplay(list.label)}“ der ${sanitizeDisplay(klasse)} steht (${listAddressFull(list)}).`
-	const ausweg = `Was Sie von diesem Verteiler bekommen — bis hin zum Abmelden — stellen Sie hier selbst ein: ${seite}`
+	const ausweg = `Was Sie von diesem Verteiler bekommen, stellen Sie nach der Anmeldung selbst ein: ${seite}`
 	const mensch = `Lieber persönlich? Dann genügt eine Nachricht an ${kontakt}.`
+	// Die Kontaktadresse bleibt anklickbar: Sie ist der Weg fuer alle, die weder
+	// ein Konto haben noch mit dem Abmelde-Knopf ihres Mailprogramms zurechtkommen
+	// — und das sind erfahrungsgemaess genau die, die Hilfe brauchen.
+	const kontaktHref = mailtoHref(contactMail, `Verteiler ${list.address}`)
 
 	return {
 		marker: OPT_OUT_MARKER,
@@ -223,9 +227,10 @@ const buildOptOutFooter = (list: MailingListRow): ReplyFooter => {
 		html:
 			`<div style="${FOOTER_STYLE}">` +
 			`${escapeHtml(grund)}<br />` +
-			`Was Sie von diesem Verteiler bekommen — bis hin zum Abmelden — stellen Sie ` +
-			`<a href="${escapeHtml(seite)}">hier selbst ein</a>.<br />` +
-			`${escapeHtml(mensch)}</div>`,
+			`Was Sie von diesem Verteiler bekommen, stellen Sie nach der Anmeldung ` +
+			`<a href="${escapeHtml(seite)}">selbst ein</a>.<br />` +
+			`Lieber persönlich? Dann genügt eine Nachricht an ` +
+			`<a href="${escapeHtml(kontaktHref)}">${escapeHtml(kontakt)}</a>.</div>`,
 	}
 }
 
@@ -275,7 +280,7 @@ export const buildListSendInput = (
 	list: MailingListRow,
 	recipientEmail: string,
 	/**
-	 * Die persoenliche Einstellungsseite DIESES Empfaengers. Kommt von aussen,
+	 * Der persoenliche ABMELDE-Link DIESES Empfaengers fuer DIESE Liste. Kommt von aussen,
 	 * weil sie einen Schluessel aus der Datenbank braucht und diese Funktion
 	 * rein bleiben soll — sie baut eine Mail, sie fragt nichts ab.
 	 *

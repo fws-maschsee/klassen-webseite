@@ -1,0 +1,106 @@
+---
+import Layout from '../../../layouts/Schlicht.astro'
+import { klassenConfig } from '../../../../src/klasse/config.ts'
+import { openDb } from '../../../../src/lib/db/index.ts'
+import { getMailingList } from '../../../../src/lib/db/mailingLists.ts'
+import {
+	adresseZuToken,
+	einstellungFuer,
+	setzeEinstellung,
+} from '../../../../src/lib/db/recipientSettings.ts'
+
+export const prerender = false
+
+/**
+ * Abmelden — die einzige Sache, die hier ohne Anmeldung geht.
+ *
+ * Das ist die Gegenstelle zum `List-Unsubscribe`-Header. Jedes Mailprogramm
+ * bietet dafür einen Knopf an, und wer ihn drückt, will raus — nicht erst ein
+ * Konto anlegen. Alles ANDERE (Abo wieder an, Umgang mit der eigenen Post)
+ * liegt hinter dem Login unter `/einstellungen`; ein zweiter Weg dorthin wäre
+ * ein zweiter Anmeldemechanismus, nur per Mail statt per Konto.
+ *
+ * Der Schlüssel steht deshalb ausschließlich im Header und niemals im Rumpf
+ * einer Rundmail: Im Rumpf ginge er beim ersten Zitat einer Antwort an alle
+ * Empfänger, und wer ihn liest, könnte diese eine Person abmelden.
+ *
+ * ABGEMELDET WIRD ERST AUF KNOPFDRUCK, nicht beim Aufrufen. Virenscanner und
+ * Vorschaufunktionen rufen Links in Mails von sich aus ab; eine Abmeldung durch
+ * ein GET käme von einem Programm und nicht von einem Menschen. (Genau deshalb
+ * gibt es auch kein `List-Unsubscribe-Post` — ein Fehlklick würde sonst ohne
+ * Rückfrage wirken.)
+ */
+
+const { label: klasse, contactMail, contactName, siteUrl } = klassenConfig()
+const db = openDb()
+
+const token = Astro.params.token ?? ''
+const adresse = adresseZuToken(token, db)
+
+const listenAdresse = new URL(Astro.request.url).searchParams.get('liste') ?? ''
+const liste = listenAdresse ? getMailingList(listenAdresse, db) : undefined
+
+let abgemeldet = false
+if (adresse && liste && Astro.request.method === 'POST') {
+	setzeEinstellung(
+		liste.address,
+		adresse,
+		// Die Versand-Einstellung bleibt, wie sie war: Wer abgemeldet ist, darf
+		// weiter an den Verteiler schreiben — und meldet er sich später wieder an,
+		// steht seine alte Wahl noch da.
+		{ ...einstellungFuer(liste.address, adresse, db), subscribed: false },
+		db,
+	)
+	abgemeldet = true
+}
+
+const unbekannt = !adresse || !liste
+---
+
+<Layout title="Vom Verteiler abmelden" untertitel={klasse}>
+	<div class="prose max-w-none">
+		{
+			unbekannt ? (
+				<>
+					<p>Diesen Abmelde-Link kennen wir nicht.</p>
+					<p>
+						Wahrscheinlich ist er beim Kopieren zerbrochen — in Textmails werden
+						lange Adressen manchmal umgebrochen. Eine Nachricht an{' '}
+						<a href={`mailto:${contactMail}`}>{contactName ?? contactMail}</a>{' '}
+						genügt, dann wird die Adresse von Hand herausgenommen.
+					</p>
+				</>
+			) : abgemeldet ? (
+				<>
+					<p>
+						<strong>{adresse}</strong> bekommt keine Post mehr vom Verteiler{' '}
+						<strong>{liste.label}</strong>.
+					</p>
+					<p>
+						Das war ein Verteiler dieser Klasse — andere Verteiler sind davon
+						nicht berührt. Alle Einstellungen auf einmal (auch das Wieder-Anmelden)
+						stehen nach der Anmeldung unter{' '}
+						<a href={`${siteUrl}/einstellungen`}>Einstellungen</a>.
+					</p>
+				</>
+			) : (
+				<>
+					<p>
+						Soll <strong>{adresse}</strong> keine Post mehr vom Verteiler{' '}
+						<strong>{liste.label}</strong> bekommen?
+					</p>
+					<form method="POST" class="not-prose">
+						<button type="submit" class="btn btn-primary">
+							Ja, abmelden
+						</button>
+					</form>
+					<p class="text-sm opacity-70">
+						Andere Verteiler dieser Klasse bleiben unberührt. Wer angemeldet ist,
+						stellt unter <a href={`${siteUrl}/einstellungen`}>Einstellungen</a>{' '}
+						alles auf einmal ein — und kann dort auch wieder zurück.
+					</p>
+				</>
+			)
+		}
+	</div>
+</Layout>

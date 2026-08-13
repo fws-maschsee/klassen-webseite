@@ -97,16 +97,16 @@ export const GETEILTE_ROUTEN: readonly GeteilteRoute[] = [
 			'Eingang für Listenmails aus dem zonenweiten Dispatcher (fws-maschsee/lists-dispatcher). Ed25519-signiert; der Vertrag steht dort in der README.',
 	},
 	{
-		pattern: '/public/einstellungen',
-		entrypoint: geteilt('astro/pages/public/einstellungen/index.astro'),
+		pattern: '/einstellungen',
+		entrypoint: geteilt('astro/pages/einstellungen/index.astro'),
 		grund:
-			'Fordert den persönlichen Link zu den Verteiler-Einstellungen an. Muss ohne Anmeldung erreichbar sein — wer sich abmelden will, soll dafür nicht erst ein Konto brauchen; deshalb unter /public/.',
+			'Was jede Person von den Verteilern bekommt — Abo je Liste und Umgang mit der eigenen Post. HINTER dem Login: Die Adresse kommt aus der Anmeldung, nicht aus einem Link.',
 	},
 	{
-		pattern: '/public/einstellungen/[token]',
-		entrypoint: geteilt('astro/pages/public/einstellungen/[token].astro'),
+		pattern: '/public/abmelden/[token]',
+		entrypoint: geteilt('astro/pages/public/abmelden/[token].astro'),
 		grund:
-			'Die persönliche Einstellungsseite. Der Schlüssel im Pfad ist der ganze Nachweis, deshalb steht er nur im List-Unsubscribe-Header und in der angeforderten Mail — niemals im Rumpf einer Rundmail, wo ihn das erste Zitat an alle verteilen würde.',
+			'Abmelden ohne Anmeldung — die Gegenstelle zum List-Unsubscribe-Header. Die EINZIGE Sache, die ohne Konto geht: Wer raus will, soll dafür nicht erst eines anlegen. Der Schlüssel steht nur im Header, nie im Rumpf, wo ihn das erste Zitat an alle verteilen würde.',
 	},
 	{
 		pattern: '/public/health',

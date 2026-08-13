@@ -1,7 +1,7 @@
 import type { Database } from 'better-sqlite3'
 import { expandToSubtrees, getGroup } from './groups.ts'
 import { openDb } from './index.ts'
-import { modiDerListe } from './recipientSettings.ts'
+import { einstellungenDerListe } from './recipientSettings.ts'
 import type {
 	MailingListInput,
 	MailingListRow,
@@ -436,8 +436,8 @@ export const resolveListRecipients = (
 	// Trennung ist es nicht: Eine Abmeldung ist eine Entscheidung der Person,
 	// eine Sperre eine Feststellung des Systems (Bounce, Beschwerde). Wer
 	// gebounct ist, bekommt auch mit `kopie` nichts.
-	for (const [key, modus] of modiDerListe(list.address, db)) {
-		if (modus === 'abgemeldet') byEmail.delete(key)
+	for (const [key, einstellung] of einstellungenDerListe(list.address, db)) {
+		if (!einstellung.subscribed) byEmail.delete(key)
 	}
 
 	const patterns = allowlist()
