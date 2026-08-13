@@ -3,3 +3,7 @@ dist/
 *.tgz
 data/
 .DS_Store
+
+# Astros Build-Zwischenstand (Typen der Sammlungen). Wird bei jedem Build
+# neu erzeugt und gehoert niemandem.
+.astro/

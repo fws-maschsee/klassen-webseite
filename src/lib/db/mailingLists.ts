@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3'
 import { expandToSubtrees, getGroup } from './groups.ts'
 import { openDb } from './index.ts'
+import { modiDerListe } from './recipientSettings.ts'
 import type {
 	MailingListInput,
 	MailingListRow,
@@ -428,6 +429,15 @@ export const resolveListRecipients = (
 	)
 	for (const key of [...byEmail.keys()]) {
 		if (blocked.has(key)) byEmail.delete(key)
+	}
+
+	// Wer sich abgemeldet hat, faellt hier heraus — NACH den Sperren und vor der
+	// Allowlist. Die Reihenfolge ist gleichgueltig fuer das Ergebnis, aber die
+	// Trennung ist es nicht: Eine Abmeldung ist eine Entscheidung der Person,
+	// eine Sperre eine Feststellung des Systems (Bounce, Beschwerde). Wer
+	// gebounct ist, bekommt auch mit `kopie` nichts.
+	for (const [key, modus] of modiDerListe(list.address, db)) {
+		if (modus === 'abgemeldet') byEmail.delete(key)
 	}
 
 	const patterns = allowlist()

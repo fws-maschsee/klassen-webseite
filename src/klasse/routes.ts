@@ -97,6 +97,18 @@ export const GETEILTE_ROUTEN: readonly GeteilteRoute[] = [
 			'Eingang für Listenmails aus dem zonenweiten Dispatcher (fws-maschsee/lists-dispatcher). Ed25519-signiert; der Vertrag steht dort in der README.',
 	},
 	{
+		pattern: '/public/einstellungen',
+		entrypoint: geteilt('astro/pages/public/einstellungen/index.astro'),
+		grund:
+			'Fordert den persönlichen Link zu den Verteiler-Einstellungen an. Muss ohne Anmeldung erreichbar sein — wer sich abmelden will, soll dafür nicht erst ein Konto brauchen; deshalb unter /public/.',
+	},
+	{
+		pattern: '/public/einstellungen/[token]',
+		entrypoint: geteilt('astro/pages/public/einstellungen/[token].astro'),
+		grund:
+			'Die persönliche Einstellungsseite. Der Schlüssel im Pfad ist der ganze Nachweis, deshalb steht er nur im List-Unsubscribe-Header und in der angeforderten Mail — niemals im Rumpf einer Rundmail, wo ihn das erste Zitat an alle verteilen würde.',
+	},
+	{
 		pattern: '/public/health',
 		entrypoint: geteilt('src/routes/health.ts'),
 		grund:

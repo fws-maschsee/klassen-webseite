@@ -7,6 +7,7 @@ import { registerInstanceTools } from './tools/instance.ts'
 import { registerListQueueTools } from './tools/listQueue.ts'
 import { registerMailingListTools } from './tools/mailingLists.ts'
 import { registerMitgliederTools } from './tools/members.ts'
+import { registerRecipientSettingsTools } from './tools/recipientSettings.ts'
 
 /**
  * Baut den MCP-Server. Name und Titel kommen aus `MCP_INSTANCE_NAME` bzw.
@@ -32,6 +33,7 @@ export const buildMcpServer = (auth: McpAuth): McpServer => {
 	registerEmailTools(server, auth)
 	registerMailingListTools(server, auth)
 	registerListQueueTools(server, auth)
+	registerRecipientSettingsTools(server, auth)
 
 	return server
 }

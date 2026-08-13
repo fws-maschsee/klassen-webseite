@@ -7,6 +7,7 @@ import type {
 } from '../db/types.ts'
 import { listDomain, listEnvelopeFrom } from '../email/config.ts'
 import type { SendInput } from '../email/transport.ts'
+import { einstellungenUrl } from './settingsLink.ts'
 
 /** Vollstaendige Adresse einer Liste, z.B. `eltern@fws-maschsee-test.de`. */
 export const listAddressFull = (list: MailingListRow): string =>
@@ -210,20 +211,21 @@ const buildOptOutFooter = (list: MailingListRow): ReplyFooter => {
 	const kontakt = contactName
 		? `${sanitizeDisplay(contactName)} (${contactMail})`
 		: contactMail
-	const href = mailtoHref(contactMail, `Austragen ${list.address}`)
+	const seite = einstellungenUrl()
 
 	const grund = `${OPT_OUT_MARKER} „${sanitizeDisplay(list.label)}“ der ${sanitizeDisplay(klasse)} steht (${listAddressFull(list)}).`
-	const ausweg = `Wenn Sie dort nicht mehr stehen möchten, genügt eine Nachricht an ${kontakt} — dann nehme ich Ihre Adresse heraus.`
+	const ausweg = `Was Sie von diesem Verteiler bekommen — bis hin zum Abmelden — stellen Sie hier selbst ein: ${seite}`
+	const mensch = `Lieber persönlich? Dann genügt eine Nachricht an ${kontakt}.`
 
 	return {
 		marker: OPT_OUT_MARKER,
-		text: `\n\n${FOOTER_RULE}\n${grund}\n${ausweg}`,
+		text: `\n\n${FOOTER_RULE}\n${grund}\n${ausweg}\n${mensch}`,
 		html:
 			`<div style="${FOOTER_STYLE}">` +
 			`${escapeHtml(grund)}<br />` +
-			`Wenn Sie dort nicht mehr stehen möchten, genügt eine Nachricht an ` +
-			`<a href="${escapeHtml(href)}">${escapeHtml(kontakt)}</a> — dann nehme ich Ihre Adresse heraus.` +
-			`</div>`,
+			`Was Sie von diesem Verteiler bekommen — bis hin zum Abmelden — stellen Sie ` +
+			`<a href="${escapeHtml(seite)}">hier selbst ein</a>.<br />` +
+			`${escapeHtml(mensch)}</div>`,
 	}
 }
 
@@ -272,6 +274,16 @@ export const buildListSendInput = (
 	attachments: ListAttachmentRow[],
 	list: MailingListRow,
 	recipientEmail: string,
+	/**
+	 * Die persoenliche Einstellungsseite DIESES Empfaengers. Kommt von aussen,
+	 * weil sie einen Schluessel aus der Datenbank braucht und diese Funktion
+	 * rein bleiben soll — sie baut eine Mail, sie fragt nichts ab.
+	 *
+	 * Sie landet ausschliesslich im `List-Unsubscribe`-Header, nie im Rumpf: Im
+	 * Rumpf ginge sie beim ersten Zitat einer Antwort an alle Empfaenger, und wer
+	 * sie liest, koennte diese eine Person abmelden.
+	 */
+	unsubscribeUrl: string,
 ): SendInput => {
 	const full = listAddressFull(list)
 	const envelopeFrom = listEnvelopeFrom()
@@ -284,6 +296,14 @@ export const buildListSendInput = (
 	// Nichts, und niemand konnte es merken.
 	const unsubscribeContact = klassenConfig().contactMail
 	const unsubscribeSubject = encodeURIComponent(`Austragen ${list.address}`)
+	// Der Schluessel steht NUR hier — im Header. Beim Antworten wird er nicht
+	// mitzitiert, der Knopf „Abbestellen" im Mailprogramm fuehrt also direkt auf
+	// die persoenliche Seite, ohne dass der Wert je in einem Rumpf auftaucht.
+	//
+	// Bewusst OHNE `List-Unsubscribe-Post` (RFC 8058): Das waere die
+	// Ein-Klick-Abmeldung ohne Rueckfrage. Bei einer Klassenliste heisst ein
+	// Fehlklick, dass jemand die Schulinformationen nicht mehr bekommt und es
+	// erst merkt, wenn etwas fehlt. Der Knopf oeffnet deshalb die Seite.
 
 	const html = message.body_html ?? ''
 	const text = message.body_text ?? message.body_html ?? ''
@@ -307,7 +327,7 @@ export const buildListSendInput = (
 		})),
 		headers: {
 			'List-Id': `${list.label} <${list.address}.${listDomain()}>`,
-			'List-Unsubscribe': `<mailto:${unsubscribeContact}?subject=${unsubscribeSubject}>`,
+			'List-Unsubscribe': `<${unsubscribeUrl}>, <mailto:${unsubscribeContact}?subject=${unsubscribeSubject}>`,
 			'List-Post': listAllowsPosting(list) ? `<mailto:${full}>` : 'NO',
 			Precedence: 'list',
 			'X-Original-From': message.from_name

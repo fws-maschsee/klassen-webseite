@@ -9,11 +9,18 @@ import {
 	peekListOutbound,
 } from '../db/listQueue.ts'
 import { getMailingList } from '../db/mailingLists.ts'
+import { modusFuer, tokenFuer } from '../db/recipientSettings.ts'
 import { countSentInLastHour } from '../db/sendLog.ts'
-import type { ListOutboundRow } from '../db/types.ts'
+import type {
+	ListMessageRow,
+	ListOutboundRow,
+	MailingListRow,
+} from '../db/types.ts'
 import type { EmailTransport } from '../email/transport.ts'
 import { sesTransport } from '../email/transport.ts'
+import { sendeQuittungFallsFaellig } from './receipt.ts'
 import { buildListSendInput } from './redistribute.ts'
+import { persoenlicheUrl } from './settingsLink.ts'
 
 /**
  * Obergrenze je gleitender Stunde, geteilt mit dem Rundmail-Versand.
@@ -68,10 +75,34 @@ export const processListOne = async (
 		return { kind: 'error', outboundId: row.id, error }
 	}
 
+	/**
+	 * Die Quittung haengt am Zustand der ganzen Nachricht, nicht an dieser einen
+	 * Zustellung: Sie geht raus, wenn KEINE Zeile mehr offen ist. Deshalb steht
+	 * der Aufruf nach dem Erfolg UND nach dem Fehlschlag — scheitert
+	 * ausgerechnet die letzte Zustellung, ist die Rundmail trotzdem fertig, und
+	 * eine Quittung, die dann ausbleibt, waere die schlechteste von allen: Die
+	 * Absenderin wartet auf eine Nachricht, die nie kommt.
+	 */
+	const quittungPruefen = async (
+		message: ListMessageRow,
+		list: MailingListRow,
+	): Promise<void> => {
+		if (modusFuer(list.address, message.from_email, db) !== 'bestaetigung') {
+			return
+		}
+		await sendeQuittungFallsFaellig(message, list, db, transport)
+	}
+
+	// Ausserhalb des `try` gehalten, damit der `catch` sie noch hat: Scheitert
+	// ausgerechnet die letzte Zustellung, ist die Rundmail trotzdem fertig und
+	// die Quittung faellig.
+	let message: ListMessageRow | undefined
+	let list: MailingListRow | undefined
+
 	try {
-		const message = getListMessage(row.message_id, db)
+		message = getListMessage(row.message_id, db)
 		if (!message) return fail('Listenmail nicht gefunden')
-		const list = getMailingList(message.list_address, db)
+		list = getMailingList(message.list_address, db)
 		if (!list) return fail('Mailingliste wurde geloescht')
 
 		// Innerhalb des `try`, und das ist der Punkt: Ein Wurf beim Laden der
@@ -85,6 +116,7 @@ export const processListOne = async (
 			attachments,
 			list,
 			row.recipient_email,
+			persoenlicheUrl(tokenFuer(row.recipient_email, db)),
 		)
 
 		const { messageId } = await transport.send(input)
@@ -93,9 +125,12 @@ export const processListOne = async (
 			{ status: 'sent', sent_message_id: messageId },
 			db,
 		)
+		await quittungPruefen(message, list)
 		return { kind: 'sent', outboundId: row.id, messageId }
 	} catch (err) {
-		return fail(err instanceof Error ? err.message : String(err))
+		const ergebnis = fail(err instanceof Error ? err.message : String(err))
+		if (message && list) await quittungPruefen(message, list)
+		return ergebnis
 	}
 }
 

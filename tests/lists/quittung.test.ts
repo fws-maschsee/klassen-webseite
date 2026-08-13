@@ -1,0 +1,205 @@
+/**
+ * Der Weg einer Rundmail bei `bestaetigung`: Die Absenderin bekommt ihre eigene
+ * Nachricht NICHT zurueck, sondern eine Quittung — und zwar erst, wenn die
+ * Warteschlange die Liste durch hat.
+ *
+ * Der Test geht denselben Weg wie der Betrieb: rohe Mail rein, Warteschlange
+ * abarbeiten, `SendInput` raus. Nur so faellt auf, wenn die Quittung zwar
+ * gebaut, aber nie ausgeloest wird.
+ *
+ * Alle Namen und Adressen sind frei erfunden.
+ */
+import type { Database } from 'better-sqlite3'
+import { beforeEach, describe, expect, test } from 'vitest'
+import { upsertGroup } from '../../src/lib/db/groups.ts'
+import { upsertMailingList } from '../../src/lib/db/mailingLists.ts'
+import { upsertMitglied } from '../../src/lib/db/members.ts'
+import { setzeModus } from '../../src/lib/db/recipientSettings.ts'
+import type { SendInput } from '../../src/lib/email/transport.ts'
+import { handleIncomingListMail } from '../../src/lib/lists/incoming.ts'
+import { processListBatch } from '../../src/lib/lists/queue.ts'
+import { createTestDb } from '../helpers/db.ts'
+
+let db: Database
+let sent: SendInput[]
+/** Adressen, bei denen der Versand scheitert. */
+let scheitert: Set<string>
+
+const transport = {
+	send: async (input: SendInput) => {
+		const ziel = input.envelope?.to ?? input.to
+		if (scheitert.has(ziel)) throw new Error('Postfach nicht erreichbar')
+		sent.push(input)
+		return { messageId: `<out-${sent.length}@example.org>` }
+	},
+}
+
+const rawMail = (subject: string): Buffer =>
+	Buffer.from(
+		`Subject: ${subject}\r\nFrom: Vera Beispiel <vera@example.org>\r\n\r\nInhalt`,
+		'utf-8',
+	)
+
+const verteilen = async (
+	subject = 'Termin',
+	messageId = '<q1@example.org>',
+) => {
+	const ergebnis = await handleIncomingListMail(
+		rawMail(subject),
+		{ listName: 'eltern', envelopeFrom: 'vera@example.org', messageId },
+		db,
+	)
+	for (;;) {
+		const batch = await processListBatch({ db, transport })
+		if (batch.kind !== 'batch_done') break
+	}
+	return ergebnis
+}
+
+/** Die Quittung erkennt man am Header, nicht am Betreff. */
+const quittungen = () => sent.filter((m) => m.headers?.['X-List-Receipt'])
+const rundmails = () => sent.filter((m) => !m.headers?.['X-List-Receipt'])
+
+beforeEach(() => {
+	db = createTestDb()
+	sent = []
+	scheitert = new Set()
+	upsertGroup({ key: 'eltern', label: 'Eltern' }, db)
+	for (const [id, vorname, mail] of [
+		['vera', 'Vera', 'vera@example.org'],
+		['anna', 'Anna', 'anna@example.org'],
+		['bea', 'Bea', 'bea@example.org'],
+	] as const) {
+		upsertMitglied(
+			{
+				id,
+				first_name: vorname,
+				last_name: 'Beispiel',
+				email: mail,
+				groups: ['eltern'],
+			},
+			db,
+		)
+	}
+	upsertMailingList(
+		{
+			address: 'eltern',
+			label: 'Eltern',
+			recipient_groups: ['eltern'],
+			poster_policy: 'offen',
+		},
+		db,
+	)
+})
+
+describe('kopie — der Vorgabewert', () => {
+	test('die Absenderin bekommt ihre eigene Mail zurueck, keine Quittung', async () => {
+		await verteilen()
+		expect(
+			rundmails()
+				.map((m) => m.envelope?.to)
+				.sort(),
+		).toEqual(['anna@example.org', 'bea@example.org', 'vera@example.org'])
+		expect(quittungen()).toHaveLength(0)
+	})
+})
+
+describe('nichts — ohne eigene Kopie, ohne Quittung', () => {
+	test('die Absenderin faellt aus der Zustellung, die anderen nicht', async () => {
+		setzeModus('eltern', 'vera@example.org', 'nichts', db)
+		await verteilen()
+		expect(
+			rundmails()
+				.map((m) => m.envelope?.to)
+				.sort(),
+		).toEqual(['anna@example.org', 'bea@example.org'])
+		expect(quittungen()).toHaveLength(0)
+	})
+})
+
+describe('bestaetigung — Quittung statt Kopie', () => {
+	test('keine eigene Kopie, dafuer genau eine Quittung mit Zahlen', async () => {
+		setzeModus('eltern', 'vera@example.org', 'bestaetigung', db)
+		await verteilen('Elternabend')
+
+		expect(
+			rundmails()
+				.map((m) => m.envelope?.to)
+				.sort(),
+		).toEqual(['anna@example.org', 'bea@example.org'])
+
+		const quittung = quittungen()
+		expect(quittung).toHaveLength(1)
+		expect(quittung[0]?.envelope?.to).toBe('vera@example.org')
+		expect(quittung[0]?.subject).toBe('Zugestellt: Elternabend')
+		expect(quittung[0]?.text).toContain('an alle 2 Empfänger')
+		// RFC 3834: Sonst beantwortet eine Abwesenheitsnotiz die Quittung.
+		expect(quittung[0]?.headers?.['Auto-Submitted']).toBe('auto-replied')
+	})
+
+	test('nennt gescheiterte Zustellungen mit Adresse', async () => {
+		setzeModus('eltern', 'vera@example.org', 'bestaetigung', db)
+		scheitert.add('bea@example.org')
+		await verteilen('Ausflug')
+
+		const quittung = quittungen()
+		expect(quittung).toHaveLength(1)
+		expect(quittung[0]?.subject).toBe('Teilweise zugestellt: Ausflug')
+		expect(quittung[0]?.text).toContain('an 1 von 2 Empfängern')
+		expect(quittung[0]?.text).toContain('bea@example.org')
+	})
+
+	test('kommt auch dann, wenn die LETZTE Zustellung scheitert', async () => {
+		// Der Fall, in dem eine Quittung am ehesten ausbliebe — und der, in dem
+		// sie am wichtigsten ist: Die Absenderin wartet sonst auf eine Nachricht,
+		// die nie kommt.
+		setzeModus('eltern', 'vera@example.org', 'bestaetigung', db)
+		scheitert.add('anna@example.org')
+		scheitert.add('bea@example.org')
+		await verteilen()
+
+		expect(rundmails()).toHaveLength(0)
+		expect(quittungen()).toHaveLength(1)
+		expect(quittungen()[0]?.text).toContain('an 0 von 2 Empfängern')
+	})
+
+	test('genau eine Quittung, auch wenn die Warteschlange erneut laeuft', async () => {
+		setzeModus('eltern', 'vera@example.org', 'bestaetigung', db)
+		await verteilen()
+		for (;;) {
+			const batch = await processListBatch({ db, transport })
+			if (batch.kind !== 'batch_done') break
+		}
+		expect(quittungen()).toHaveLength(1)
+	})
+
+	test('eine geplatzte Quittung laesst die Rundmail zugestellt', async () => {
+		// Die Rundmail ist zu diesem Zeitpunkt draussen. Ein Fehler beim
+		// Quittieren darf daran nichts mehr aendern und schon gar keinen erneuten
+		// Rundgang ausloesen.
+		setzeModus('eltern', 'vera@example.org', 'bestaetigung', db)
+		scheitert.add('vera@example.org')
+		const ergebnis = await verteilen()
+
+		expect(ergebnis.kind).toBe('enqueued')
+		expect(
+			rundmails()
+				.map((m) => m.envelope?.to)
+				.sort(),
+		).toEqual(['anna@example.org', 'bea@example.org'])
+		expect(quittungen()).toHaveLength(0)
+	})
+})
+
+describe('abgemeldet', () => {
+	test('bekommt weder Rundmail noch Quittung', async () => {
+		setzeModus('eltern', 'anna@example.org', 'abgemeldet', db)
+		await verteilen()
+		expect(
+			rundmails()
+				.map((m) => m.envelope?.to)
+				.sort(),
+		).toEqual(['bea@example.org', 'vera@example.org'])
+		expect(quittungen()).toHaveLength(0)
+	})
+})

@@ -1,0 +1,141 @@
+---
+import Layout from '@levino/shipyard-base/layouts/Page.astro'
+import { klassenConfig } from '../../../../src/klasse/config.ts'
+import { openDb } from '../../../../src/lib/db/index.ts'
+import { listMailingLists } from '../../../../src/lib/db/mailingLists.ts'
+import {
+	adresseZuToken,
+	einstellungenFuer,
+	istModus,
+	setzeModus,
+} from '../../../../src/lib/db/recipientSettings.ts'
+
+export const prerender = false
+
+/**
+ * Die persönliche Einstellungsseite. Der Schlüssel im Pfad ist der ganze
+ * Nachweis — kein Konto, kein Passwort.
+ *
+ * Das ist bei Verteilern üblich und hier auch die einzige Möglichkeit: Die
+ * Eltern haben zwar Konten für die Website, aber wer sich abmelden will, soll
+ * dafür nicht erst eine Anmeldung durchlaufen müssen. Deshalb steht der
+ * Schlüssel nicht im Fuß der Rundmails (dort landete er beim ersten Zitat bei
+ * allen), sondern kommt per Mail an genau die Adresse, um die es geht.
+ *
+ * KEINE ÄNDERUNG DURCH BLOSSES AUFRUFEN. Die Seite ändert nichts beim GET,
+ * sondern erst, wenn jemand auf „Speichern" drückt. Ein Link, der schon beim
+ * Öffnen abmeldet, wird von Virenscannern und Vorschaufunktionen ausgelöst,
+ * die Links in Mails automatisch abrufen — die Abmeldung käme dann von einem
+ * Programm und nicht von einem Menschen.
+ */
+
+const { label: klasse, contactMail, contactName } = klassenConfig()
+const token = Astro.params.token ?? ''
+const db = openDb()
+const adresse = adresseZuToken(token, db)
+
+let gespeichert = false
+
+if (adresse && Astro.request.method === 'POST') {
+	const formular = await Astro.request.formData()
+	for (const liste of listMailingLists(db)) {
+		const wert = formular.get(`liste:${liste.address}`)
+		if (istModus(wert)) setzeModus(liste.address, adresse, wert, db)
+	}
+	gespeichert = true
+}
+
+const listen = adresse ? einstellungenFuer(adresse, listMailingLists(db), db) : []
+
+const ERKLAERUNG = {
+	kopie: 'Alles, auch die eigene Nachricht zurück.',
+	bestaetigung:
+		'Alles außer der eigenen Nachricht — stattdessen eine kurze Quittung, sobald sie zugestellt ist.',
+	nichts: 'Alles außer der eigenen Nachricht, ohne Quittung.',
+	abgemeldet: 'Gar keine Post von diesem Verteiler.',
+} as const
+
+const BEZEICHNUNG = {
+	kopie: 'Alles, mit Kopie an mich',
+	bestaetigung: 'Alles, mit Bestätigung statt Kopie',
+	nichts: 'Alles, ohne Kopie und ohne Bestätigung',
+	abgemeldet: 'Abmelden',
+} as const
+---
+
+<Layout title={`Verteiler-Einstellungen der ${klasse}`}>
+	<div class="prose max-w-2xl">
+		<h1>Verteiler-Einstellungen</h1>
+
+		{
+			!adresse ? (
+				<>
+					<p>Diesen Link kennen wir nicht.</p>
+					<p>
+						Wahrscheinlich ist er beim Kopieren zerbrochen — in Textmails werden
+						lange Adressen manchmal umgebrochen. Auf{' '}
+						<a href="/public/einstellungen">der Einstellungsseite</a> lässt sich
+						ein neuer anfordern.
+					</p>
+				</>
+			) : (
+				<>
+					<p>
+						Für <strong>{adresse}</strong>. Jeder Verteiler wird einzeln
+						eingestellt.
+					</p>
+
+					{gespeichert && (
+						<p class="text-success">
+							<strong>Gespeichert.</strong> Ab der nächsten Nachricht gilt das
+							Neue.
+						</p>
+					)}
+
+					{/* Kein daisyUI-`fieldset`: dessen Klasse setzt eine kleine
+					    Schriftgroesse fuer den ganzen Block und wuerde die Auswahl
+					    darunter mitverkleinern. Deshalb das nackte HTML-Element mit
+					    eigenen Rahmenklassen. */}
+					<form method="POST" class="not-prose flex flex-col gap-6">
+						{listen.map((liste) => (
+							<fieldset class="border border-base-300 rounded-lg p-4">
+								<legend class="px-2 font-semibold">{liste.label}</legend>
+								<div class="flex flex-col gap-2">
+									{(
+										['kopie', 'bestaetigung', 'nichts', 'abgemeldet'] as const
+									).map((modus) => (
+										<label class="flex items-start gap-3 cursor-pointer">
+											<input
+												type="radio"
+												name={`liste:${liste.address}`}
+												value={modus}
+												checked={liste.mode === modus}
+												class="radio radio-sm mt-1"
+											/>
+											<span>
+												<span class="font-medium">{BEZEICHNUNG[modus]}</span>
+												<br />
+												<span class="text-sm opacity-70">
+													{ERKLAERUNG[modus]}
+												</span>
+											</span>
+										</label>
+									))}
+								</div>
+							</fieldset>
+						))}
+						<button type="submit" class="btn btn-primary self-start">
+							Speichern
+						</button>
+					</form>
+
+					<p class="mt-8 text-sm opacity-70">
+						Diesen Link bitte nicht weitergeben — wer ihn hat, kann die
+						Einstellungen dieser Adresse ändern. Fragen dazu beantwortet{' '}
+						<a href={`mailto:${contactMail}`}>{contactName ?? contactMail}</a>.
+					</p>
+				</>
+			)
+		}
+	</div>
+</Layout>

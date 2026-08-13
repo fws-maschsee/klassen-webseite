@@ -7,6 +7,7 @@ import {
 	normalizeEmail,
 	resolveListRecipients,
 } from '../db/mailingLists.ts'
+import { modusFuer } from '../db/recipientSettings.ts'
 
 /**
  * Ergebnis der Eingangsverarbeitung. Die vier Fälle sind bewusst unterschieden,
@@ -200,10 +201,25 @@ export const handleIncomingListMail = async (
 		}
 	}
 
-	const recipients = resolveListRecipients(list, db).map((r) => ({
-		email: r.email,
-		mitglied_id: r.mitglied_id,
-	}))
+	// Die eigene Mail zurueck? Das entscheidet die Absenderin selbst.
+	// `abgemeldet` ist hier schon abgezogen (im Resolver); uebrig bleiben die
+	// beiden Modi, in denen jemand alles bekommt AUSSER dem eigenen Beitrag.
+	//
+	// Verglichen wird gegen den ENVELOPE-Absender, denselben Wert, auf den auch
+	// die Berechtigung laeuft. Der `From:`-Header waere frei waehlbar — wer sich
+	// als jemand anderes ausgibt, koennte damit sonst gezielt eine Person aus der
+	// Zustellung nehmen.
+	const absender = normalizeEmail(envelopeFrom)
+	const absenderModus = modusFuer(list.address, absender, db)
+	const ohneAbsender =
+		absenderModus === 'bestaetigung' || absenderModus === 'nichts'
+
+	const recipients = resolveListRecipients(list, db)
+		.filter((r) => !(ohneAbsender && normalizeEmail(r.email) === absender))
+		.map((r) => ({
+			email: r.email,
+			mitglied_id: r.mitglied_id,
+		}))
 	if (recipients.length === 0) {
 		return {
 			kind: 'skipped',

@@ -32,6 +32,13 @@ const original = { ...process.env }
 const LIST_DOMAIN = 'klasse-beispiel.lists.example.org'
 const LIST_ADDRESS = `eltern@${LIST_DOMAIN}`
 const EMPFAENGERIN = 'anna@example.org'
+/**
+ * Die persoenliche Einstellungsseite dieser Empfaengerin. Sie gehoert in den
+ * `List-Unsubscribe`-Header und NIRGENDWO sonst — der Test unten haelt genau
+ * das fest.
+ */
+const EINSTELLUNGS_URL =
+	'https://klasse-beispiel.example.org/public/einstellungen/GEHEIM123'
 
 beforeEach(() => {
 	db = createTestDb()
@@ -95,6 +102,7 @@ const bauen = (options: BauenOptions = {}) =>
 		options.attachments ?? [],
 		liste({ reply_mode: 'list', ...options.list }),
 		EMPFAENGERIN,
+		EINSTELLUNGS_URL,
 	)
 
 /** Wie oft kommt `needle` in `haystack` vor? */
@@ -145,21 +153,34 @@ describe('Der Fuss: warum diese Mail kommt und wie man herauskommt', () => {
 	const GRUND =
 		'Sie erhalten diese Nachricht, weil Ihre Adresse im Verteiler „Eltern“ der Klasse Beispiel steht (eltern@klasse-beispiel.lists.example.org).'
 	const AUSWEG =
-		'Wenn Sie dort nicht mehr stehen möchten, genügt eine Nachricht an verwaltung@example.org — dann nehme ich Ihre Adresse heraus.'
+		'Was Sie von diesem Verteiler bekommen — bis hin zum Abmelden — stellen Sie hier selbst ein: https://klasse-beispiel.example.org/public/einstellungen'
+	const MENSCH =
+		'Lieber persönlich? Dann genügt eine Nachricht an verwaltung@example.org.'
 
-	test('Textteil nennt Verteiler, Klasse, Listenadresse und den Ausweg', () => {
+	test('Textteil nennt Verteiler, Klasse, Listenadresse und beide Auswege', () => {
 		const sent = bauen()
 		expect(sent.text).toContain('Inhalt')
 		expect(sent.text).toContain(GRUND)
 		expect(sent.text).toContain(AUSWEG)
+		expect(sent.text).toContain(MENSCH)
 	})
 
-	test('HTML-Teil sagt dasselbe, die Kontaktadresse als Anker', () => {
+	test('HTML-Teil sagt dasselbe, die Einstellungsseite als Anker', () => {
 		const sent = bauen()
 		expect(sent.html).toContain('Sie erhalten diese Nachricht')
 		expect(sent.html).toContain(
-			'<a href="mailto:verwaltung@example.org?subject=Austragen%20eltern">',
+			'<a href="https://klasse-beispiel.example.org/public/einstellungen">',
 		)
+	})
+
+	test('der SCHLUESSEL steht nicht im Rumpf — nur im Header', () => {
+		// Der Kern der Sache: Im Rumpf landet er beim ersten Zitat einer Antwort
+		// bei allen Empfaengern, und wer ihn liest, koennte diese eine Person
+		// abmelden. Deshalb im Fuss nur die Seite OHNE Schluessel.
+		const sent = bauen()
+		expect(sent.text).not.toContain('GEHEIM123')
+		expect(sent.html).not.toContain('GEHEIM123')
+		expect(sent.headers?.['List-Unsubscribe']).toContain('GEHEIM123')
 	})
 
 	test('der Fuss erklaert NICHT mehr die Antwortwege', () => {
@@ -377,7 +398,13 @@ describe('Reply-To bleibt, wie es war', () => {
 		// Bewusst OHNE `bauen()`: Dieser Helfer setzt `reply_mode` absichtlich
 		// immer, und genau das waere hier der Fehler — geprueft wird ja der
 		// Vorgabewert der Datenbank.
-		const sent = buildListSendInput(nachricht(), [], liste(), EMPFAENGERIN)
+		const sent = buildListSendInput(
+			nachricht(),
+			[],
+			liste(),
+			EMPFAENGERIN,
+			EINSTELLUNGS_URL,
+		)
 		expect(sent.replyTo).toBe('vera@example.org')
 	})
 })
@@ -393,13 +420,25 @@ describe('Die uebrigen Listen-Header', () => {
 		expect(sent.subject).toBe('[Eltern] Termin')
 	})
 
-	test('List-Unsubscribe zeigt auf die Kontaktadresse der Klasse', () => {
-		// Nicht auf `mailReplyTo()`: Das ist ohne `MAIL_REPLY_TO` die
-		// Absenderadresse `noreply@`, und die verwirft das Email Routing der Zone.
-		// Der Knopf „Abbestellen" schickte damit eine Mail ins Nichts.
+	test('List-Unsubscribe nennt erst die Seite, dann die Kontaktadresse', () => {
+		// Die Reihenfolge ist die Empfehlung an das Mailprogramm: Der erste
+		// Eintrag, mit dem es umgehen kann, gewinnt — und die Seite ist besser als
+		// eine Mail, weil sie sofort zeigt, was eingestellt ist.
+		//
+		// Die mailto-Adresse ist NICHT `mailReplyTo()`: Das waere ohne
+		// `MAIL_REPLY_TO` die Absenderadresse `noreply@`, und die verwirft das
+		// Email Routing der Zone. Der Knopf „Abbestellen" schickte damit eine Mail
+		// ins Nichts.
 		expect(bauen().headers?.['List-Unsubscribe']).toBe(
-			'<mailto:verwaltung@example.org?subject=Austragen%20eltern>',
+			`<${EINSTELLUNGS_URL}>, <mailto:verwaltung@example.org?subject=Austragen%20eltern>`,
 		)
+	})
+
+	test('kein List-Unsubscribe-Post — keine Abmeldung ohne Rueckfrage', () => {
+		// RFC 8058 waere der Ein-Klick. Bei einer Klassenliste heisst ein
+		// Fehlklick, dass jemand die Schulinformationen nicht mehr bekommt und es
+		// erst merkt, wenn etwas fehlt.
+		expect(bauen().headers?.['List-Unsubscribe-Post']).toBeUndefined()
 	})
 
 	test('To ist die LISTE, das Kuvert der Empfaenger', () => {
