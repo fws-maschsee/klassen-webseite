@@ -5,24 +5,32 @@ import {
 	loescheKonto,
 	mitgliedFuerKonto,
 } from '../../../lib/db/users.ts'
+import { abgleichAlsText, abgleichen } from '../../../lib/konten/abgleich.ts'
 import type { McpAuth } from '../guard.ts'
-import { registerWriteTool } from '../guard.ts'
+import { registerPersonalDataTool, registerWriteTool } from '../guard.ts'
 
 /**
- * Konten: das Loeschen, das ein Mensch verlangt hat.
+ * Konten: nachsehen, wer dazugehoert — und im Ausnahmefall loeschen.
+ *
+ * ZWEI WERKZEUGE, UND SIE SIND ABSICHTLICH GETRENNT:
+ *
+ *   `reconcile_accounts` MELDET. Es stellt das Adressbuch den Grants gegenueber
+ *   und sagt, wo beide auseinanderlaufen. Es aendert nichts.
+ *
+ *   `delete_account` LOESCHT, und zwar genau ein benanntes Konto samt dem
+ *   Adressbuch-Eintrag, den es verwaltet.
+ *
+ * Warum nicht eines, das beides tut: Eine Stoerung bei ZITADEL sieht aus wie
+ * „alle ausgetreten". Ein Werkzeug, das den Befund gleich vollstreckt, loescht
+ * dann den ganzen Verteiler. So muss zwischen „hier stimmt etwas nicht" und
+ * „weg damit" ein Mensch stehen, der einen Namen nennt.
  *
  * DER NORMALFALL IST AUSTRAGEN, NICHT LOESCHEN. Wer die Schule verlaesst,
  * verliert seine Rollen in ZITADEL; das Konto wird gegebenenfalls deaktiviert,
  * und im Adressbuch nimmt ein Mensch den Eintrag aus den Gruppen
  * (`remove_from_group`) oder loescht ihn (`delete_mitglied`). `delete_account`
  * ist der Weg fuer den anderen Fall: Es wird ausdruecklich VERLANGT, dass die
- * Daten verschwinden — der Loeschanspruch aus der DSGVO.
- *
- * WARUM DAS EIN WERKZEUG IST UND KEIN EREIGNIS. Bis zum 15.08. loeste die
- * Kaskade ein ZITADEL-Webhook aus (`user.removed`). Den gibt es nicht mehr: Das
- * Target dazu wurde in der Instanz nie angelegt, er hat nie gefeuert. Ein
- * Loeschen, das eine benannte Person trifft, gehoert ohnehin in die Hand eines
- * Menschen und nicht an eine Nachricht, die nebenbei eintrifft.
+ * Daten verschwinden.
  */
 
 const toJson = (value: unknown): string => JSON.stringify(value, null, 2)
@@ -31,6 +39,41 @@ export const registerAccountTools = (
 	server: McpServer,
 	auth: McpAuth,
 ): void => {
+	registerPersonalDataTool(
+		server,
+		auth,
+		'reconcile_accounts',
+		{
+			title: 'Adressbuch und Konten gegenueberstellen',
+			description:
+				'Stellt die Adressbuch-Eintraege dieser Klasse den Konten gegenueber, die im ZITADEL-Projekt dieser Klasse einen aktiven Grant mit Leserolle haben, und MELDET beide Richtungen: `entries_without_account` (Eintrag ohne Konto — bekommt nach dem Scharfschalten von LIST_ACCOUNT_CHECK=enforce keine Post mehr; Grund: no_account, account_unknown, role_missing) und `accounts_without_entry` (Konto mit Rolle ohne Eintrag — gehoert dazu, bekommt aber nichts). AENDERT NICHTS: kein Eintrag wird angelegt, geaendert oder entfernt. Wer nach dem Bericht loeschen will, ruft delete_mitglied (nur der Eintrag) oder delete_account (Konto samt Eintrag). Ist ZITADEL nicht erreichbar, kommt ein FEHLER statt eines Berichts, in dem alle fehlen.',
+			inputSchema: {},
+		},
+		async () => {
+			try {
+				const bericht = await abgleichen()
+				return {
+					content: [
+						{ type: 'text', text: abgleichAlsText(bericht) },
+						{ type: 'text', text: toJson(bericht) },
+					],
+				}
+			} catch (fehler) {
+				// Ein Fehler und kein leerer Bericht. „Ich konnte nicht fragen" und
+				// „niemand gehoert mehr dazu" duerfen nicht gleich aussehen.
+				return {
+					isError: true,
+					content: [
+						{
+							type: 'text',
+							text: `Abgleich nicht moeglich: ${(fehler as Error).message}`,
+						},
+					],
+				}
+			}
+		},
+	)
+
 	registerWriteTool(
 		server,
 		auth,

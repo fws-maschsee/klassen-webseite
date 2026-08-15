@@ -417,8 +417,44 @@ Geheimnis, das gepflegt, gedreht und beim Deployment mitgeschleppt werden will.
 
 Und selbst verdrahtet hätte er das Falsche gemeldet. `user.removed` ist das
 **gelöschte Konto**. Der Normalfall ist aber der **entzogene Grant** — und der
-löst überhaupt kein Ereignis aus. An seine Stelle gehört deshalb nichts, worauf
-man wartet, sondern etwas, das **fragt**.
+löst überhaupt kein Ereignis aus. Deshalb steht an seiner Stelle jetzt nichts,
+worauf man wartet, sondern etwas, das **fragt**: der Abgleich.
+
+## Der Abgleich: `reconcile_accounts`
+
+[`src/lib/konten/abgleich.ts`](src/lib/konten/abgleich.ts) stellt die
+Adressbuch-Einträge dieser Klasse den Grants ihres ZITADEL-Projekts gegenüber und
+meldet **beide Richtungen**:
+
+| Richtung | Was sie bedeutet |
+| --- | --- |
+| `entries_without_account` | Adressbuch-Eintrag ohne Konto mit Leserolle. Diese Person bekommt nach dem Scharfschalten von `LIST_ACCOUNT_CHECK=enforce` keine Post mehr. Mit Grund: `no_account`, `account_unknown`, `role_missing` |
+| `accounts_without_entry` | Konto **mit** Rolle, aber ohne Adressbuch-Eintrag. Diese Person gehört dazu und bekommt trotzdem nichts — das fällt in keiner Zustellung auf, weil dort niemand fehlt, den man vermissen könnte |
+
+**Melden, nicht löschen.** Der Abgleich fasst nichts an, in keiner Betriebsart —
+es gibt keine. Der Grund ist die Fehlerrichtung: Eine Störung bei ZITADEL sieht
+aus wie „alle ausgetreten", und ein Aufräumen, das darauf hereinfällt, löscht den
+ganzen Verteiler. Deshalb **wirft** der Abgleich bei einer Störung einen Fehler,
+statt eine leere Grant-Menge als Ergebnis auszugeben. Wer nach dem Lesen des
+Berichts wirklich löschen will, ruft `delete_account` (Konto samt Eintrag,
+DSGVO) oder `delete_mitglied` (nur der Eintrag) — beides benennt eine Person und
+wird von einem Menschen getan.
+
+Erreichbar ist er als **MCP-Werkzeug `reconcile_accounts`** (Rolle `admin`), also
+ohne Anmeldung an der Weboberfläche: Man kann ihn fragen.
+
+**Was er heute schon gefunden hat:** Genau dieser Abgleich, von Hand
+durchgeführt, fand am 15.08. **drei Abweichungen** — zwei Konten einer
+weggezogenen Familie, die noch Zugang hatten, und eine Person ohne Konto. Ein
+Webhook hätte davon **nichts** gemeldet: Beim entzogenen Grant gibt es kein
+Ereignis, und für „hat nie eines gehabt" schon gar nicht.
+
+Die Abfrage teilt er sich mit der
+[Konten-Prüfung vor dem Versand](#ohne-konto-keine-e-mail-die-prüfung-vor-dem-versand)
+— `pruefeKonten()` beantwortet für jeden Eintrag dieselbe Frage („gibt es dazu
+ein Konto mit Rolle, und wenn nein, warum nicht"), und der Abgleich stellt sie
+für **alle** Einträge statt für die Empfänger eines Versands. Zwei Kopien
+derselben Regel wären zwei Regeln, und eine davon wäre irgendwann die falsche.
 
 ## Einbinden
 

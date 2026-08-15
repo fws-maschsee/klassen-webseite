@@ -14,15 +14,21 @@ import {
 	vi,
 } from 'vitest'
 import { runMigrations } from '../../src/migrations.ts'
+import { resetGrantsConfig } from '../../src/server/auth/grants.ts'
 
 /**
- * `delete_account` ueber MCP.
+ * Die beiden Konten-Werkzeuge ueber MCP.
  *
- * Die Kaskade selbst ist in `tests/konten/kaskade.test.ts` geprueft. Hier steht
- * nur, was am Werkzeug haengt: dass es die Rolle `admin` verlangt, dass es genau
- * die benannte Person trifft — und dass die Antwort belegt, was verschwunden
- * ist. Ein Loeschen, das nur „ok" sagt, laesst niemanden nachweisen, dass es das
- * Richtige geloescht hat.
+ * `reconcile_accounts` MELDET, `delete_account` LOESCHT — und dass beides
+ * getrennt ist, ist der Kern: Eine Stoerung bei ZITADEL sieht aus wie „alle
+ * ausgetreten". Ein Werkzeug, das den Befund gleich vollstreckte, loeschte dann
+ * den Verteiler. Hier wird geprueft, dass der Abgleich bei einer Stoerung einen
+ * FEHLER meldet und nichts anfasst, und dass das Loeschen genau eine benannte
+ * Person trifft.
+ *
+ * Die Kaskade selbst ist in `tests/konten/kaskade.test.ts` geprueft, die Regel
+ * des Abgleichs in `tests/konten/abgleich.test.ts`. Hier steht nur, was am
+ * Werkzeug haengt: Rollen und die Antwort an den Aufrufer.
  *
  * Alle Namen und Adressen sind frei erfunden.
  */
@@ -53,6 +59,26 @@ const textOf = (result: unknown): string => {
 	return (Array.isArray(content) ? content : [])
 		.map((part) => (part as { text?: string }).text ?? '')
 		.join('\n')
+}
+
+const grantsAntworten = (
+	grants: { userId: string; email: string; roleKeys: string[] }[],
+): void => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(
+			async () =>
+				new Response(
+					JSON.stringify({
+						result: grants.map((g) => ({
+							...g,
+							state: 'USER_GRANT_STATE_ACTIVE',
+						})),
+					}),
+					{ status: 200 },
+				),
+		),
+	)
 }
 
 beforeAll(async () => {
@@ -92,7 +118,83 @@ beforeEach(() => {
 	).run('vera-beispiel', 'eltern')
 	db.close()
 
+	process.env.ZITADEL_ISSUER = 'https://id.example.org'
+	process.env.ZITADEL_ORG_ID = 'org-1'
+	process.env.ZITADEL_PROJECT_ID = 'proj-1'
+	process.env.ZITADEL_SERVICE_TOKEN = 'tok'
+	resetGrantsConfig()
 	vi.restoreAllMocks()
+	vi.spyOn(console, 'log').mockImplementation(() => {})
+})
+
+describe('reconcile_accounts', () => {
+	it('meldet beide Richtungen und aendert nichts', async () => {
+		grantsAntworten([
+			{ userId: 'u-vera', email: 'vera@example.org', roleKeys: ['mitglied'] },
+			{ userId: 'u-emil', email: 'emil@example.org', roleKeys: ['mitglied'] },
+		])
+		const client = await connect(['admin'])
+
+		const text = textOf(
+			await client.callTool({ name: 'reconcile_accounts', arguments: {} }),
+		)
+		const bericht = JSON.parse(text.slice(text.indexOf('{'))) as {
+			entries_without_account: { mitglied_id: string; reason: string }[]
+			accounts_without_entry: { user_id: string }[]
+		}
+
+		// Die Grossmutter steht im Adressbuch und hat kein Konto; Emil hat ein
+		// Konto mit Rolle und steht nicht im Adressbuch.
+		expect(bericht.entries_without_account.map((e) => e.mitglied_id)).toEqual([
+			'oma-beispiel',
+		])
+		expect(bericht.accounts_without_entry.map((k) => k.user_id)).toEqual([
+			'u-emil',
+		])
+
+		// Und nach dem Bericht steht das Adressbuch unveraendert da. Melden heisst
+		// melden.
+		const db = new Database(dbFile)
+		expect(db.prepare('SELECT COUNT(*) AS n FROM mitglieder').get()).toEqual({
+			n: 2,
+		})
+		db.close()
+		await client.close()
+	})
+
+	it('meldet bei einer Stoerung einen Fehler statt „alle fehlen"', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response('kaputt', { status: 503 })),
+		)
+		const client = await connect(['admin'])
+
+		const ergebnis = await client.callTool({
+			name: 'reconcile_accounts',
+			arguments: {},
+		})
+
+		expect((ergebnis as { isError?: boolean }).isError).toBe(true)
+		expect(textOf(ergebnis)).toContain('Abgleich nicht moeglich')
+		// Insbesondere steht in der Antwort KEINE Liste, die alle Eintraege als
+		// kontolos ausweist — sonst raeumte der naechste Leser sie weg.
+		expect(textOf(ergebnis)).not.toContain('oma-beispiel')
+		await client.close()
+	})
+
+	it('verlangt die Rolle admin', async () => {
+		grantsAntworten([])
+		const client = await connect(['mitglied'])
+
+		const ergebnis = await client.callTool({
+			name: 'reconcile_accounts',
+			arguments: {},
+		})
+
+		expect((ergebnis as { isError?: boolean }).isError).toBe(true)
+		expect(textOf(ergebnis)).toContain('admin')
+		await client.close()
+	})
 })
 
 describe('delete_account', () => {
