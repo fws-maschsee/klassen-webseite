@@ -58,6 +58,12 @@ export const GETEILTE_ROUTEN: readonly GeteilteRoute[] = [
 			'Putzplan: Prosa aus der Unterlage, Tabelle aus der DATENBANK (`cleaning_dates`, gepflegt über MCP). Liegt auf dem BESTEHENDEN Docs-Pfad, weil Eltern ihn gespeichert haben; das statische Muster gewinnt gegen shipyards /docs/[...slug]. Eine Klasse ohne Termine in der Datenbank antwortet unverändert — die Seite kommt ohne Tabelle, eine Klasse ohne die Unterlage mit 404.',
 	},
 	{
+		pattern: '/docs/putzen/putzplan.pdf',
+		entrypoint: geteilt('src/routes/putzplanPdf.ts'),
+		grund:
+			'Derselbe Putzplan als PDF, bei jedem Aufruf aus der Datenbank gesetzt (Typst). Liegt NEBEN der Seite und damit hinter dem Login: im Plan stehen Familiennamen. Der Pfad ist vollstaendig statisch, sonst faengt shipyards /docs/[...slug] ihn ab und liefert HTML an einen PDF-Reader.',
+	},
+	{
 		pattern: '/verteiler',
 		entrypoint: geteilt('astro/pages/verteiler/index.astro'),
 		grund:

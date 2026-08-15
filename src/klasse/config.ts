@@ -218,6 +218,22 @@ export type KlassenConfigInput = {
 	/** Untertitel in der Kopfzeile. Vorgabe: `Unterlagen und Berichte`. */
 	tagline?: string
 	/**
+	 * Schuljahr für den Kopf des Putzplan-PDFs, `JJJJ/JJJJ` — z.B. `2026/2027`.
+	 *
+	 * Vorgabe: leer. Dann leitet `schuljahrFuer()` es vom ERSTEN Termin des
+	 * Plans ab und, wenn es keinen gibt, vom Kalender
+	 * (`src/klasse/putzplanPdf.ts`).
+	 *
+	 * Das Feld steht hier, weil es eine Klassenangabe ist und nichts im
+	 * geteilten Code verloren hat — gesetzt werden muss es trotzdem nicht, und
+	 * beide bestehenden Klassen setzen es nicht. Ein Wert, den jede Klasse
+	 * einmal im Jahr von Hand nachträgt, steht spätestens im zweiten Jahr in
+	 * einer von ihnen falsch, und ein falsches Schuljahr über einer richtigen
+	 * Tabelle fällt niemandem auf. Nur eine Klasse, deren Plan nicht dem
+	 * Schuljahr folgt, trägt hier etwas ein.
+	 */
+	schuljahr?: string
+	/**
 	 * Wohin die Startseite für Rückmeldungen verweist. Vorgabe:
 	 * `${repoUrl}/issues`. `klasse-christophers` zeigt auf `/discussions`.
 	 */
@@ -292,6 +308,21 @@ export const defineKlassenConfig = (
 		}
 	}
 
+	// Ein gesetztes Schuljahr wird nachgerechnet, statt es nur zu glauben:
+	// `2026/27` und `2026/2028` sind die zwei Schreibfehler, die man macht, und
+	// beide stünden danach im Kopf eines PDFs, das Eltern ausdrucken.
+	// Nur ein GESETZTES Schuljahr; die leere Zeichenkette ist die Vorgabe und
+	// bedeutet „ableiten". Sie muss durchgehen, weil eine aufgeloeste Config
+	// wieder durch `defineKlassenConfig` laufen darf.
+	if (input.schuljahr) {
+		const teile = /^(\d{4})\/(\d{4})$/.exec(input.schuljahr)
+		if (!teile || Number(teile[2]) !== Number(teile[1]) + 1) {
+			fehler.push(
+				`schuljahr "${input.schuljahr}" muss "JJJJ/JJJJ" mit aufeinanderfolgenden Jahren sein, z.B. "2026/2027"`,
+			)
+		}
+	}
+
 	const listPublicKeyPem =
 		input.listPublicKeyPem ?? SCHUL_VORGABEN.listPublicKeyPem
 	const listKeyIds = input.listKeyIds ?? SCHUL_VORGABEN.listKeyIds
@@ -344,6 +375,7 @@ export const defineKlassenConfig = (
 		mailFrom: input.mailFrom ?? SCHUL_VORGABEN.mailFrom,
 		dbPath: input.dbPath ?? `./data/${input.slug}.db`,
 		tagline: input.tagline ?? 'Unterlagen und Berichte',
+		schuljahr: input.schuljahr ?? '',
 		feedbackUrl: input.feedbackUrl ?? `${input.repoUrl}/issues`,
 		farben: input.farben ?? {},
 	}

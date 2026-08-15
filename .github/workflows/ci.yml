@@ -20,6 +20,19 @@ jobs:
 
       - run: npm ci
 
+      # Dasselbe Typst wie im Image, aus demselben Skript. Ohne diesen Schritt
+      # ueberspringt `tests/klasse/putzplan-pdf.test.ts` genau die Tests, die
+      # etwas beweisen — dass ein PDF herauskommt, dass die Namen darin stehen
+      # und dass ein Familienname mit `#` kein Befehl wird. Uebersprungene Tests
+      # sind gruen, und gruen ohne Aussage ist schlimmer als rot.
+      #
+      # Der Runner ist ein glibc-System; das musl-Programm laeuft dort trotzdem,
+      # weil es statisch gelinkt ist — es bringt seine libc mit.
+      - name: Typst holen (dieselbe Fassung wie im Image)
+        run: sudo sh docker/typst-holen.sh /usr/local/bin
+
+      - run: typst --version
+
       # Kein `npm run build` mehr davor: es gibt nichts zu bauen. Die Klassen
       # lesen diesen Baum als Submodule und Node loescht die Typen beim Laden
       # (`--experimental-strip-types`). `typecheck` ist damit die einzige
