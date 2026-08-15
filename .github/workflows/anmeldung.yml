@@ -1,0 +1,60 @@
+name: Anmeldung
+
+# Ein eigener Workflow und kein weiterer Schritt in `ci.yml`. Der Grund ist
+# nicht Ordnung, sondern Lesbarkeit des Ergebnisses: Dieser Lauf startet
+# Container und braucht Docker, `ci.yml` braucht nur Node. Steckt beides in
+# einem Job, sagt ein rotes Kreuz am Pull Request nicht mehr, ob der Code kaputt
+# ist oder ZITADEL nicht hochkam — und genau diese Unterscheidung ist die
+# einzige, die man beim Draufschauen braucht.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  anmeldung:
+    runs-on: ubuntu-latest
+    # Der Lauf dauert in der Praxis rund eine Minute (ZITADEL ist nach etwa
+    # zehn Sekunden bereit). Die Obergrenze ist kein Budget, sondern eine
+    # Reissleine: Was hier hängt, hängt an einem Container, der nicht
+    # hochkommt, und dann sind zehn Minuten Wartezeit ohne Erkenntnis.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Die Images VOR dem Testlauf holen. Nicht der Geschwindigkeit wegen —
+      # es ist dieselbe Zeit —, sondern damit im Protokoll steht, ob ein
+      # langsamer Lauf am Registry-Zugriff lag oder an ZITADEL selbst. Ohne
+      # den Schritt steckt beides in einer Zahl.
+      - name: Images holen
+        run: docker compose -f tests/integration/docker-compose.yml pull --quiet
+
+      # Startet ZITADEL und Postgres selbst (siehe
+      # `tests/integration/global-setup.ts`) und raeumt danach ab. Bewusst
+      # NICHT ueber `services:` von GitHub Actions: Dort laesst sich der
+      # Aufbau lokal nicht mit demselben Befehl starten, und was lokal nicht
+      # laeuft, wird beim naechsten Fehlschlag nicht benutzt.
+      - run: npm run test:integration
+        env:
+          # Der Aufbau bleibt nach dem Lauf stehen, damit der naechste Schritt
+          # ZITADELs Protokoll noch lesen kann. Raeumt der Testlauf selbst ab,
+          # ist der Container beim Fehlschlag schon weg — und dann steht im
+          # Protokoll des Workflows nur, DASS es schiefging.
+          INTEGRATION_ZITADEL_KEEP: '1'
+
+      # Wenn etwas schiefging, ist ZITADELs Protokoll die einzige Stelle, an
+      # der der Grund steht — der Testlauf sieht nur ein HTTP 400.
+      - name: ZITADEL-Protokoll bei Fehlschlag
+        if: failure()
+        run: docker compose -f tests/integration/docker-compose.yml logs --no-color --tail 200
+
+      - name: Aufraeumen
+        if: always()
+        run: docker compose -f tests/integration/docker-compose.yml down -v

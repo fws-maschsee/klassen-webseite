@@ -1,0 +1,94 @@
+# ZITADEL für die Integrationstests der Anmeldung.
+#
+# Es ist DIESELBE Fassung wie in Produktion (server-config,
+# argocd/applications/zitadel.yaml, Image-Tag `v4.16.2`). Eine andere Fassung
+# wäre die teuerste Art, nichts zu beweisen: Der Anmeldeweg hängt an Details,
+# die zwischen Minor-Versionen wandern — in v4 leitet `/oauth/v2/authorize`
+# auf die Login-Oberfläche v2 um, in v3 tat es das nicht, und der Test, der
+# den Rücksprung nachstellt, hängt genau an dieser Umleitung.
+#
+# Wer den Tag hier hebt, hebt ihn dort mit — und umgekehrt. Läuft er
+# auseinander, ist dieser Aufbau eine grüne Zusage über eine Software, die
+# niemand betreibt.
+
+name: klassen-webseite-anmeldung
+
+services:
+  # Postgres ohne Volume: der Zustand soll den Testlauf NICHT überleben. Jeder
+  # Lauf beginnt mit einer leeren Datenbank, ZITADEL legt seine Instanz neu an
+  # und schreibt dabei den Token aus `ZITADEL_FIRSTINSTANCE_PATPATH` frisch.
+  # Ein liegengebliebenes Volume hiesse: ZITADEL überspringt die Ersteinrichtung,
+  # der Token im Verzeichnis `pat/` gehört zu einer Instanz von gestern, und der
+  # Testlauf scheitert an einem 401, dessen Ursache nirgends im Testcode steht.
+  db:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: zitadel
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d zitadel']
+      interval: 1s
+      timeout: 5s
+      retries: 60
+
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:v4.16.2
+    # `start-from-init` macht Einrichtung und Start in einem Schritt und ist
+    # damit idempotent: Beim zweiten Lauf gegen dieselbe Datenbank passiert
+    # nichts. Der Masterkey muss exakt 32 Zeichen haben; er ist hier ein
+    # Testwert und kein Geheimnis — die Instanz lebt Minuten und ist nur an
+    # 127.0.0.1 erreichbar.
+    command: 'start-from-init --masterkey MasterkeyNeedsToHave32Characters --tlsMode disabled'
+    environment:
+      ZITADEL_DATABASE_POSTGRES_HOST: db
+      ZITADEL_DATABASE_POSTGRES_PORT: '5432'
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+
+      # Der Issuer, den die Anwendung sieht. Er muss zeichengleich zu dem
+      # stehen, was in `OIDC_ISSUER` landet — `jose` prüft den `iss` des
+      # ID-Tokens exakt gegen diesen Wert.
+      ZITADEL_EXTERNALSECURE: 'false'
+      ZITADEL_EXTERNALDOMAIN: localhost
+      ZITADEL_EXTERNALPORT: '${ZITADEL_PORT:-8080}'
+      ZITADEL_TLS_ENABLED: 'false'
+
+      ZITADEL_FIRSTINSTANCE_ORG_NAME: Testschule
+
+      # Maschinen-Benutzer mit einem Personal Access Token, das ZITADEL beim
+      # Einrichten in eine Datei schreibt. Er ist zweierlei zugleich:
+      # Einrichtungswerkzeug der Tests UND das, was in Produktion
+      # `ZITADEL_SERVICE_TOKEN` ist — die Berechtigungsprüfung in
+      # `src/server/auth/grants.ts` fragt damit die Management-API.
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: ci-admin
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: CI Admin
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_SCOPES: 'openid profile email urn:zitadel:iam:org:project:id:zitadel:aud'
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: '2099-01-01T00:00:00Z'
+      ZITADEL_FIRSTINSTANCE_PATPATH: /pat/ci-admin.pat
+    volumes:
+      # Bind-Mount und kein benanntes Volume: Der Testprozess muss die Datei
+      # lesen können, ohne in den Container zu greifen. Das Verzeichnis legt
+      # `global-setup.ts` mit weiten Rechten an — der Prozess im Container
+      # läuft als Benutzer `zitadel` und nicht als der des Testlaufs.
+      - ./pat:/pat
+    ports:
+      - '127.0.0.1:${ZITADEL_PORT:-8080}:8080'
+    depends_on:
+      db:
+        condition: service_healthy
+    # Warten auf Bereitschaft statt `sleep`: `zitadel ready` meldet erst dann
+    # Erfolg, wenn Einrichtung UND Projektionen stehen. Ein `sleep 30` wäre
+    # entweder zu kurz (roter Lauf ohne Fehler im Code) oder zu lang (ein
+    # halber Minute Wartezeit in jedem Pull Request).
+    healthcheck:
+      test: ['CMD', '/app/zitadel', 'ready']
+      interval: 1s
+      timeout: 5s
+      retries: 120
+      start_period: 5s

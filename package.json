@@ -16,6 +16,7 @@
 		"typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.astro.json",
 		"test": "vitest run",
 		"test:watch": "vitest",
+		"test:integration": "vitest run --config vitest.integration.config.ts",
 		"check": "biome check .",
 		"lint:fix": "biome check --write ."
 	},
