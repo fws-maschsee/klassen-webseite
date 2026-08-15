@@ -95,20 +95,27 @@ MCP-Server ist weg.
 
 ### Die Folge, und sie ist datenschutzrelevant
 
-Ein entzogener Grant nimmt **niemandem mehr die Post**. Das ist die Kehrseite
-der Trennung, und sie geht in die unangenehme Richtung:
+Ein entzogener Grant nahm **niemandem die Post**. Das war die Kehrseite der
+Trennung, und sie ging in die unangenehme Richtung:
 
-> **Wenn eine Familie die Klasse verlässt, bekommt sie weiter jede Elternmail —
-> bis jemand ihren Adressbuch-Eintrag von Hand löscht.** Der Zugang zur Seite
-> endet mit dem Grant, der Platz im Verteiler nicht. Es gibt keinen
+> **Wenn eine Familie die Klasse verließ, bekam sie weiter jede Elternmail —
+> bis jemand ihren Adressbuch-Eintrag von Hand löschte.** Der Zugang zur Seite
+> endete mit dem Grant, der Platz im Verteiler nicht. Es gab keinen
 > Automatismus, keine Erinnerung und keine Meldung.
 
-**Eine** Ausnahme gibt es seit dem 15.08., und sie ist eng: Wird das KONTO in
-ZITADEL gelöscht (nicht: der Grant entzogen), räumt die
+Genau dagegen steht seit dem 15.08. die
+[Konten-Prüfung vor dem Versand](#ohne-konto-keine-e-mail-die-prüfung-vor-dem-versand).
+Sie ist **kein** Übertrag und legt keinen Eintrag an: Sie vergleicht die
+Empfänger vor jedem Versand mit den Grant-Inhabern und lässt weg, wer nicht mehr
+dazugehört. In der Vorgabe-Betriebsart `report` **meldet** sie das nur; erst
+`enforce` schneidet.
+
+Eine zweite Ausnahme gibt es seit demselben Tag, und sie ist eng: Wird das KONTO
+in ZITADEL gelöscht (nicht: der Grant entzogen), räumt die
 [Lösch-Kaskade](#konten-zustelladresse-und-die-lösch-kaskade) den
-Adressbuch-Eintrag mit ab, den dieses Konto verwaltet hat. Ein entzogener Grant
-tut das weiterhin nicht, und ein Eintrag ohne Konto — Großeltern, Schulbüro,
-alles aus der Klassenliste Abgeschriebene — ist davon nie betroffen.
+Adressbuch-Eintrag mit ab, den dieses Konto verwaltet hat. Ein Eintrag ohne
+Konto — Großeltern, Schulbüro, alles aus der Klassenliste Abgeschriebene — ist
+davon nie betroffen.
 
 Das heißt: **personenbezogene Daten stehen genau so lange im Verteiler, wie die
 Klassenverwaltung sie stehen lässt.** Wer eine Klasse verwaltet, hat damit eine
@@ -136,11 +143,100 @@ kennt.
 Bewacht wird die Trennung von
 [`tests/auth/getrennte-datenschichten.test.ts`](tests/auth/getrennte-datenschichten.test.ts):
 Er wird rot, sobald ein Modul wieder Grants bezieht **und** ins Adressbuch
-schreibt, sobald der Weg einer Listenmail ZITADEL befragt, sobald im Adressbuch
-eine ZWEITE Spalte mit Verweis auf ein Konto auftaucht (die eine erlaubte heißt
-`user_sub`, siehe unten), sobald `groups` oder `group_memberships` eine
-bekommen, und sobald der MCP-Server ein Werkzeug anbietet, das einen Abgleich
-verspricht.
+schreibt, sobald im Versandweg eine ZWEITE Stelle ZITADEL befragt (die eine
+erlaubte ist die Konten-Prüfung, siehe gleich), sobald im Adressbuch eine ZWEITE
+Spalte mit Verweis auf ein Konto auftaucht (die eine erlaubte heißt `user_sub`,
+siehe unten), sobald `groups` oder `group_memberships` eine bekommen, und sobald
+der MCP-Server ein Werkzeug anbietet, das einen Abgleich verspricht.
+
+## „Ohne Konto, keine E-Mail": die Prüfung vor dem Versand
+
+Vor **jedem** Versand — Verteiler, Rundmail, Putz-Erinnerung — vergleicht
+[`src/lib/versand/kontopruefung.ts`](src/lib/versand/kontopruefung.ts) die
+Empfänger mit den Konten, die im ZITADEL-Projekt dieser Klasse einen aktiven
+Grant mit Leserolle haben.
+
+**Warum es sie gibt:** Ein entzogener Grant löst kein Ereignis aus. Der Webhook
+aus ZITADEL kennt nur `user.removed` — also das *gelöschte Konto*, nicht die
+*entzogene Rolle*. Wer die Klasse verlässt, verliert in der Praxis aber den
+Grant und behält das Konto. Ohne diese Prüfung bekäme diese Person unbegrenzt
+weiter Post, denn im Adressbuch ändert ein Rollenentzug nichts.
+
+**Sie ist kein Übertrag.** Sie liest aus ZITADEL und schreibt nichts. Das
+Adressbuch bleibt die Antwort auf „wer soll Post bekommen"; die Prüfung legt nur
+eine zweite Bedingung darüber: „und gehört noch dazu".
+
+### Zwei Betriebsarten, `LIST_ACCOUNT_CHECK`
+
+| Wert | Was passiert |
+| --- | --- |
+| `report` (**Vorgabe**) | Es wird **nichts** geschnitten. Die Prüfung läuft trotzdem und meldet, wen sie treffen würde und warum. |
+| `enforce` | Es wird geschnitten — und dieselbe Meldung geht heraus. |
+
+**Still schneiden ist verboten.** Eine Mail, die wegen der Prüfung niemanden
+mehr erreicht, ist im Ergebnis ein eigener Fall (`skipped` mit Begründung) und
+sieht nicht wie eine erfolgreiche Zustellung aus. Bei der Rundmail bekommt jeder
+geschnittene Empfänger eine `skipped`-Zeile mit Grund im Versandprotokoll.
+
+**Warum `report` die Vorgabe ist:** Damit die Umstellung jemand bewusst macht,
+nachdem er den Bericht einmal gesehen hat. Nachgemessen am 15.08. deckten sich
+Adressbuch und Grants in `klasse-wiesen` exakt (59 zu 59) und in
+`klasse-christophers` bis auf drei Fälle. In einer dritten Klasse weiß das
+niemand vorher.
+
+### Verbunden wird über zwei Schlüssel
+
+`mitglieder.user_sub` ist der stabilere — er überlebt eine Adressänderung. Er
+entsteht aber erst beim **ersten Login** und ist deshalb heute bei fast allen
+leer; eine Prüfung allein auf ihn würde jeden Verteiler auf eine Handvoll
+Adressen zusammenstreichen. Die normalisierte **E-Mail-Adresse** trägt dagegen
+heute. Also: erst der `sub`, wo er da ist, sonst die Adresse.
+
+### Der Bericht zeigt beide Richtungen
+
+| Feld | Was drinsteht |
+| --- | --- |
+| `cut` | Wer geschnitten wurde (bzw. würde), mit Grund: `no_account` (kein Konto), `account_unknown` (Konto in ZITADEL gelöscht), `role_missing` (Grant entzogen) |
+| `accounts_without_entry` | Konten **mit** Rolle, zu denen es **keinen** Adressbuch-Eintrag gibt. Diese Personen gehören dazu und bekommen trotzdem nichts — das fällt in keiner Zustellung auf, weil dort niemand fehlt, den man vermissen könnte |
+| `extra_recipients` | Anzahl der Einzeladressen ohne Adressbuch-Eintrag |
+| `unavailable` | Gesetzt, wenn ZITADEL nicht erreichbar war. Dann ist der Bericht blind, und es wurde nichts geschnitten |
+
+Adressen stehen darin **obfuskiert** (`p***@***eller.de`): Diese Berichte laufen
+über Protokolle und über die Meldung an die Kontaktadresse.
+
+### `extra_recipients` passieren immer
+
+Die Einzeladressen einer Liste (`extra_recipients`) haben per Definition kein
+Konto: Sammeladressen der Schule, Sekretariat, ein Fachlehrer. Jemand hat sie
+von Hand eingetragen, und genau das ist ihre Berechtigung. **Sie werden nie
+geschnitten**, in keiner Betriebsart — sonst verschwänden sie aus den
+Verteilern, ohne dass es jemand merkt. Im Bericht stehen sie als eigene Zahl.
+
+### Wenn ZITADEL nicht erreichbar ist
+
+| Betriebsart | Was passiert |
+| --- | --- |
+| `report` | Es wird normal verschickt. Die Prüfung ist dann nur blind — sie schneidet ohnehin nichts. Die Störung steht im Protokoll |
+| `enforce` | Es wird **nicht** verschickt. Listenmail → HTTP 503 (der Dispatcher stellt später erneut zu, der Absender bekommt keinen Bounce); Rundmail → Abbruch mit Fehler, nichts wird eingereiht; Putz-Erinnerung → Termin wird zurückgegeben und später erneut versucht |
+
+Dieselbe Entscheidung wie in `grants.ts` und aus demselben Grund: Wer nicht
+weiß, ob jemand noch dazugehört, verschickt lieber gar nichts. Eine Rundmail,
+die eine Stunde später herausgeht, ist ein Ärgernis; eine Rundmail an eine
+Familie, die die Schule verlassen hat, ist ein Datenschutzvorfall.
+
+### Eine Abfrage je Versand
+
+`grantedAccounts()` in `src/server/auth/grants.ts` holt **alle** Grants des
+Projekts in einem Aufruf (mit dem 5-Sekunden-Zwischenspeicher, den die
+Rollenabfrage ohnehin hat) — nicht einen je Empfänger. Eine zweite Abfrage
+(`knownAccounts()`) kommt nur dann, wenn überhaupt jemand herausfällt; sie
+unterscheidet „Konto gelöscht" von „Grant entzogen", also zwei verschiedene
+Handgriffe für den Menschen, der den Bericht liest.
+
+Bewiesen wird das Ganze gegen ein echtes ZITADEL in
+[`tests/integration/kontopruefung.test.ts`](tests/integration/kontopruefung.test.ts);
+die Regel selbst steht in
+[`tests/versand/kontopruefung.test.ts`](tests/versand/kontopruefung.test.ts).
 
 ## Konten, Zustelladresse und die Lösch-Kaskade
 
@@ -1324,8 +1420,16 @@ Golden-String-Test auf jeder Seite; wer das Format ändert, ändert beide.
 Die Entscheidung und ihre betriebliche Folge stehen weiter oben, weil sie
 niemand überlesen darf:
 [ZITADEL und das Adressbuch sind getrennte Datenschichten](#zitadel-und-das-adressbuch-sind-getrennte-datenschichten).
-Kurzfassung: Ein entzogener Grant sperrt den Zugang, nimmt aber niemandem die
-Post — der Adressbuch-Eintrag muss von Hand gelöscht werden.
+Kurzfassung: Es gibt keinen Übertrag. Wer im Adressbuch steht, steht da, weil
+ein Mensch ihn eingetragen hat.
+
+Seit dem 15.08. wird **gelesen und verglichen**, aber weiterhin nicht
+geschrieben: Die
+[Konten-Prüfung vor dem Versand](#ohne-konto-keine-e-mail-die-prüfung-vor-dem-versand)
+lässt weg, wer keinen Grant mehr hat, statt seinen Eintrag anzufassen. Der
+Unterschied ist nicht Wortklauberei — er entscheidet, was passiert, wenn die
+Prüfung sich irrt: Eine Mail kommt später oder gar nicht; ein Eintrag, der
+gelöscht wurde, ist weg.
 
 ### Der Adapter steht in der Integration
 

@@ -85,20 +85,27 @@ export const POST: APIRoute = async ({ request }) => {
 
 	// HIER STAND EIN ABGLEICH MIT ZITADEL, und hier kommt keiner mehr hin.
 	//
-	// Vor jeder Listenmail wurden die Grants geholt und ins Adressbuch
-	// geschrieben — Neuzugaenge angelegt, Personen ohne Grant geloescht. Das ist
-	// entfallen: Adressbuch und ZITADEL sind getrennte Datenschichten
-	// (Entscheidung des Betreibers, siehe README). Wer Post bekommt, steht im
-	// Adressbuch, weil ein Mensch ihn eingetragen hat.
+	// Vor jeder Listenmail wurden die Grants geholt und INS ADRESSBUCH
+	// GESCHRIEBEN — Neuzugaenge angelegt, Personen ohne Grant geloescht. Das ist
+	// entfallen und bleibt entfallen: Adressbuch und ZITADEL sind getrennte
+	// Datenschichten (Entscheidung des Betreibers, siehe README). Wer Post
+	// bekommt, steht im Adressbuch, weil ein Mensch ihn eingetragen hat.
 	//
-	// Der Eingang verteilt deshalb an den Stand, den die Datenbank hat, und
-	// spricht mit keinem anderen Dienst. Das macht ihn zugleich robuster: eine
-	// Stoerung bei ZITADEL kann die Verteilung nicht mehr aufhalten.
+	// WAS SEIT DEM 15.08. TROTZDEM FRAGT: die Konten-Pruefung vor dem Versand,
+	// in `handleIncomingListMail` (`src/lib/versand/kontopruefung.ts`). Sie
+	// VERGLEICHT die Empfaenger mit den Grant-Inhabern und laesst die
+	// Nicht-Passenden weg; sie schreibt nichts. Sie musste kommen, weil der
+	// frueher an dieser Stelle notierte Preis zu hoch war: Ein entzogener Grant
+	// nahm niemandem die Post, und ein Entzug loest kein Ereignis aus, das der
+	// Webhook auffangen koennte (`user.removed` meldet das geloeschte Konto,
+	// nicht die entzogene Rolle).
 	//
-	// PREIS, den die Verwaltung tragen muss: Ein entzogener Grant nimmt
-	// niemandem die Post. Wer die Klasse verlaesst, bleibt im Verteiler, bis
-	// sein Eintrag von Hand geloescht wird (`delete_mitglied`,
-	// `remove_from_group`, oder „löschen" in /verwaltung).
+	// Damit ist der Eingang nicht mehr unabhaengig von ZITADELs Verfuegbarkeit.
+	// In der Vorgabe-Betriebsart `report` aendert eine Stoerung nichts an der
+	// Verteilung. In `enforce` haelt sie die Mail auf — und dann kommt sie hier
+	// als `unavailable` an und wird mit 503 beantwortet, also mit einer
+	// spaeteren Zustellung durch den Worker und nicht mit einer Ablehnung beim
+	// Absender.
 	try {
 		const result = await handleIncomingListMail(rawBody, {
 			listName: list,

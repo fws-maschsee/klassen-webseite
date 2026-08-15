@@ -8,9 +8,11 @@ import {
 	resolveListRecipients,
 } from '../db/mailingLists.ts'
 import { einstellungFuer } from '../db/recipientSettings.ts'
+import type { AccountCheckReport } from '../versand/kontopruefung.ts'
+import { pruefeKonten } from '../versand/kontopruefung.ts'
 
 /**
- * Ergebnis der Eingangsverarbeitung. Die vier Fälle sind bewusst unterschieden,
+ * Ergebnis der Eingangsverarbeitung. Die fünf Fälle sind bewusst unterschieden,
  * weil der Dispatcher auf jeden anders reagiert (fws-maschsee/lists-dispatcher,
  * README dort):
  *
@@ -23,11 +25,21 @@ import { einstellungFuer } from '../db/recipientSettings.ts'
  *                   beim Absender ab.
  *   rejected     -> 403, Liste inaktiv oder Absender nicht berechtigt. Ebenfalls
  *                   Ablehnung beim Absender.
+ *   unavailable  -> 503, eine Störung auf UNSERER Seite. Der Worker stellt
+ *                   später erneut zu; die Mail ist nicht verloren und der
+ *                   Absender bekommt keine Unzustellbarkeitsnachricht. Genau
+ *                   dieser Fall entsteht, wenn die Konten-Prüfung in `enforce`
+ *                   läuft und ZITADEL nicht antwortet.
  *
  * `reason` landet über den Worker in der Unzustellbarkeitsnachricht, die ein
  * Elternteil zu lesen bekommt. Die Texte sind deshalb deutsch, verständlich und
  * enthalten nichts Vertrauliches — insbesondere keine Empfängeradressen und
  * keine Auskunft darüber, wer sonst auf der Liste steht.
+ *
+ * `account_check` ist der Bericht der Konten-Prüfung (siehe
+ * `src/lib/versand/kontopruefung.ts`). Er hängt an `enqueued` UND an `skipped`:
+ * Eine Mail, die wegen der Prüfung niemanden mehr erreicht, muss als solche
+ * erkennbar sein und darf nicht wie eine erfolgreiche Zustellung aussehen.
  */
 export type IncomingResult =
 	| {
@@ -36,10 +48,12 @@ export type IncomingResult =
 			recipients: number
 			/** true = dieselbe Mail wurde schon einmal angenommen (Worker-Retry). */
 			duplicate: boolean
+			account_check?: AccountCheckReport
 	  }
-	| { kind: 'skipped'; reason: string }
+	| { kind: 'skipped'; reason: string; account_check?: AccountCheckReport }
 	| { kind: 'unknown_list'; reason: string }
 	| { kind: 'rejected'; reason: string }
+	| { kind: 'unavailable'; reason: string }
 
 /** HTTP-Status je Ergebnis — die Übersetzung, die der Worker erwartet. */
 export const statusForResult = (result: IncomingResult): number => {
@@ -52,6 +66,8 @@ export const statusForResult = (result: IncomingResult): number => {
 			return 404
 		case 'rejected':
 			return 403
+		case 'unavailable':
+			return 503
 	}
 }
 
@@ -213,16 +229,56 @@ export const handleIncomingListMail = async (
 	const ohneAbsender =
 		einstellungFuer(list.address, absender, db).ownMail !== 'copy'
 
-	const recipients = resolveListRecipients(list, db)
+	const aufgeloest = resolveListRecipients(list, db)
 		.filter((r) => !(ohneAbsender && normalizeEmail(r.email) === absender))
 		.map((r) => ({
 			email: r.email,
 			mitglied_id: r.mitglied_id,
 		}))
-	if (recipients.length === 0) {
+	if (aufgeloest.length === 0) {
 		return {
 			kind: 'skipped',
 			reason: 'Die Liste hat derzeit keine Empfänger.',
+		}
+	}
+
+	// OHNE KONTO, KEINE E-MAIL. Ein entzogener Grant löst kein Ereignis aus —
+	// der Webhook aus ZITADEL kennt nur `user.removed`, also das gelöschte
+	// Konto, nicht die entzogene Rolle. Ohne diese Prüfung bekäme jemand nach
+	// dem Rollenentzug unbegrenzt weiter Post, denn im Adressbuch ändert ein
+	// Entzug nichts. Die Begründung im Langen steht in
+	// `src/lib/versand/kontopruefung.ts`.
+	//
+	// HIER STAND EINMAL: „Der Eingang spricht mit keinem anderen Dienst." Das
+	// gilt nicht mehr, und der Preis ist bewusst bezahlt: In `report` (Vorgabe)
+	// ändert eine Störung bei ZITADEL nichts an der Verteilung. Nur in `enforce`
+	// hält sie die Mail auf — und dann mit 503, also mit einer späteren
+	// Zustellung durch den Worker und nicht mit einer Ablehnung beim Absender.
+	let pruefung: Awaited<ReturnType<typeof pruefeKonten<(typeof aufgeloest)[0]>>>
+	try {
+		pruefung = await pruefeKonten(
+			aufgeloest,
+			(r) => ({ email: r.email, from_address_book: r.mitglied_id !== null }),
+			{ db, occasion: `Liste ${list.address}` },
+		)
+	} catch (fehler) {
+		return {
+			kind: 'unavailable',
+			reason: `Die Berechtigungsprüfung ist gerade nicht erreichbar (${
+				fehler instanceof Error ? fehler.message : String(fehler)
+			}). Die Nachricht wurde NICHT verteilt.`,
+		}
+	}
+
+	const recipients = pruefung.recipients
+	if (recipients.length === 0) {
+		// Sichtbar als eigener Fall. Ein `enqueued` mit `recipients: 0` sähe im
+		// Protokoll des Dispatchers aus wie eine zugestellte Mail.
+		return {
+			kind: 'skipped',
+			reason:
+				'Kein Empfänger dieser Liste hat noch ein Konto mit Rolle in dieser Klasse — die Nachricht wurde nicht verteilt.',
+			account_check: pruefung.report,
 		}
 	}
 
@@ -258,5 +314,11 @@ export const handleIncomingListMail = async (
 		db,
 	)
 
-	return { kind: 'enqueued', message_id, recipients: enqueued, duplicate }
+	return {
+		kind: 'enqueued',
+		message_id,
+		recipients: enqueued,
+		duplicate,
+		account_check: pruefung.report,
+	}
 }

@@ -11,6 +11,8 @@ import { globallySuppressedAddresses } from '../lib/db/suppressions.ts'
 import { mailFrom, mailFromName, siteUrl } from '../lib/email/config.ts'
 import type { EmailTransport, SendInput } from '../lib/email/transport.ts'
 import { sesTransport } from '../lib/email/transport.ts'
+import type { AccountCheckReport } from '../lib/versand/kontopruefung.ts'
+import { berichtAlsText, pruefeKonten } from '../lib/versand/kontopruefung.ts'
 import { klassenConfig } from './config.ts'
 import { datumIso } from './putzplan.ts'
 
@@ -313,23 +315,37 @@ export const baueMeldung = (
 	datum: Date,
 	unerreicht: readonly FamilienStand[],
 	erreicht: readonly FamilienStand[],
+	/**
+	 * Der Bericht der Konten-Prüfung, falls er etwas zu sagen hat. Er steht in
+	 * DIESER Meldung und nicht in einer eigenen: Wer sie liest, soll den Stand
+	 * eines Termins an einer Stelle sehen — zwei Mails am selben Sonntagabend
+	 * werden zu einer gelesen und einer übersehenen.
+	 */
+	kontenBericht?: string,
 ): SendInput => {
 	const { contactMail } = klassenConfig()
-	const zeilen = [
-		`Die Putz-Erinnerung für ${wochentagName(datum)}, den ${langdatum(datum)}, konnte nicht an alle Familien gehen.`,
-		'',
-		unerreicht.length === 1
-			? 'Diese Familie hat KEINE Erinnerung bekommen:'
-			: 'Diese Familien haben KEINE Erinnerung bekommen:',
-		...unerreicht.map(
-			({ name, groupKey, grund }) =>
-				`    Familie ${name} (Gruppe "${groupKey}"): ${grund ?? 'keine Empfänger'}`,
-		),
-		'',
-		'Solange das so bleibt, erfährt sie nichts von ihrem Einsatz — auf der Putzplan-Seite steht sie aber drin.',
-		'',
-		'Was hilft: die Gruppe anlegen bzw. der Familie eine Adresse eintragen (Verwaltung → Gruppen), und die Familie kurz von Hand anschreiben. Die Erinnerung selbst wird für diesen Termin nicht noch einmal verschickt.',
-	]
+	const zeilen =
+		unerreicht.length === 0
+			? [
+					`Die Putz-Erinnerung für ${wochentagName(datum)}, den ${langdatum(datum)}, ist raus.`,
+				]
+			: [
+					`Die Putz-Erinnerung für ${wochentagName(datum)}, den ${langdatum(datum)}, konnte nicht an alle Familien gehen.`,
+					'',
+					unerreicht.length === 1
+						? 'Diese Familie hat KEINE Erinnerung bekommen:'
+						: 'Diese Familien haben KEINE Erinnerung bekommen:',
+					...unerreicht.map(
+						({ name, groupKey, grund }) =>
+							`    Familie ${name} (Gruppe "${groupKey}"): ${grund ?? 'keine Empfänger'}`,
+					),
+					'',
+					'Solange das so bleibt, erfährt sie nichts von ihrem Einsatz — auf der Putzplan-Seite steht sie aber drin.',
+					'',
+					'Was hilft: die Gruppe anlegen bzw. der Familie eine Adresse eintragen (Verwaltung → Gruppen), und die Familie kurz von Hand anschreiben. Die Erinnerung selbst wird für diesen Termin nicht noch einmal verschickt.',
+				]
+
+	if (kontenBericht) zeilen.push('', kontenBericht)
 
 	if (erreicht.length > 0) {
 		zeilen.push(
@@ -385,6 +401,8 @@ export type ErinnerungsErgebnis =
 			unreached: string[]
 			/** Adressen, bei denen der Versand scheiterte. Ebenfalls gemeldet. */
 			failed: string[]
+			/** Bericht der Konten-Pruefung, siehe `src/lib/versand/kontopruefung.ts`. */
+			account_check: AccountCheckReport
 	  }
 	/** Keine einzige Mail ging raus; der Termin ist wieder freigegeben. */
 	| { kind: 'retry_later'; terminDate: string; error: string }
@@ -451,9 +469,33 @@ export const sendeFaelligeErinnerung = async (
 		),
 	]
 
+	// OHNE KONTO, KEINE E-MAIL. Ein entzogener Grant loest kein Ereignis aus —
+	// der Webhook aus ZITADEL kennt nur `user.removed`, also das geloeschte
+	// Konto, nicht die entzogene Rolle. Ohne diese Pruefung erinnerte diese
+	// Datei eine Familie noch Jahre nach ihrem Weggang an den Putzdienst.
+	// Begruendung im Langen: `src/lib/versand/kontopruefung.ts`.
+	//
+	// Bei einer Stoerung von ZITADEL in `enforce` wird der Termin WIEDER
+	// FREIGEGEBEN und spaeter erneut versucht — derselbe Weg wie bei einer
+	// Stoerung der Zustellung weiter unten, und aus demselben Grund: Bis Freitag
+	// ist Zeit, und ein Tick alle paar Minuten holt es nach.
+	let pruefung: Awaited<ReturnType<typeof pruefeKonten<string>>>
+	try {
+		pruefung = await pruefeKonten(
+			adressen,
+			(adresse) => ({ email: adresse, from_address_book: true }),
+			{ db, occasion: `Putz-Erinnerung ${terminDate}` },
+		)
+	} catch (fehler) {
+		gibErinnerungFrei(terminDate, db)
+		const grund = `Konten-Pruefung nicht moeglich: ${fehler instanceof Error ? fehler.message : String(fehler)}`
+		log(`Erinnerung ${terminDate} zurueckgestellt: ${grund}`)
+		return { kind: 'retry_later', terminDate, error: grund }
+	}
+
 	const gescheitert: string[] = []
 	let zugestellt = 0
-	for (const adresse of adressen) {
+	for (const adresse of pruefung.recipients) {
 		try {
 			await transport.send(baueErinnerungsMail(adresse, termin.datum, inhalt))
 			zugestellt++
@@ -465,13 +507,18 @@ export const sendeFaelligeErinnerung = async (
 		}
 	}
 
-	// Es gab Adressen, aber keine einzige Mail kam durch: Das ist die
+	// Es gab zustellbare Adressen, aber keine einzige Mail kam durch: Das ist die
 	// Warteschlange und nicht der Putzplan — SMTP weg, Zugangsdaten abgelaufen.
 	// Solche Stoerungen gehen vorueber, und bis Freitag ist Zeit. Also den
 	// Termin wieder hergeben, damit der naechste Tick es erneut versucht.
-	if (adressen.length > 0 && zugestellt === 0) {
+	//
+	// Gezaehlt werden die Adressen NACH der Konten-Pruefung. Sonst waere ein
+	// vollstaendiger Schnitt in `enforce` von einem SMTP-Ausfall nicht zu
+	// unterscheiden, und der Dienst versuchte bis Freitag alle paar Minuten
+	// erneut, was er gerade bewusst nicht getan hat.
+	if (pruefung.recipients.length > 0 && zugestellt === 0) {
 		gibErinnerungFrei(terminDate, db)
-		const fehler = `keine der ${adressen.length} Adressen erreicht`
+		const fehler = `keine der ${pruefung.recipients.length} Adressen erreicht`
 		log(`Erinnerung ${terminDate} zurueckgestellt: ${fehler}`)
 		return { kind: 'retry_later', terminDate, error: fehler }
 	}
@@ -481,8 +528,30 @@ export const sendeFaelligeErinnerung = async (
 		`Erinnerung ${terminDate} verschickt: ${zugestellt} Adresse(n), ${unerreicht.length} Familie(n) nicht erreichbar`,
 	)
 
-	if (unerreicht.length > 0 || gescheitert.length > 0) {
-		const meldung = baueMeldung(termin.datum, unerreicht, erreicht)
+	// Die Meldung geht auch dann raus, wenn nur die Konten-Pruefung etwas zu
+	// sagen hat. In `report` ist das der einzige Weg, auf dem der Bericht einen
+	// Menschen erreicht — im Protokoll des Pods liest ihn niemand.
+	//
+	// Eine BLINDE Pruefung (ZITADEL nicht erreichbar oder nicht eingerichtet)
+	// loest bewusst KEINE Meldung aus. Sie hat nichts geschnitten und niemanden
+	// gefunden; eine woechentliche Mail „die Pruefung lief nicht" waere eine
+	// Meldung, die man nach dem dritten Mal wegklickt — und dann klickt man die
+	// vierte mit weg, in der etwas steht. Sie steht im Protokoll (`console.warn`
+	// in `kontopruefung.ts`), und das ist der richtige Ort fuer eine Stoerung
+	// des Betriebs.
+	const kontenBericht =
+		pruefung.report.cut.length > 0 ||
+		pruefung.report.accounts_without_entry.length > 0
+			? berichtAlsText(pruefung.report)
+			: undefined
+
+	if (unerreicht.length > 0 || gescheitert.length > 0 || kontenBericht) {
+		const meldung = baueMeldung(
+			termin.datum,
+			unerreicht,
+			erreicht,
+			kontenBericht,
+		)
 		try {
 			await transport.send({
 				...meldung,
@@ -511,5 +580,6 @@ export const sendeFaelligeErinnerung = async (
 		recipients: zugestellt,
 		unreached: unerreicht.map((s) => s.groupKey),
 		failed: gescheitert,
+		account_check: pruefung.report,
 	}
 }

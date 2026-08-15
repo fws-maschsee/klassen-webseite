@@ -22,6 +22,15 @@ import { runMigrations } from '../../src/migrations.ts'
  * jeder eingehenden Listenmail in `src/routes/api/lists/incoming.ts`,
  * `usersWithRole()` in `grants.ts` und die Spalte `mitglieder.zitadel_user_id`.
  *
+ * SEIT DEM 15.08. GIBT ES IN `grants.ts` WIEDER EINE MENGENABFRAGE
+ * (`grantedAccounts()`), und sie liefert auch die Anmeldeadressen. Das ist
+ * nicht die Rueckkehr von `usersWithRole()`, und der Unterschied ist nicht der
+ * Name: Jenes lieferte Namen und Adressen, damit ein Aufrufer daraus
+ * Adressbuch-Eintraege ANLEGT. Diese liefert dieselbe Menge, damit die
+ * Konten-Pruefung vor dem Versand sie mit dem Adressbuch VERGLEICHT — und
+ * genau dieser Unterschied ist es, den die Tests unten pruefen: beziehen
+ * duerfen, schreiben nicht.
+ *
  * Warum das ein Waechter braucht und kein Kommentar reicht: Die Schicht war
  * nicht falsch programmiert, sie war naheliegend. „Die Grants kennen doch alle
  * Eltern, warum sie zweimal pflegen" ist ein guter Gedanke, und genau deshalb
@@ -70,7 +79,7 @@ const quellen = (verzeichnis: string): string[] =>
 const ZITADEL_QUELLE: RegExp[] = [
 	/from\s+['"][^'"]*auth\/grants\.ts['"]/,
 	/\/management\/v1\/users\/grants/,
-	/\b(rolesForUser|usersWithRole|projectGrants|syncMembersFromZitadel)\s*\(/,
+	/\b(rolesForUser|usersWithRole|projectGrants|syncMembersFromZitadel|grantedAccounts|knownAccounts)\s*\(/,
 ]
 
 /**
@@ -120,17 +129,43 @@ describe('Getrennte Datenschichten: statisch', () => {
 		expect(schreiber.map(relativ)).toEqual([])
 	})
 
-	test('der Weg einer Listenmail fragt ZITADEL nicht', () => {
-		// Hier steckte der Abgleich, den ein blosses Loeschen des MCP-Werkzeugs
-		// stehen gelassen haette: ein Aufruf VOR der Verteilung, den niemand
-		// bestellt hatte und den keine Oberflaeche zeigte. Der Eingang arbeitet auf
-		// der Datenbank und spricht mit keinem anderen Dienst — das haelt ihn
-		// zugleich unabhaengig von dessen Verfuegbarkeit.
+	/**
+	 * STAND 15.08.: Hier stand „der Weg einer Listenmail fragt ZITADEL NICHT".
+	 * Das gilt nicht mehr, und die Aenderung ist eine Entscheidung und keine
+	 * Aufweichung — sie gehoert deshalb ausformuliert hierher und nicht in eine
+	 * gelockerte Zusicherung.
+	 *
+	 * WAS DER ALTE SATZ MEINTE: Vor jeder eingehenden Listenmail wurden die
+	 * Grants geholt und INS ADRESSBUCH GESCHRIEBEN — Neuzugaenge angelegt,
+	 * Personen ohne Grant geloescht. Das Verbot galt dem SCHREIBEN, die
+	 * Formulierung traf aber das FRAGEN mit.
+	 *
+	 * WAS JETZT FRAGT: die Konten-Pruefung vor dem Versand
+	 * (`src/lib/versand/kontopruefung.ts`). Sie vergleicht die Empfaenger mit
+	 * den Grant-Inhabern und laesst die Nicht-Passenden weg — sie schreibt
+	 * nichts, weder ins Adressbuch noch sonstwohin. Sie MUSS fragen: Ein
+	 * entzogener Grant loest kein Ereignis aus (der Webhook kennt nur
+	 * `user.removed`), also gibt es keinen anderen Weg, ihn zu bemerken, als
+	 * nachzusehen.
+	 *
+	 * WAS DER TEST DESHALB JETZT ZUSICHERT: dass es bei GENAU DIESER EINEN
+	 * Stelle bleibt. Ein zweiter Aufruf irgendwo im Versandweg waere wieder das
+	 * Muster von damals — verstreute Fragen, die niemand bestellt hat und die
+	 * keine Oberflaeche zeigt.
+	 *
+	 * Der PREIS steht daneben und wird bewusst gezahlt: Der Eingang ist nicht
+	 * mehr unabhaengig von ZITADELs Verfuegbarkeit. In der Vorgabe-Betriebsart
+	 * `report` aendert eine Stoerung nichts an der Verteilung; nur in `enforce`
+	 * haelt sie die Mail auf, und dann mit 503 — also mit einer spaeteren
+	 * Zustellung und nicht mit einer Ablehnung beim Absender.
+	 */
+	test('im Versandweg fragt GENAU EINE Stelle bei ZITADEL nach', () => {
 		const pfade = [
 			path.join(SRC, 'routes/api/lists'),
 			path.join(SRC, 'lib/lists'),
 			path.join(SRC, 'lib/email'),
 			path.join(SRC, 'lib/emails'),
+			path.join(SRC, 'lib/versand'),
 		]
 		const dateien = [
 			...pfade.flatMap(quellen),
@@ -140,7 +175,20 @@ describe('Getrennte Datenschichten: statisch', () => {
 		const fragende = dateien.filter((datei) =>
 			trifft(ZITADEL_QUELLE, fs.readFileSync(datei, 'utf-8')),
 		)
-		expect(fragende.map(relativ)).toEqual([])
+		expect(fragende.map(relativ)).toEqual(['src/lib/versand/kontopruefung.ts'])
+	})
+
+	test('die Konten-Pruefung schreibt das Adressbuch nicht', () => {
+		// Der globale Test oben deckt das mit ab; er steht hier trotzdem noch
+		// einmal einzeln. Wenn jemand diese eine Datei umbaut, soll die Zeile,
+		// die rot wird, ihren Namen tragen — und nicht eine Liste, in der sie
+		// eine von vielen ist.
+		const inhalt = fs.readFileSync(
+			path.join(SRC, 'lib/versand/kontopruefung.ts'),
+			'utf-8',
+		)
+		expect(trifft(ZITADEL_QUELLE, inhalt)).toBe(true)
+		expect(trifft(ADRESSBUCH_SCHREIBT, inhalt)).toBe(false)
 	})
 })
 
