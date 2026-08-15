@@ -618,6 +618,7 @@ export const siteConfig = defineKlassenConfig({
 | `contactName` | keiner — die Texte nennen dann nur `contactMail` | wenn eine Person und nicht eine Funktionsadresse zuständig ist. Erscheint in der Ablehnungsmeldung („… kann sie vergeben") und auf der Verteiler-Seite |
 | `calendarLegacyPath` | `null` | wenn der Kalender einmal unter einer anderen Adresse lag und dort noch Abos hängen. `startServer` leitet sie dauerhaft (301) auf `calendarPath` um, **vor** `express.static`. Nur die alte Adresse leitet um — der Pfad mit den echten Abos wird direkt ausgeliefert, weil Kalender-Clients Umleitungen nicht zuverlässig folgen (Apple: Fehler -1007) |
 | `tagline` | `Unterlagen und Berichte` | nach Geschmack |
+| `schuljahr` | keins — dann zählt der erste Termin des Putzplans, sonst der Kalender | nur wenn der Plan der Klasse nicht dem Schuljahr folgt. `JJJJ/JJJJ`, aufeinanderfolgende Jahre; steht im Kopf des [Putzplan-PDFs](#der-putzplan-als-pdf) |
 | `feedbackUrl` | `${repoUrl}/issues` | `klasse-christophers` zeigt auf `/discussions` |
 | `farben` | keine | eigene daisyUI-Farben (`primary`, `secondary`, `accent`, `neutral`) |
 
@@ -642,6 +643,7 @@ Es gibt keine `exports`-Karte mehr, die Namen auf Dateien abbildet — der Pfad
 | `#geteilt/migrations.ts` | `./migrations` | `packageMigrations()`, `packageMigrationsDir()`, `alleMigrations()`, `runMigrations()` |
 | `#geteilt/klasse/kalender.ts` | `./kalender` | `pruefeKalender(projektWurzel, config)`, `webcalUrl(config)` |
 | `#geteilt/klasse/putzplan.ts` | — | `naechsterPutztermin()`, `familienEmpfaenger()` — die Schnittstelle des Erinnerungsdienstes; dazu `planAlsEintraege()`, `putzplanZeilen()` für die Seite und `putzplanSchema`, `optionaleDatei()`, `putzplanAusDatei()`, `PUTZPLAN_DATEI` für den einmaligen Import. Siehe [Vom YAML-Putzplan in die Datenbank](#vom-yaml-putzplan-in-die-datenbank) |
+| `#geteilt/klasse/putzplanPdf.ts` | — | der Plan als PDF: `putzplanAlsPdf()`, `putzplanPdfDaten()`, `PUTZPLAN_VORLAGE`. Siehe [Der Putzplan als PDF](#der-putzplan-als-pdf) |
 | `#geteilt/lib/db/putzplan.ts` | — | der Plan selbst: `planLesen()`, `setzeTermin()`, `tauscheTermine()`, `ersetzePlan()` und die vier Planregeln im Schreibpfad |
 | `geteilt/src/styles/klasse.css` | `./styles/global.css` | der Tailwind-Einstieg; per `@import` aus `src/styles/app.css` der Klasse, nicht per Subpath-Import |
 | `#geteilt/lib/…`, `#geteilt/server/…`, `#geteilt/remark/…` | `./lib/*`, … | der geteilte Code, einzeln |
@@ -926,6 +928,88 @@ gibt oder niemand darin eine Adresse hat. Das ist die wichtigste Zusage: Der
 Aufrufer bekommt in beiden Fällen nichts und kann den Fall erkennen, statt eine
 erfundene Adresse zu bekommen und eine Erinnerung an jemanden zu schicken, den
 sie nichts angeht.
+
+## Der Putzplan als PDF
+
+`/docs/putzen/putzplan.pdf` liefert denselben Plan wie die Seite daneben, gesetzt
+mit [Typst](https://typst.app). Der Link steht unter der Tabelle auf
+`/docs/putzen/putzplan`.
+
+**Hinter dem Login.** Im Plan stehen Familiennamen; unter `/public/` wäre er für
+jeden abrufbar, der die Adresse kennt, und Adressen werden weitergegeben. Der
+Pfad liegt deshalb neben der Seite und ist genauso geschützt wie sie.
+
+**Bei jedem Aufruf neu.** Der Plan ändert sich über MCP, also ohne Deploy. Ein
+zur Bauzeit erzeugtes PDF zeigte den Stand des letzten Deploys — und einem
+ausgedruckten Zettel sieht man nicht an, dass ein Tausch darauf fehlt.
+
+**Wer was liefert:**
+
+| Teil | Ort |
+| --- | --- |
+| Route | `src/routes/putzplanPdf.ts` (`GETEILTE_ROUTEN`) |
+| Daten und Vorlage | `src/klasse/putzplanPdf.ts` — `putzplanPdfDaten()` und `PUTZPLAN_VORLAGE` |
+| Aufruf des Programms | `src/lib/pdf/typst.ts` — `typstPdf()` |
+| Programm im Image | `docker/typst-holen.sh`, aufgerufen aus dem Dockerfile der Klasse |
+
+Die Vorlage steht in **diesem** Repository, damit beide Klassen dasselbe PDF
+bekommen. Klassenname, Schuljahr und Kontaktadresse kommen aus der
+`KlassenConfig`; das Schuljahr ist optional und wird sonst aus dem **ersten
+Termin** abgeleitet (und ohne Termine aus dem Kalender) — ein Wert, den jede
+Klasse einmal im Jahr von Hand nachträgt, steht spätestens im zweiten Jahr in
+einer von ihnen falsch.
+
+### Was den Aufruf von außen ungefährlich macht
+
+Familiennamen und Anmerkungen kommen aus der Datenbank. Dort steht, was jemand
+über MCP hineinschreibt, und `#` ist in Typst das Zeichen, mit dem Code anfängt.
+Drei Maßnahmen, jede mit einem eigenen Test:
+
+1. **Daten bleiben Daten.** Sie werden als JSON in eine Datei geschrieben, die
+   die Vorlage mit `json("daten.json")` **liest** — nichts wird in den Quelltext
+   eingesetzt. Typst setzt eine Zeichenkette als Text und liest sie nicht noch
+   einmal als Auszeichnung; `Familie #strong[X]` ist damit ein merkwürdiger
+   Name und kein Befehl. Textersetzung in der Vorlage wäre die naheliegende
+   Lösung und zugleich eine Codeeinschleusung.
+2. **Kein Zugriff nach draußen.** Jeder Lauf bekommt ein eigenes, leeres
+   Verzeichnis als `--root`; Typst lässt aus einem Dokument nur Pfade darunter
+   zu, `#read("/etc/passwd")` scheitert also. Ins Netz geht Typst nur für Pakete
+   aus dem Register (`#import "@preview/…"`) — die Vorlage importiert keines,
+   und Paket- wie Cache-Pfad zeigen ebenfalls in das leere Verzeichnis, damit
+   auch ein versehentlicher Import scheitert statt bei jedem Seitenaufruf einen
+   fremden Server zu fragen. Dazu `--ignore-system-fonts`: nur die in Typst
+   eingebauten Schriften, sonst sähe das PDF je nach Basis-Image anders aus.
+3. **Frist.** 10 Sekunden, dann `SIGKILL` und ein Fehler an den Aufrufer (504).
+   Ohne Frist belegte ein hängender Lauf einen Node-Worker, bis jemand den Pod
+   neu startet.
+
+### Das Programm im Image
+
+Ein **vorgebautes, statisch gegen musl gelinktes** Typst, geholt in einer
+eigenen Bau-Stufe und in die Laufzeit-Stufe kopiert. Die Laufzeit ist
+`node:22-alpine`, also musl; ein glibc-Programm startet dort mit „not found" —
+einer Meldung, die nach einem falschen Pfad aussieht und keiner ist.
+
+Die Fassung ist in `docker/typst-holen.sh` festgenagelt (samt SHA-256 je
+Architektur), und das Skript liegt hier und nicht in den Klassen: Wer in der
+Vorlage etwas benutzt, das die eine Klasse im Image hat und die andere nicht,
+bekommt in einer Klasse ein PDF und in der anderen einen Satzfehler — bei
+grünen Bauten in beiden. Im Dockerfile einer Klasse stehen deshalb nur vier
+Zeilen:
+
+```dockerfile
+FROM node:22-alpine AS typst
+RUN apk add --no-cache xz
+COPY geteilt/docker/typst-holen.sh /tmp/typst-holen.sh
+RUN sh /tmp/typst-holen.sh /out
+# … und in der Laufzeit-Stufe:
+COPY --from=typst /out/typst /usr/local/bin/typst
+```
+
+Eine neue Typst-Fassung ist damit eine Änderung an **diesem** Repository, mit CI
+davor, und keine Nebenwirkung des nächsten Deploys. `npm test` überspringt die
+Satztests, wenn kein Typst da ist (`TYPST_BIN` oder `typst` im PATH), und sagt
+es; die CI installiert dieselbe Fassung mit demselben Skript.
 
 ## Was in einer weiterverteilten Listenmail steht
 
