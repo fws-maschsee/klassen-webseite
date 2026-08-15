@@ -204,6 +204,14 @@ heute. Also: erst der `sub`, wo er da ist, sonst die Adresse.
 Adressen stehen darin **obfuskiert** (`p***@***eller.de`): Diese Berichte laufen
 über Protokolle und über die Meldung an die Kontaktadresse.
 
+**Der Bericht erreicht nur dann jemanden per Mail, wenn er etwas zu melden
+hat** — also wenn `cut` oder `accounts_without_entry` etwas enthält
+(`hatBefund()`). Bei sauberer Lage steht er im Protokoll und am Rückgabewert,
+und sonst nirgends; eine blinde Prüfung (ZITADEL weg) ist ebenfalls kein
+Anlass. Der Grund ist die Putz-Erinnerung: Sie läuft jeden Sonntag, und eine
+wöchentliche Mail mit lauter Nullen lernt man wegzuklicken — danach klickt man
+die weg, in der etwas steht.
+
 ### `extra_recipients` passieren immer
 
 Die Einzeladressen einer Liste (`extra_recipients`) haben per Definition kein
@@ -1046,6 +1054,25 @@ gibt oder niemand darin eine Adresse hat. Das ist die wichtigste Zusage: Der
 Aufrufer bekommt in beiden Fällen nichts und kann den Fall erkennen, statt eine
 erfundene Adresse zu bekommen und eine Erinnerung an jemanden zu schicken, den
 sie nichts angeht.
+
+### Zwei Nachrichten an den Betrieb, und sie meinen Verschiedenes
+
+| | Wann | Wohin |
+| --- | --- | --- |
+| **Meldung** | Nur wenn etwas schiefging: eine Familie ohne erreichbare Adresse, ein gescheiterter Versand, oder ein Befund der Konten-Prüfung | `contactMail` der Klasse |
+| **Quittung** | Nach **jedem** tatsächlichen Versand: welche Klasse, welcher Termin, welche Familien, an wie viele Adressen — und, falls vorhanden, was schiefging | `REMINDER_RECEIPT_TO`, sonst gar nicht |
+
+Die Quittung ist das Gegenteil der Meldung: Die kommt, wenn etwas schiefging;
+die Quittung kommt, **weil** nichts schiefging. Sie ist ausdrücklich vorläufig —
+sie soll zeigen, dass der Dienst überhaupt läuft, solange ihm noch niemand
+traut. Genau deshalb hängt sie an einer Umgebungsvariablen: **Leeren schaltet
+sie ab**, ohne dass jemand Code anfasst.
+
+Sie geht **nur** auf dem Weg raus, der wirklich verschickt hat (`kind: 'sent'`)
+— nicht bei „noch nicht fällig", „hat schon ein anderer Tick gemacht" oder „kein
+Termin". Sonst käme sie alle paar Minuten. Und sie geht **nach** dem Versand
+raus, in ihrem eigenen `try`: Scheitert sie, steht das im Protokoll und sonst
+passiert nichts — die Familien haben ihre Mail dann längst.
 
 ## Der Putzplan als PDF
 
