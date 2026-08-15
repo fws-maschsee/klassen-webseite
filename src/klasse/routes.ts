@@ -121,12 +121,6 @@ export const GETEILTE_ROUTEN: readonly GeteilteRoute[] = [
 			'Bestätigung einer neuen Zustelladresse. Muss OHNE Anmeldung gehen: Der Klick passiert im Mailprogramm und damit oft in einem anderen Browser, in dem keine Sitzung liegt. Der Schlüssel im Link ist der Nachweis.',
 	},
 	{
-		pattern: '/api/zitadel/events',
-		entrypoint: geteilt('src/routes/api/zitadel/events.ts'),
-		grund:
-			'Empfänger für ZITADEL Actions v2. Reagiert auf `user.removed` und löscht Konto samt verknüpftem Adressbuch-Eintrag. HMAC-signiert; das Target legt `tofu/zitadel/` in fws-maschsee/server-config an (siehe README).',
-	},
-	{
 		pattern: '/public/health',
 		entrypoint: geteilt('src/routes/health.ts'),
 		grund:

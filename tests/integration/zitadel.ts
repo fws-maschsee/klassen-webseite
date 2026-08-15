@@ -197,11 +197,12 @@ export const benutzerAnlegen = async (
 /**
  * Einen Benutzer bei ZITADEL löschen.
  *
- * Wird von den fünf Nachweisen nicht gebraucht — sie steht hier für die
- * Webhook-Kaskade, die es im Code noch NICHT gibt (ZITADEL löscht einen
- * Benutzer, die Anwendung räumt Konto und Adressbucheintrag ab). Damit sie
- * nicht als ungeprüfte Zusage verrottet, prüft `anmeldung.test.ts` sie mit.
- * Siehe README, Abschnitt „Wo das später andockt".
+ * Von den fünf Nachweisen der Anmeldung nicht gebraucht, vom Abgleich schon:
+ * `abgleich.test.ts` stellt damit den Fall her, den man sonst nicht bekommt —
+ * ein Adressbuch-Eintrag zeigt auf ein Konto, das es in ZITADEL nicht mehr
+ * gibt (`account_unknown`). Nur so lässt sich „Konto gelöscht" von „Grant
+ * entzogen" unterscheiden. `anmeldung.test.ts` prüft die Funktion zusätzlich
+ * einzeln, damit ein Fehlschlag nicht erst im Abgleich auffällt.
  */
 export const benutzerLoeschen = async (
 	zugang: ZitadelZugang,

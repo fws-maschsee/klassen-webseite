@@ -144,8 +144,9 @@ describe('Getrennte Datenschichten: statisch', () => {
 	 * (`src/lib/versand/kontopruefung.ts`). Sie vergleicht die Empfaenger mit
 	 * den Grant-Inhabern und laesst die Nicht-Passenden weg — sie schreibt
 	 * nichts, weder ins Adressbuch noch sonstwohin. Sie MUSS fragen: Ein
-	 * entzogener Grant loest kein Ereignis aus (der Webhook kennt nur
-	 * `user.removed`), also gibt es keinen anderen Weg, ihn zu bemerken, als
+	 * entzogener Grant loest kein Ereignis aus, auf das man hoeren koennte (der
+	 * Empfaenger fuer `user.removed` ist am 15.08. entfernt worden — er war nie
+	 * verdrahtet), also gibt es keinen anderen Weg, ihn zu bemerken, als
 	 * nachzusehen.
 	 *
 	 * WAS DER TEST DESHALB JETZT ZUSICHERT: dass es bei GENAU DIESER EINEN
@@ -365,6 +366,40 @@ describe('Getrennte Datenschichten: MCP', () => {
 		expect(namen).toContain('upsert_mitglied')
 		expect(namen).toContain('delete_mitglied')
 		expect(namen).toContain('remove_from_group')
+
+		await client.close()
+	})
+
+	test('`reconcile_accounts` vergleicht und uebertraegt nicht', async () => {
+		// Das Werkzeug ist am 15.08. dazugekommen und faellt nicht unter das
+		// Namensmuster oben — nicht aus Zufall und nicht als Umgehung: Es LIEST
+		// aus ZITADEL und stellt es dem Adressbuch gegenueber. Es legt keinen
+		// Eintrag an, aendert keinen und entfernt keinen. Das ist der Unterschied
+		// zu `sync_mitglieder`, und er steht hier, damit ihn niemand spaeter
+		// versehentlich einebnet: Wer diesem Werkzeug das Schreiben beibringt,
+		// muss diesen Test loeschen.
+		const server = buildMcpServer({ userId: 'test-user', roles: ['admin'] })
+		const client = new Client({ name: 'test', version: '0' })
+		const [clientTransport, serverTransport] =
+			InMemoryTransport.createLinkedPair()
+		await Promise.all([
+			server.connect(serverTransport),
+			client.connect(clientTransport),
+		])
+		const werkzeug = (await client.listTools()).tools.find(
+			(w: { name: string }) => w.name === 'reconcile_accounts',
+		)
+
+		expect(werkzeug).toBeTruthy()
+		expect(werkzeug?.description ?? '').toMatch(/AENDERT NICHTS/)
+
+		// Und die Datei dahinter schreibt das Adressbuch auch nicht.
+		const modul = fs.readFileSync(
+			path.join(SRC, 'lib/konten/abgleich.ts'),
+			'utf-8',
+		)
+		expect(trifft(ZITADEL_QUELLE, modul)).toBe(true)
+		expect(trifft(ADRESSBUCH_SCHREIBT, modul)).toBe(false)
 
 		await client.close()
 	})

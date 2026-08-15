@@ -324,11 +324,11 @@ describe('(e) /public/health ohne Anmeldung', () => {
  * Kein sechster Nachweis, sondern der Prüfstein für eine Zusage: Der
  * Einrichtungsschritt muss einen Benutzer auch LÖSCHEN können.
  *
- * Gebraucht wird das für die Webhook-Kaskade, die es im Code noch NICHT gibt
- * (ZITADEL löscht einen Benutzer, die Anwendung räumt Konto und
- * Adressbucheintrag ab). Wer sie baut, soll den Auslöser vorfinden und nicht
- * zuerst herausfinden müssen, ob er funktioniert — ungeprüfte Vorbereitung ist
- * eine Behauptung. Siehe README, „Wo das später andockt".
+ * Gebraucht wird `benutzerLoeschen()` vom Abgleich (`abgleich.test.ts`): Es ist
+ * der einzige Weg, den Fall `account_unknown` herzustellen — ein
+ * Adressbuch-Eintrag, dessen Konto in ZITADEL nicht mehr existiert. Der Test
+ * hier prüft den Handgriff einzeln, damit ein Fehlschlag nicht als vermeintlich
+ * falscher Abgleich auffällt.
  */
 describe('Vorbereitung: der Einrichtungsschritt kann löschen', () => {
 	test('ein angelegter Benutzer verschwindet wieder', async () => {

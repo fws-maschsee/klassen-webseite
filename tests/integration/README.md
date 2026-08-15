@@ -56,7 +56,8 @@ Zeitlimit bei zehn Minuten — als Reißleine, nicht als Budget.
 
 Zusätzlich prüft ein sechster Fall, dass der Einrichtungsschritt einen Benutzer
 auch wieder **löschen** kann. Das ist kein Nachweis über die Anwendung, sondern
-der Prüfstein für die Vorbereitung weiter unten.
+der Prüfstein für `benutzerLoeschen()` — den Handgriff, mit dem
+`abgleich.test.ts` den Fall „Konto in ZITADEL gelöscht" herstellt.
 
 ## Was hier ECHT ist und was nicht
 
@@ -107,36 +108,38 @@ und dafür einen zweiten Container brauchen — die Prüfung sitzt **vor** der
 Warteschlange, und was sie entscheidet, steht in `list_outbound`, lange bevor
 ein Postfach davon erfährt.
 
-## Wo das später andockt
+## Abgleich Adressbuch/ZITADEL (`abgleich.test.ts`)
 
-Eines soll diese Umgebung später mitbeweisen. Es ist hier **vorbereitet, nicht
-gebaut** — im Code der Anwendung gibt es das noch nicht.
+Die dritte Datei. Sie beweist den Abgleich (`src/lib/konten/abgleich.ts`), der
+das ganze Adressbuch den Grants gegenüberstellt und **beide Richtungen** meldet:
 
-### Webhook-Kaskade: ZITADEL löscht einen Benutzer
+| | Nachweis | Fällt sonst auf durch |
+|---|---|---|
+| (1) | Ein Eintrag ohne Konto wird erkannt — und der Grund unterschieden: `no_account` (nie eines gehabt), `role_missing` (Grant entzogen), `account_unknown` (Konto gelöscht). | Nichts. Die drei sehen im Adressbuch identisch aus, verlangen vom Menschen aber drei verschiedene Handgriffe. |
+| (2) | Ein Konto **mit** Rolle ohne Adressbuch-Eintrag wird erkannt, im Klartext. | Nichts — in einer Zustellung fehlt niemand, den man vermissen könnte. Die Familie wartet auf Post, die nie kommt. |
+| (3) | Deckt sich alles, meldet der Abgleich nichts. | Ein Bericht, der im grünen Fall Namen nennt, wird nach dem dritten Mal nicht mehr gelesen. |
+| (4) | Ist ZITADEL nicht erreichbar, kommt ein **Fehler** — kein Bericht, in dem alle fehlen. | Das ist der gefährliche Fall: Eine Störung sieht aus wie „alle ausgetreten", und wer daraufhin aufräumt, löscht den Verteiler. |
 
-Gedacht ist: ZITADEL meldet die Löschung, die Anwendung räumt Konto und
-Adressbucheintrag ab. Was schon da ist:
+Warum das ein echtes ZITADEL braucht: Die Unterscheidung zwischen entzogenem
+Grant und gelöschtem Konto hängt daran, dass ein Konto nach dem Entzug aus der
+**Projekt-Abfrage** verschwindet, aus der **Benutzerliste** aber nicht. Das kann
+keine Attrappe beweisen, sie kann es nur behaupten.
 
-- `benutzerLoeschen()` in `zitadel.ts` löst den Vorgang aus, und der Test
-  „Vorbereitung: der Einrichtungsschritt kann löschen" hält ihn lauffähig.
-- ZITADELs **Actions v2** sind in v4.16.2 ab Werk eingeschaltet (nachgemessen:
-  `POST /v2beta/actions/targets/search` antwortet ohne Feature-Schalter). Ein
-  Ziel legt man mit `POST /v2beta/actions/targets` an, die Verknüpfung mit dem
-  Ereignis mit `POST /v2beta/actions/executions`. Der Platz dafür ist
-  `ausgangslageHerstellen()` — dort steht schon alles, was ein Ziel braucht
-  (Organisation, Projekt, die Basis-URL der Anwendung).
-- Das Ziel muss eine Adresse der **Anwendung** sein. Die Anwendung läuft im Test
-  auf dem Host, ZITADEL im Container: Aus dem Container heißt der Host
-  `host.docker.internal`, und `docker-compose.yml` braucht dafür einen
-  `extra_hosts`-Eintrag. Das ist der einzige Punkt, an dem der Aufbau selbst
-  angefasst werden muss.
+### Hier stand einmal: „Webhook-Kaskade, vorbereitet, nicht gebaut"
 
-Was NICHT hierher gehört: das Spiegeln von ZITADEL-Daten ins Adressbuch.
-Adressbuch und ZITADEL sind getrennte Datenschichten, und
-`tests/auth/getrennte-datenschichten.test.ts` hält das fest. Die Kaskade löscht,
-sie legt nichts an.
+Der Plan war, ZITADEL die Löschung eines Benutzers per Actions v2 melden zu
+lassen. Er ist **aufgegeben**, und die Route dazu ist entfernt: In der Instanz
+gibt es überhaupt keine Actions-v2-Targets — der Empfänger hat nie einen Aufruf
+gesehen. Und er hätte das Falsche gemeldet: `user.removed` ist das gelöschte
+Konto, der Normalfall aber ist der entzogene Grant, und der löst gar kein
+Ereignis aus. An seine Stelle tritt der Abgleich oben, der **fragt** statt zu
+warten.
 
-### Erledigt: Prüfung beim Mailversand
+`benutzerLoeschen()` in `zitadel.ts` bleibt und wird jetzt wirklich gebraucht:
+Es ist der Handgriff, mit dem `abgleich.test.ts` den Fall `account_unknown`
+herstellt.
+
+## Erledigt: Prüfung beim Mailversand
 
 Hier stand der Plan, dafür einen **Mailpit** aufzunehmen (SMTP auf 1025, API auf
 8025), damit ein Test die verschickte Mail in einem Postfach wiederfindet. Die
