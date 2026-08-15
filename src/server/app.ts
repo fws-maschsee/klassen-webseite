@@ -10,6 +10,7 @@ import { runMigrations } from '../migrations.ts'
 import { port, publicBaseUrl } from './config.ts'
 import { mcpAuthMiddleware, mcpRequestHandler } from './mcp/handler.ts'
 import { mcpOAuthProvider } from './oauth/provider.ts'
+import { startErinnerungsdienst } from './putzplan-worker.ts'
 import { startQueueWorker } from './queue-worker.ts'
 
 /**
@@ -151,5 +152,10 @@ export const startServer = async (
 			`[server] ${instance.configured} laeuft auf http://localhost:${port()}`,
 		)
 		startQueueWorker()
+		// Die Putz-Erinnerung laeuft neben der Warteschlange im selben Prozess:
+		// Sie braucht dieselbe Datenbank und denselben Mailweg, und beides ist
+		// hier schon eingerichtet. Startet nicht, wenn die Klasse keinen
+		// Putzplan hat — dann steht eine Zeile im Log und sonst nichts.
+		startErinnerungsdienst()
 	})
 }
