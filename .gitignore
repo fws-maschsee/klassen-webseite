@@ -7,3 +7,8 @@ data/
 # Astros Build-Zwischenstand (Typen der Sammlungen). Wird bei jedem Build
 # neu erzeugt und gehoert niemandem.
 .astro/
+
+# Das Token des Maschinen-Benutzers, das ZITADEL beim Start der Testinstanz
+# hineinschreibt. Gehoert zu einer Instanz, die den Testlauf nicht ueberlebt —
+# aber ein eingechecktes Token ist auch dann ein eingechecktes Token.
+tests/integration/pat/

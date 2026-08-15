@@ -756,11 +756,18 @@ Textmail.
 
 ```bash
 npm ci
-npm run typecheck   # zwei Projekte: Nodeteil (NodeNext) und Astro-Teil, beide noEmit
-npm test            # vitest
-npm run check       # Biome
+npm run typecheck        # zwei Projekte: Nodeteil (NodeNext) und Astro-Teil, beide noEmit
+npm test                 # vitest
+npm run test:integration # die Anmeldung gegen ein echtes ZITADEL, braucht Docker
+npm run check            # Biome
 npm run lint:fix
 ```
+
+`npm test` und `npm run test:integration` sind getrennt, weil der zweite Lauf
+ZITADEL und Postgres in Containern startet (`tests/integration/README.md`). In
+einem Lauf zusammengelegt bräche `npm test` auf jedem Rechner ohne Docker — und
+ein Testlauf, der aus einem Grund rot ist, den er nicht meint, wird bald gar
+nicht mehr gelesen.
 
 Kein `npm run build`: es gibt nichts zu bauen. Damit ist `typecheck` die einzige
 Stelle, an der ein Typfehler auffällt — vorher deckte der Build ihn mit ab.
