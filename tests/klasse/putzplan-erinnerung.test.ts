@@ -41,9 +41,11 @@ import {
 	sendezeitFuer,
 } from '../../src/klasse/putzplanErinnerung.ts'
 import { upsertGroup } from '../../src/lib/db/groups.ts'
+import { upsertMitglied } from '../../src/lib/db/members.ts'
 import { erinnerungZuTermin } from '../../src/lib/db/putzplanReminders.ts'
 import { suppressAddress } from '../../src/lib/db/suppressions.ts'
 import type { SendInput } from '../../src/lib/email/transport.ts'
+import { resetGrantsConfig } from '../../src/server/auth/grants.ts'
 import { createTestDb } from '../helpers/db.ts'
 import { TESTKLASSE } from '../setup.ts'
 
@@ -114,9 +116,20 @@ const nachsehen = (jetzt: Date) => {
 	return sendeFaelligeErinnerung({ quelle, db, transport })
 }
 
-/** Die Mails an die Familien — die Meldung an den Betrieb gehört nicht dazu. */
+/**
+ * Die Mails an die Familien — die Meldung an den Betrieb gehört nicht dazu und
+ * die Quittung an den Betreiber ebenso wenig. Beide gehen an eine Adresse, die
+ * in keiner Familiengruppe steht; ohne diesen Abzug zählte jede von ihnen als
+ * eine Familie mehr.
+ */
 const anFamilien = () =>
-	sent.filter((m) => m.to !== KLASSE.contactMail).map((m) => m.to)
+	sent
+		.filter(
+			(m) =>
+				m.to !== KLASSE.contactMail &&
+				m.to !== (process.env.REMINDER_RECEIPT_TO ?? '').trim(),
+		)
+		.map((m) => m.to)
 
 /** Die Meldungen an den Betrieb. */
 const anBetrieb = () => sent.filter((m) => m.to === KLASSE.contactMail)
@@ -127,6 +140,10 @@ beforeEach(() => {
 	db = createTestDb()
 	sent = []
 	scheitert = new Set()
+	// Die Quittung ist ein Schalter im Deployment. Sie hier ausdruecklich zu
+	// loeschen haelt die uebrigen Tests von ihr frei — sonst zaehlte eine
+	// stehengebliebene Umgebungsvariable in `anFamilien()` als Familie.
+	delete process.env.REMINDER_RECEIPT_TO
 	termine = [{ datum: FREITAG, gruppen: ['probst-vogel', 'sonnenschein'] }]
 	familien = {
 		'probst-vogel': [
@@ -421,5 +438,239 @@ describe('Wortlaut', () => {
 		}
 		// Antworten („wir können nicht") müssen bei einem Menschen landen.
 		expect((sent[0] as SendInput).replyTo).toBe(KLASSE.contactMail)
+	})
+})
+
+/**
+ * Die Quittung: „habe gerade soundso erinnert".
+ *
+ * Sie ist das Gegenteil der Meldung — die kommt, wenn etwas schiefging, die
+ * Quittung kommt, WEIL nichts schiefging. Der Betreiber hat sie ausdrücklich
+ * bestellt, um zu sehen, dass der Dienst überhaupt läuft, und ausdrücklich
+ * vorläufig. Deshalb hängt sie an `REMINDER_RECEIPT_TO`: Wer sie loswerden
+ * will, leert eine Zeile im Deployment und fasst keinen Code an.
+ *
+ * Diese Tests halten die Grenze fest, an der aus einer bestellten Nachricht
+ * Lärm würde: NUR wenn wirklich verschickt wurde.
+ */
+describe('Quittung an den Betreiber', () => {
+	const QUITTUNG_AN = 'betreiber@example.org'
+	const quittungen = () => sent.filter((m) => m.to === QUITTUNG_AN)
+
+	test('nach einem echten Versand kommt sie — mit Klasse, Termin und Familien', async () => {
+		process.env.REMINDER_RECEIPT_TO = QUITTUNG_AN
+		const ergebnis = await nachsehen(SONNTAG_17_UHR)
+
+		expect(ergebnis.kind).toBe('sent')
+		expect(quittungen()).toHaveLength(1)
+		const quittung = quittungen()[0] as SendInput
+		// Die Klasse gehoert in den BETREFF: Dieselbe Adresse bekommt am selben
+		// Sonntag die Quittungen beider Klassen.
+		expect(quittung.subject).toContain(KLASSE.label)
+		expect(quittung.subject).toContain('Probst/Vogel und Sonnenschein')
+		expect(quittung.subject).toContain('21.08.')
+		expect(quittung.text).toContain('Zugestellt: 3 Adresse(n)')
+		// Keine Abwesenheitsnotiz zurueck an die Kontaktadresse der Klasse.
+		expect(quittung.headers?.['Auto-Submitted']).toBe('auto-generated')
+
+		// Und die Familien haben ihre Mail trotzdem und unverändert bekommen.
+		expect(anFamilien().sort()).toEqual([
+			'anke@example.org',
+			'jens@example.org',
+			'mira@example.org',
+		])
+	})
+
+	test('ohne gesetzte Adresse gibt es keine', async () => {
+		// Der Weg, auf dem der Betreiber sie wieder loswird.
+		delete process.env.REMINDER_RECEIPT_TO
+		await nachsehen(SONNTAG_17_UHR)
+		expect(quittungen()).toHaveLength(0)
+	})
+
+	test('eine leere Adresse zaehlt wie keine', async () => {
+		// So sieht eine geleerte Zeile im Deployment aus — nicht als entfernter
+		// Schluessel, sondern als leerer Wert.
+		process.env.REMINDER_RECEIPT_TO = '   '
+		await nachsehen(SONNTAG_17_UHR)
+		expect(quittungen()).toHaveLength(0)
+	})
+
+	test('kein Termin faellig -> keine Quittung', async () => {
+		process.env.REMINDER_RECEIPT_TO = QUITTUNG_AN
+		const ergebnis = await nachsehen(SONNTAG_16_59_UHR)
+		expect(ergebnis.kind).toBe('not_due')
+		expect(sent).toHaveLength(0)
+	})
+
+	test('ein zweiter Tick quittiert nicht noch einmal', async () => {
+		// Sonst kaeme alle paar Minuten eine — genau der Laerm, den die Quittung
+		// nicht sein soll.
+		process.env.REMINDER_RECEIPT_TO = QUITTUNG_AN
+		await nachsehen(SONNTAG_17_UHR)
+		sent = []
+		const zweiter = await nachsehen(DIENSTAG_DANACH)
+		expect(zweiter.kind).toBe('already_sent')
+		expect(sent).toHaveLength(0)
+	})
+
+	test('eine gescheiterte Quittung macht den Versand nicht kaputt', async () => {
+		// Sie ist eine Nachricht ÜBER den Versand. Die Familien haben ihre Mail
+		// dann schon — `sent` bleibt wahr, und der Fehlschlag steht im Protokoll.
+		process.env.REMINDER_RECEIPT_TO = QUITTUNG_AN
+		scheitert.add(QUITTUNG_AN)
+		const protokoll = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+		const ergebnis = await nachsehen(SONNTAG_17_UHR)
+
+		expect(ergebnis.kind).toBe('sent')
+		if (ergebnis.kind !== 'sent') throw new Error('nicht verschickt')
+		expect(ergebnis.recipients).toBe(3)
+		expect(anFamilien()).toHaveLength(3)
+		expect(
+			protokoll.mock.calls.some((c) =>
+				String(c[0]).includes('QUITTUNG NICHT ZUGESTELLT'),
+			),
+		).toBe(true)
+	})
+
+	test('sie nennt, was schiefging — sonst muesste man zweimal nachsehen', async () => {
+		process.env.REMINDER_RECEIPT_TO = QUITTUNG_AN
+		familien.sonnenschein = []
+		scheitert.add('jens@example.org')
+
+		await nachsehen(SONNTAG_17_UHR)
+
+		const quittung = quittungen()[0] as SendInput
+		expect(quittung.text).toContain('NICHT erreicht')
+		expect(quittung.text).toContain('sonnenschein')
+		expect(quittung.text).toContain('Versand gescheitert an')
+		expect(quittung.text).toContain('jens@example.org')
+	})
+})
+
+/**
+ * Der Bericht der Konten-Prüfung erreicht nur dann jemanden, wenn er etwas zu
+ * melden hat.
+ *
+ * Diese Erinnerung läuft JEDEN Sonntag. Ginge der Bericht auch bei sauberer
+ * Lage raus — und sie ist heute in beiden Klassen sauber —, wäre das
+ * wöchentlich eine Mail, in der nichts steht. Solche Mails lernt man
+ * wegzuklicken, und danach klickt man die weg, in der etwas steht. Der Wortlaut
+ * des Betreibers: „das will ich nicht andauernd bekommen. ich will nur fehler
+ * sehen."
+ *
+ * Am Rückgabewert hängt der Bericht weiterhin immer — das liest nur, wer fragt.
+ */
+describe('Konten-Prüfung: Meldung nur bei Befund', () => {
+	const original = { ...process.env }
+
+	const zitadelAntwortet = (
+		grants: { userId: string; email: string }[],
+	): void => {
+		process.env.ZITADEL_ISSUER = 'https://id.example.org'
+		process.env.ZITADEL_ORG_ID = 'org-1'
+		process.env.ZITADEL_PROJECT_ID = 'proj-1'
+		process.env.ZITADEL_SERVICE_TOKEN = 'tok'
+		resetGrantsConfig()
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					new Response(
+						JSON.stringify({
+							result: grants.map((g) => ({
+								userId: g.userId,
+								email: g.email,
+								roleKeys: ['mitglied'],
+								state: 'USER_GRANT_STATE_ACTIVE',
+							})),
+						}),
+						{ status: 200 },
+					),
+			),
+		)
+	}
+
+	/** Dieselben drei Adressen wie die Familien — im Adressbuch. */
+	const adressbuchFuellen = (): void => {
+		for (const [id, email] of [
+			['anke', 'anke@example.org'],
+			['jens', 'jens@example.org'],
+			['mira', 'mira@example.org'],
+		] as const) {
+			upsertMitglied({ id, first_name: id, last_name: 'Beispiel', email }, db)
+		}
+	}
+
+	afterEach(() => {
+		process.env = { ...original }
+		resetGrantsConfig()
+		vi.unstubAllGlobals()
+	})
+
+	test('saubere Lage: die Erinnerung geht raus, an den Betrieb geht NICHTS', async () => {
+		adressbuchFuellen()
+		zitadelAntwortet([
+			{ userId: 'u-anke', email: 'anke@example.org' },
+			{ userId: 'u-jens', email: 'jens@example.org' },
+			{ userId: 'u-mira', email: 'mira@example.org' },
+		])
+
+		const ergebnis = await nachsehen(SONNTAG_17_UHR)
+
+		expect(ergebnis.kind).toBe('sent')
+		expect(anFamilien()).toHaveLength(3)
+		expect(anBetrieb()).toHaveLength(0)
+		// Der Bericht ist trotzdem da — am Rückgabewert, wo ihn nur liest, wer
+		// fragt. Das ist der ganze Unterschied.
+		if (ergebnis.kind !== 'sent') throw new Error('nicht verschickt')
+		expect(ergebnis.account_check?.checked).toBe(3)
+		expect(ergebnis.account_check?.cut).toEqual([])
+	})
+
+	test('eine Abweichung: dann geht der Bericht raus wie bisher', async () => {
+		adressbuchFuellen()
+		// Mira fehlt der Grant — in `report` wird sie zugestellt und gemeldet.
+		zitadelAntwortet([
+			{ userId: 'u-anke', email: 'anke@example.org' },
+			{ userId: 'u-jens', email: 'jens@example.org' },
+		])
+
+		await nachsehen(SONNTAG_17_UHR)
+
+		expect(anFamilien()).toHaveLength(3)
+		const meldung = anBetrieb()
+		expect(meldung).toHaveLength(1)
+		const text = (meldung[0] as SendInput).text as string
+		expect(text).toContain('Konten-Pruefung')
+		// Obfuskiert: Diese Meldung läuft über ein Postfach.
+		expect(text).not.toContain('mira@example.org')
+		expect(text).toContain('***')
+	})
+
+	test('eine blinde Prüfung ist kein Befund — ZITADEL weg heisst nicht "melden"', async () => {
+		// In `report` wird dann normal verschickt, und die Störung gehört ins
+		// Protokoll. Eine wöchentliche Mail „die Prüfung lief nicht" wäre genau
+		// die, die man wegzuklicken lernt.
+		adressbuchFuellen()
+		process.env.ZITADEL_ISSUER = 'https://id.example.org'
+		process.env.ZITADEL_ORG_ID = 'org-1'
+		process.env.ZITADEL_PROJECT_ID = 'proj-1'
+		process.env.ZITADEL_SERVICE_TOKEN = 'tok'
+		resetGrantsConfig()
+		vi.spyOn(console, 'warn').mockImplementation(() => {})
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				throw new Error('ECONNREFUSED')
+			}),
+		)
+
+		const ergebnis = await nachsehen(SONNTAG_17_UHR)
+
+		expect(ergebnis.kind).toBe('sent')
+		expect(anFamilien()).toHaveLength(3)
+		expect(anBetrieb()).toHaveLength(0)
 	})
 })

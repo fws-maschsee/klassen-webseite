@@ -419,8 +419,39 @@ const protokolliere = (report: AccountCheckReport): void => {
 }
 
 /**
+ * HAT DER BERICHT ETWAS ZU MELDEN?
+ *
+ * Die eine Stelle, die entscheidet, ob dieser Bericht jemanden UNGEFRAGT
+ * erreichen darf. Wer ihn abruft — als Rueckgabewert, im Protokoll, im
+ * MCP-Ergebnis —, bekommt ihn immer; das kostet niemanden etwas. Wer eine MAIL
+ * bekommt, muss einen Anlass dafuer haben.
+ *
+ * Der Anlass ist eine ABWEICHUNG, und es gibt genau zwei:
+ *
+ *   `cut`                    Jemand wurde uebergangen (oder wuerde es).
+ *   `accounts_without_entry` Jemandem fehlt der Adressbuch-Eintrag.
+ *
+ * Ausdruecklich KEIN Anlass ist das saubere Ergebnis. Die Putz-Erinnerung
+ * laeuft jeden Sonntag; bei sauberer Lage — und die ist heute in beiden Klassen
+ * sauber — waere das woechentlich eine Mail, in der nichts steht. Solche Mails
+ * lernt man wegzuklicken, und danach klickt man die weg, in der etwas steht.
+ * Der Wortlaut des Betreibers dazu: „das will ich nicht andauernd bekommen. ich
+ * will nur fehler sehen."
+ *
+ * Ebenfalls kein Anlass ist eine BLINDE Pruefung (`unavailable`): Sie hat
+ * niemanden uebergangen und niemanden vermisst. Eine Stoerung von ZITADEL ist
+ * ein Betriebsereignis und gehoert ins Protokoll (`console.warn` oben) — in
+ * `enforce` faellt sie ohnehin dadurch auf, dass nichts verschickt wird.
+ */
+export const hatBefund = (report: AccountCheckReport): boolean =>
+	report.cut.length > 0 || report.accounts_without_entry.length > 0
+
+/**
  * Der Bericht als Text fuer eine Meldung an die Kontaktadresse. Deutsch, weil
  * ihn ein Mensch liest.
+ *
+ * Ob er ueberhaupt verschickt wird, entscheidet `hatBefund()` — nicht diese
+ * Funktion. Sie formuliert nur.
  */
 export const berichtAlsText = (report: AccountCheckReport): string => {
 	if (report.unavailable) {

@@ -12,7 +12,11 @@ import { mailFrom, mailFromName, siteUrl } from '../lib/email/config.ts'
 import type { EmailTransport, SendInput } from '../lib/email/transport.ts'
 import { sesTransport } from '../lib/email/transport.ts'
 import type { AccountCheckReport } from '../lib/versand/kontopruefung.ts'
-import { berichtAlsText, pruefeKonten } from '../lib/versand/kontopruefung.ts'
+import {
+	berichtAlsText,
+	hatBefund,
+	pruefeKonten,
+} from '../lib/versand/kontopruefung.ts'
 import { klassenConfig } from './config.ts'
 import { datumIso } from './putzplan.ts'
 
@@ -372,6 +376,92 @@ export const baueMeldung = (
 	}
 }
 
+/**
+ * Wohin die QUITTUNG geht — „habe gerade soundso erinnert".
+ *
+ * Sie ist das Gegenteil der Meldung darueber: Die Meldung kommt, wenn etwas
+ * schiefging; die Quittung kommt, WEIL nichts schiefging. Der Betreiber hat sie
+ * ausdruecklich bestellt, um zu sehen, dass der Dienst laeuft — dieser Dienst
+ * hat bis heute keine einzige echte Erinnerung verschickt, und ein Sonntag ohne
+ * Nachricht ist bis dahin nicht von einem Sonntag mit stillem Fehlschlag zu
+ * unterscheiden.
+ *
+ * Und sie ist AUSDRUECKLICH VORLAEUFIG. Deshalb haengt sie an einer
+ * Umgebungsvariablen und nicht an einer Konstante im Code: Ist sie leer oder
+ * nicht gesetzt, gibt es keine Quittung. Sie wieder loszuwerden ist damit ein
+ * Handgriff im Deployment und kein Pull Request — genau so war sie bestellt
+ * („lösche ich dann gleich").
+ *
+ * Sie widerspricht der Regel „nur Fehler melden" (siehe `hatBefund()` in
+ * `kontopruefung.ts`) nicht, sondern bestaetigt sie: Was jemanden ungefragt
+ * erreicht, braucht einen Anlass. Hier IST der Anlass bestellt worden, und wer
+ * ihn abbestellt, leert eine Zeile.
+ */
+const quittungAn = (): string => (process.env.REMINDER_RECEIPT_TO ?? '').trim()
+
+/**
+ * Die Quittung: was gerade rausgegangen ist, in zwei Sekunden auf dem Telefon
+ * erfassbar.
+ *
+ * Die Klasse steht im Betreff und nicht nur im Rumpf: Dieselbe Adresse bekommt
+ * die Quittungen BEIDER Klassen, und zwar am selben Sonntag um 17 Uhr. Ohne den
+ * Namen im Betreff liegen dort zwei Mails, die sich erst beim Aufklappen
+ * unterscheiden.
+ */
+export const baueQuittung = (
+	empfaenger: string,
+	datum: Date,
+	familienNamen: readonly string[],
+	zugestellt: number,
+	unerreicht: readonly FamilienStand[],
+	gescheitert: readonly string[],
+): SendInput => {
+	const { label: klasse, contactMail } = klassenConfig()
+	const zeilen = [
+		`Die Putz-Erinnerung der ${klasse} ist raus.`,
+		'',
+		`    Termin:     ${wochentagName(datum)}, ${langdatum(datum)}`,
+		`    Familien:   ${undVerbunden(familienNamen)}`,
+		`    Zugestellt: ${zugestellt} Adresse(n)`,
+	]
+
+	if (unerreicht.length > 0) {
+		zeilen.push(
+			'',
+			'NICHT erreicht:',
+			...unerreicht.map(
+				({ name, groupKey, grund }) =>
+					`    Familie ${name} (Gruppe "${groupKey}"): ${grund ?? 'keine Empfänger'}`,
+			),
+		)
+	}
+	if (gescheitert.length > 0) {
+		// Die Adressen im Klartext, wie in der Meldung daneben: Hier soll jemand
+		// nachfassen koennen, und dafuer braucht er die Adresse und nicht ihren
+		// Umriss.
+		zeilen.push(
+			'',
+			'Versand gescheitert an:',
+			...gescheitert.map((adresse) => `    ${adresse}`),
+		)
+	}
+
+	return {
+		from: `"${mailFromName()}" <${mailFrom()}>`,
+		to: empfaenger,
+		replyTo: contactMail,
+		subject: `${klasse}: Erinnerung raus an ${undVerbunden(familienNamen)} (${kurzdatum(datum)})`,
+		text: `${zeilen.join('\n')}\n`,
+		html: '',
+		headers: {
+			// Ohne diesen Header antwortet die erste Abwesenheitsnotiz auf die
+			// Quittung — und zwar an die Kontaktadresse der Klasse.
+			'Auto-Submitted': 'auto-generated',
+			'X-Putzplan-Reminder': datumIso(datum),
+		},
+	}
+}
+
 export type ErinnerungsOptionen = {
 	/**
 	 * Pflicht und ohne Vorgabewert. Eine Vorgabe muesste `putzplan.ts` schon
@@ -528,22 +618,15 @@ export const sendeFaelligeErinnerung = async (
 		`Erinnerung ${terminDate} verschickt: ${zugestellt} Adresse(n), ${unerreicht.length} Familie(n) nicht erreichbar`,
 	)
 
-	// Die Meldung geht auch dann raus, wenn nur die Konten-Pruefung etwas zu
-	// sagen hat. In `report` ist das der einzige Weg, auf dem der Bericht einen
-	// Menschen erreicht — im Protokoll des Pods liest ihn niemand.
-	//
-	// Eine BLINDE Pruefung (ZITADEL nicht erreichbar oder nicht eingerichtet)
-	// loest bewusst KEINE Meldung aus. Sie hat nichts geschnitten und niemanden
-	// gefunden; eine woechentliche Mail „die Pruefung lief nicht" waere eine
-	// Meldung, die man nach dem dritten Mal wegklickt — und dann klickt man die
-	// vierte mit weg, in der etwas steht. Sie steht im Protokoll (`console.warn`
-	// in `kontopruefung.ts`), und das ist der richtige Ort fuer eine Stoerung
-	// des Betriebs.
-	const kontenBericht =
-		pruefung.report.cut.length > 0 ||
-		pruefung.report.accounts_without_entry.length > 0
-			? berichtAlsText(pruefung.report)
-			: undefined
+	// Der Bericht der Konten-Pruefung haengt der Meldung an — ABER NUR, WENN ER
+	// ETWAS ZU MELDEN HAT. Was das heisst und warum, steht bei `hatBefund()` in
+	// `kontopruefung.ts`; kurz: Diese Erinnerung laeuft jeden Sonntag, und eine
+	// woechentliche Mail mit lauter Nullen lernt man wegzuklicken. Am
+	// Rueckgabewert haengt der Bericht weiterhin immer — den liest nur, wer
+	// fragt.
+	const kontenBericht = hatBefund(pruefung.report)
+		? berichtAlsText(pruefung.report)
+		: undefined
 
 	if (unerreicht.length > 0 || gescheitert.length > 0 || kontenBericht) {
 		const meldung = baueMeldung(
@@ -570,6 +653,35 @@ export const sendeFaelligeErinnerung = async (
 				`MELDUNG NICHT ZUGESTELLT (${terminDate}): ${fehler instanceof Error ? fehler.message : String(fehler)} — nicht erreicht: ${unerreicht
 					.map((s) => s.groupKey)
 					.join(', ')}`,
+			)
+		}
+	}
+
+	// Die Quittung ganz zuletzt, und in ihrem eigenen `try`: Sie ist eine
+	// Nachricht UEBER den Versand und darf ihn unter keinen Umstaenden
+	// gefaehrden. Scheitert sie, haben die Familien ihre Mail laengst — dann
+	// bleibt nur das Protokoll, und `kind: 'sent'` bleibt wahr.
+	//
+	// Sie geht ausschliesslich hier raus, also nur auf dem Weg, der wirklich
+	// verschickt hat. „Noch nicht faellig", „hat schon ein anderer Tick
+	// gemacht", „kein Termin" und „spaeter erneut versuchen" kehren weiter oben
+	// um — jeder Tick quittieren zu lassen waere alle paar Minuten eine Mail.
+	const quittungsziel = quittungAn()
+	if (quittungsziel) {
+		try {
+			await transport.send(
+				baueQuittung(
+					quittungsziel,
+					termin.datum,
+					staende.map((s) => s.name),
+					zugestellt,
+					unerreicht,
+					gescheitert,
+				),
+			)
+		} catch (fehler) {
+			log(
+				`QUITTUNG NICHT ZUGESTELLT (${terminDate}): ${fehler instanceof Error ? fehler.message : String(fehler)} — die Erinnerung selbst ist raus (${zugestellt} Adresse(n)).`,
 			)
 		}
 	}

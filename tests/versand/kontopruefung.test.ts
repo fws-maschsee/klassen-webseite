@@ -12,7 +12,7 @@ import { createTestDb } from '../helpers/db.ts'
  * wer faellt, was gemeldet wird und was bei einer Stoerung passiert.
  */
 
-const { accountCheckMode, berichtAlsText, obfuscate, pruefeKonten } =
+const { accountCheckMode, berichtAlsText, hatBefund, obfuscate, pruefeKonten } =
 	await import('../../src/lib/versand/kontopruefung.ts')
 
 type Kandidat = { email: string; mitglied_id: string | null }
@@ -404,5 +404,60 @@ describe('Konten-Pruefung vor dem Versand', () => {
 			expect(obfuscate('  Anna@Example.ORG ')).toBe('a***@***mple.org')
 			expect(obfuscate('')).toBe('(leer)')
 		})
+	})
+})
+
+/**
+ * WER DEN BERICHT UNGEFRAGT BEKOMMT.
+ *
+ * Der Bericht haengt an jedem Rueckgabewert und steht in jedem Protokoll — das
+ * kostet niemanden etwas. Eine MAIL braucht einen Anlass, und dieser Anlass ist
+ * eine Abweichung. Der Wortlaut des Betreibers, nachdem er einen Abgleich mit
+ * lauter Nullen bekommen hatte: „das will ich nicht andauernd bekommen. ich
+ * will nur fehler sehen."
+ *
+ * Die Putz-Erinnerung laeuft jeden Sonntag; ohne diese Regel waere das
+ * woechentlich eine Mail, in der nichts steht.
+ */
+describe('Meldung nur bei Befund', () => {
+	const bericht = (
+		teile: Partial<Parameters<typeof hatBefund>[0]>,
+	): Parameters<typeof hatBefund>[0] => ({
+		mode: 'enforce',
+		occasion: 'Test',
+		checked: 3,
+		kept: 3,
+		cut: [],
+		extra_recipients: 0,
+		accounts_without_entry: [],
+		unavailable: null,
+		...teile,
+	})
+
+	test('saubere Lage: kein Befund', () => {
+		expect(hatBefund(bericht({}))).toBe(false)
+	})
+
+	test('jemand wurde uebergangen: Befund', () => {
+		expect(
+			hatBefund(
+				bericht({ cut: [{ email: 'a***@***mple.org', reason: 'no_account' }] }),
+			),
+		).toBe(true)
+	})
+
+	test('jemandem fehlt der Adressbuch-Eintrag: Befund', () => {
+		// Die andere Richtung zaehlt genauso. Diese Person gehoert dazu und
+		// bekommt nichts — das faellt in keiner Zustellung auf.
+		expect(
+			hatBefund(bericht({ accounts_without_entry: ['n***@***mple.org'] })),
+		).toBe(true)
+	})
+
+	test('eine blinde Pruefung ist KEIN Befund', () => {
+		// Sie hat niemanden uebergangen und niemanden vermisst. Eine Stoerung von
+		// ZITADEL gehoert ins Protokoll; in `enforce` faellt sie ohnehin dadurch
+		// auf, dass nichts verschickt wird.
+		expect(hatBefund(bericht({ unavailable: 'ECONNREFUSED' }))).toBe(false)
 	})
 })
