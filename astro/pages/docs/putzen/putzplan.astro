@@ -1,9 +1,9 @@
 ---
 import Layout from '@levino/shipyard-docs/astro/Layout.astro'
-import { getCollection, getEntry, render } from 'astro:content'
+import { getEntry, render } from 'astro:content'
 import { bearbeitenUrl, klassenConfig } from '../../../../src/klasse/config.ts'
 import {
-  PUTZPLAN_DATEI,
+  planAlsEintraege,
   putzplanZeilen,
 } from '../../../../src/klasse/putzplan.ts'
 
@@ -51,24 +51,26 @@ if (!eintrag || eintrag.data.render === false) {
 const { Content, headings } = await render(eintrag)
 
 /**
- * Die Einteilung. Leer, wenn die Klasse keine `putzplan.yaml` hat — dann
- * bleibt es bei der Prosa.
+ * Die Einteilung — zur Laufzeit aus der DATENBANK, nicht mehr aus einer
+ * YAML-Datei im Klassen-Repo.
  *
- * Bewusst OHNE Hinweis auf der Seite: `klasse-christophers` ist genau dieser
- * Fall und trägt ihre Tabelle noch im Markdown. Ein „hier fehlen Daten" stünde
- * dort unmittelbar unter einer vollständigen Tabelle und wäre schlicht falsch.
- * Der Hinweis gehört an die Person, die die Datei anlegt, und steht deshalb im
- * Build-Log (siehe `optionaleDatei` in `src/klasse/putzplan.ts`) — nicht auf
- * einer Seite für Eltern.
+ * Der Grund steht ausführlich in `src/lib/db/putzplan.ts`: In der YAML standen
+ * nur Familiennamen, die Menschen stehen im Adressbuch, und zwischen beidem
+ * gab es keine Verbindung — der Plan konnte niemanden anschreiben. Jetzt ist
+ * eine Familie eine Gruppe, und die Gruppe kennt ihre Adressen.
  *
- * Astro schreibt für eine leere Sammlung bei jedem Aufruf
- * „The collection "putzplan" does not exist or is empty" ins Serverlog. Das ist
- * ein `console.warn` in Astros `getCollection` und über die öffentliche
- * Schnittstelle nicht abzustellen; es ist die richtige Auskunft, nur an der
- * falschen Stelle. Wer es beheben will, legt der Klasse eine `putzplan.yaml`
- * an — an Astros Datenspeicher vorbeizulesen wäre der schlechtere Tausch.
+ * Leer, solange die Klasse keine Termine hat. Bewusst OHNE Hinweis auf der
+ * Seite: `klasse-christophers` ist genau dieser Fall und trägt ihre Tabelle
+ * noch im Markdown. Ein „hier fehlen Daten" stünde dort unmittelbar unter einer
+ * vollständigen Tabelle und wäre schlicht falsch. Der Hinweis gehört an die
+ * Person, die den Plan einträgt — die sieht ihn im MCP-Werkzeug
+ * `get_putzplan`, nicht auf einer Seite für Eltern.
+ *
+ * `prerender = false` ist die Voraussetzung dafür und stand schon vorher da:
+ * Ein zur Bauzeit erzeugter Plan zeigte den Stand des letzten Deploys, und
+ * genau das sollte der Umzug ja abschaffen.
  */
-const zeilen = putzplanZeilen(await getCollection('putzplan'))
+const zeilen = putzplanZeilen(planAlsEintraege())
 
 const UEBERSCHRIFT = 'Einteilung'
 const UEBERSCHRIFT_ANKER = 'einteilung'
@@ -79,11 +81,11 @@ const inhaltsverzeichnis =
     : headings
 
 // Der Bearbeiten-Link zeigt auf die Datei, in der das Bearbeitbare steht: die
-// Prosa. Die Einteilung hat ihren eigenen Link unter der Tabelle — denn wer sie
-// ändern will, muss in die YAML und nicht ins Markdown.
+// Prosa. Die Einteilung steht in der Datenbank und hat deshalb keinen
+// Bearbeiten-Link mehr — der Hinweis unter der Tabelle nennt stattdessen den
+// Weg, der wirklich funktioniert.
 const klasse = klassenConfig()
 const editUrl = bearbeitenUrl(klasse, 'src/content/docs/putzen/putzplan.md')
-const datenUrl = bearbeitenUrl(klasse, PUTZPLAN_DATEI)
 ---
 
 <Layout headings={inhaltsverzeichnis} routeBasePath="docs" editUrl={editUrl}>
@@ -120,11 +122,13 @@ const datenUrl = bearbeitenUrl(klasse, PUTZPLAN_DATEI)
       </table>
 
       <p>
-        Die Einteilung wird in <code>{PUTZPLAN_DATEI}</code> gepflegt und diese
-        Tabelle daraus erzeugt — es gibt sie bewusst nur einmal.{' '}
-        <a href={datenUrl} target="_blank" rel="noopener noreferrer">Termin
-        ändern</a> geht deshalb nur dort. Wer nicht kann, tauscht besser direkt
-        mit einer anderen Familie.
+        Wer an seinem Termin nicht kann, tauscht am besten direkt mit einer
+        anderen Familie und sagt danach in der Klassenverwaltung Bescheid
+        (<a href={`mailto:${klasse.contactMail}`}>{klasse.contactName || klasse.contactMail}</a>)
+        — der Tausch ist dort in einem Satz eingetragen und steht sofort hier.
+        Diese Tabelle wird aus der Einteilung erzeugt; es gibt sie bewusst nur
+        einmal, damit nicht zwei Fassungen nebeneinander stehen und eine davon
+        veraltet.
       </p>
     </>
   )}

@@ -2,30 +2,44 @@ import { existsSync } from 'node:fs'
 import type { Loader } from 'astro/loaders'
 import { file } from 'astro/loaders'
 import { z } from 'astro/zod'
+import type { Database } from 'better-sqlite3'
+import { getGroup } from '../lib/db/groups.ts'
+import { openDb } from '../lib/db/index.ts'
+import { listMitgliederByGroupEffective } from '../lib/db/members.ts'
+import {
+	naechsterTerminAb,
+	planMitNamen,
+	type TerminEingabe,
+} from '../lib/db/putzplan.ts'
 
 /**
- * Der Putzplan einer Klasse: Schema, Loader und die Umrechnung in Tabellen-
- * zeilen.
+ * Der Putzplan einer Klasse: Schema der abzuloesenden YAML-Datei, die
+ * Umrechnung in Tabellenzeilen — und die Schnittstelle, an der der
+ * Erinnerungsdienst haengt.
  *
- * Die EINTEILUNG liegt im Klassen-Repo, als eine einzige YAML-Datei unter
- * `src/content/putzplan.yaml`. Hier stehen Schema und Darstellung. Diese
- * Aufteilung ist dieselbe wie bei `docs` und `blog` und hat denselben Grund:
- * wer in der Einteilung steht, sind Familiennamen einer bestimmten Klasse und
- * gehören in kein geteiltes Repository.
+ * Die EINTEILUNG steht seit dem Umzug in der DATENBANK (`src/lib/db/putzplan.ts`)
+ * und nicht mehr in `src/content/putzplan.yaml`. Der Grund ist nicht Bequemlich-
+ * keit: Die YAML kannte nur Familiennamen (`morzynski`), die Menschen stehen im
+ * Adressbuch, und zwischen beidem gab es keine Verbindung — der Plan konnte
+ * niemanden anschreiben. Ausserdem war jeder Tausch zwischen zwei Familien ein
+ * Commit plus Deploy, und ein Name, der einmal in git steht, bleibt in der
+ * Historie.
  *
- * Es gibt bewusst KEINE zweite Darstellung. Vorher stand die Tabelle als
- * Markdown in `src/content/docs/putzen/putzplan.md`; ein Tausch zwischen zwei
- * Familien musste dort von Hand nachgezogen werden, und der Erinnerungsdienst
- * hätte sie aus einer Markdown-Tabelle zurücklesen müssen. Eine gepflegte
- * Tabelle neben den Daten läuft irgendwann auseinander, und dann weiß niemand,
- * welche der beiden gilt.
+ * Schema und Loader der YAML bleiben, bis der Import in jeder Klasse gelaufen
+ * und geprueft ist; danach koennen sie samt Sammlung entfallen. Die Reihenfolge
+ * steht in der README unter „Vom YAML-Putzplan in die Datenbank".
+ *
+ * Es gibt weiterhin bewusst KEINE zweite Darstellung. Vorher stand die Tabelle
+ * als Markdown in `src/content/docs/putzen/putzplan.md`; ein Tausch musste dort
+ * von Hand nachgezogen werden. Eine gepflegte Tabelle neben den Daten läuft
+ * irgendwann auseinander, und dann weiß niemand, welche der beiden gilt.
  *
  * Dieses Modul ist reines TypeScript ohne `astro:content`: `astro:content` ist
  * ein virtuelles Modul und existiert nur innerhalb einer Astro-Kompilierung,
  * `astro/zod` und `astro/loaders` sind echte Module. Deshalb lassen sich Schema
  * und Zeilenaufbau in `tests/klasse/putzplan.test.ts` ohne einen Astro-Build
- * prüfen — und deshalb kann der Erinnerungsdienst später dasselbe Schema
- * benutzen, ohne durch Astro zu laufen.
+ * prüfen — und deshalb kann der Erinnerungsdienst dasselbe Modul benutzen, ohne
+ * durch Astro zu laufen.
  */
 
 /**
@@ -223,3 +237,195 @@ export const putzplanZeilen = (
 		iso: datumIso(data.datum),
 		anmerkung: data.anmerkung ?? '',
 	}))
+
+// ---------------------------------------------------------------------------
+// Der Plan aus der Datenbank
+// ---------------------------------------------------------------------------
+
+/**
+ * Praefix der Group-Keys, unter denen Familien stehen: `familie-<slug>`.
+ *
+ * Eine Familie ist eine GRUPPE im bestehenden Modell und kein eigenes
+ * Personenmodell. Die Aufloesung Gruppe -> Personen -> Adressen gibt es
+ * bereits, sie loest Untergruppen rekursiv mit auf, und sie ist getestet. Ein
+ * zweites Modell danebenzustellen hiesse, ab dem naechsten Umzug zwei
+ * Wahrheiten darueber zu haben, wer zu einer Familie gehoert.
+ *
+ * Das Praefix ist Konvention und nicht Zwang: Der Plan zeigt auf `groups.key`
+ * und akzeptiert jeden gueltigen Key. Es macht in `list_groups` auf einen Blick
+ * sichtbar, welche Gruppen Familien sind und welche Verteiler.
+ */
+export const FAMILIEN_PRAEFIX = 'familie-'
+
+/** Group-Key einer Familie aus ihrem Slug. */
+export const familienGruppenKey = (slug: string): string =>
+	slug.startsWith(FAMILIEN_PRAEFIX) ? slug : `${FAMILIEN_PRAEFIX}${slug}`
+
+/** Ein Datum als `JJJJ-MM-TT`, wie die Datenbank es speichert. */
+const alsDatumsSchluessel = (datum: Date): string => datumIso(datum)
+
+/**
+ * Der Plan aus der Datenbank in der Form, die `putzplanZeilen` erwartet.
+ *
+ * Der Umweg ueber `PutzplanEintrag` ist Absicht: Die Umrechnung in Tabellen-
+ * zeilen — „Familie " vor jedem Namen, „und" statt Schraegstrich, TT.MM.JJJJ in
+ * UTC — ist gewachsen und in `tests/klasse/putzplan.test.ts` genau geprueft.
+ * Sie ein zweites Mal fuer die Datenbank zu schreiben hiesse, dieselben
+ * Sonderfaelle noch einmal zu treffen, und einer davon waere falsch.
+ *
+ * Der Anzeigename ist das `label` der Gruppe, der `slug` ihr `key`. Damit
+ * bleibt die Zusicherung erhalten, dass der Schluessel NICHT auf der Seite
+ * landet: `PutzplanZeile` gibt ihn gar nicht heraus.
+ */
+export const planAlsEintraege = (db: Database = openDb()): PutzplanEintrag[] =>
+	planMitNamen(db).map((termin) => ({
+		id: termin.date,
+		data: {
+			datum: new Date(`${termin.date}T00:00:00.000Z`),
+			familien: termin.groups.map(({ key, label }) => ({
+				name: label,
+				slug: key,
+			})),
+			anmerkung: termin.note ?? undefined,
+		},
+	}))
+
+/**
+ * Der naechste Putztermin ab einem Zeitpunkt — die Frage des
+ * Erinnerungsdienstes.
+ *
+ * `ab` wird auf den UTC-TAG heruntergerechnet und der Tag selbst zaehlt mit:
+ * Ein Dienst, der am Morgen des Putztermins laeuft, meint diesen Termin und
+ * nicht den in einer Woche.
+ *
+ * Liefert `null`, wenn kein Termin mehr kommt. Das ist der Normalfall am
+ * Schuljahresende und kein Fehler — der Aufrufer schickt dann nichts.
+ *
+ * `gruppen` sind Group-KEYS und keine Namen. Sie gehen unveraendert in
+ * `familienEmpfaenger` weiter; ein Anzeigename waere an dieser Stelle eine
+ * Sackgasse, weil sich aus ihm keine Adresse aufloesen laesst.
+ */
+export const naechsterPutztermin = (
+	ab: Date,
+	db: Database = openDb(),
+): { datum: Date; gruppen: string[] } | null => {
+	const termin = naechsterTerminAb(alsDatumsSchluessel(ab), db)
+	if (!termin) return null
+	return {
+		datum: new Date(`${termin.date}T00:00:00.000Z`),
+		gruppen: termin.groups,
+	}
+}
+
+/**
+ * Die Mailadressen einer Familie, aufgeloest ueber das bestehende
+ * Gruppenmodell — inklusive der Mitglieder etwaiger Untergruppen.
+ *
+ * Gibt eine LEERE Liste zurueck, wenn es die Gruppe nicht gibt oder kein
+ * Mitglied eine Adresse hinterlegt hat. Das ist die wichtigste Zusage dieser
+ * Funktion: Der Aufrufer bekommt in beiden Faellen NICHTS und kann den Fall
+ * erkennen — statt eine erfundene oder geratene Adresse zu bekommen und eine
+ * Erinnerung an jemanden zu schicken, den sie nichts angeht. Wer die
+ * Unterscheidung "Gruppe fehlt" gegen "Gruppe ist leer" braucht, fragt
+ * `list_groups`; fuer den Versand ist beides derselbe Fall: niemand zu
+ * erreichen.
+ */
+export const familienEmpfaenger = (
+	groupKey: string,
+	db: Database = openDb(),
+): { email: string; name: string | null }[] => {
+	if (!getGroup(groupKey, db)) return []
+	return listMitgliederByGroupEffective(groupKey, db).flatMap((mitglied) => {
+		const email = mitglied.email?.trim()
+		if (!email) return []
+		const name = [mitglied.first_name, mitglied.last_name]
+			.map((teil) => teil.trim())
+			.filter((teil) => teil.length > 0)
+			.join(' ')
+		return [{ email, name: name.length > 0 ? name : null }]
+	})
+}
+
+/**
+ * Was der Import aus der YAML-Datei einer Klasse herausholt: die Familien als
+ * Gruppen und die Termine als Plan.
+ *
+ * BEIDES in dieser Reihenfolge, und deshalb in einem Rutsch: Erst muessen die
+ * Familiengruppen existieren, sonst scheitert das Schreiben des Plans an
+ * unbekannten Group-Keys. Zwei getrennte Leseläufe über dieselbe Datei wären
+ * zwei Gelegenheiten, sie verschieden auszulegen.
+ */
+export type PutzplanAusDatei = {
+	/** Familien als Gruppen: `key` aus dem `slug`, `label` aus dem `name`. */
+	familien: { key: string; label: string }[]
+	/** Die Termine, fertig fuer `ersetzePlan`. */
+	termine: TerminEingabe[]
+}
+
+/**
+ * Liest die YAML-Datei — die EINZIGE Aufgabe, die ihr nach dem Umzug bleibt:
+ * einmal eingelesen zu werden.
+ *
+ * Laeuft durch denselben Loader und dasselbe Schema wie vorher der Build. Ein
+ * zweiter YAML-Leser fuer den Import waere eine zweite Auslegung derselben
+ * Datei, und beim ersten Sonderfall — ein `datum` ohne Anfuehrungszeichen, eine
+ * Familie mit Schraegstrich im Namen — laesen die beiden verschieden.
+ *
+ * Fehlt die Datei, kommt eine LEERE Ausbeute zurueck und kein Fehler: Nicht
+ * jede Klasse hat einen Putzplan als Daten. Ob daraus ein Fehler wird, ent-
+ * scheidet der Aufrufer — das Werkzeug `import_putzplan` sagt es dann deutlich.
+ *
+ * Der `LoaderContext` ist eine Attrappe wie in `tests/klasse/putzplan.test.ts`
+ * und deckt nur ab, was `file()` wirklich benutzt. Ein Vollausbau waere eine
+ * zweite, mitzupflegende Fassung von Astro.
+ */
+export const putzplanAusDatei = async (
+	/** Wurzel des Klassen-Repos, gegen die `pfad` aufgeloest wird. */
+	wurzel: URL,
+	pfad: string = PUTZPLAN_DATEI,
+): Promise<PutzplanAusDatei> => {
+	const eintraege: PutzplanDaten[] = []
+
+	await optionaleDatei(pfad).load({
+		collection: 'putzplan',
+		store: {
+			clear: () => {
+				eintraege.length = 0
+			},
+			set: ({ data }: { id: string; data: unknown }) => {
+				eintraege.push(data as PutzplanDaten)
+				return true
+			},
+		},
+		logger: {
+			info: () => {},
+			warn: () => {},
+			error: () => {},
+			debug: () => {},
+		},
+		config: { root: wurzel },
+		parseData: async ({ data }: { data: unknown }) =>
+			putzplanSchema.parseAsync(data),
+		// biome-ignore lint/suspicious/noExplicitAny: Attrappe eines LoaderContext, siehe Kopfkommentar
+	} as any)
+
+	// Map und nicht Array: Dieselbe Familie steht in der Datei bei jedem ihrer
+	// Termine, mit gleichem `slug` und gleichem `name`. Der letzte Eintrag
+	// gewinnt — bei abweichender Schreibweise desselben Slugs ist das eine
+	// Entscheidung und kein Zufall: Es gibt EINE Gruppe je Slug.
+	const familien = new Map<string, string>()
+	for (const daten of eintraege) {
+		for (const { name, slug } of daten.familien) {
+			familien.set(familienGruppenKey(slug), name)
+		}
+	}
+
+	return {
+		familien: [...familien].map(([key, label]) => ({ key, label })),
+		termine: eintraege.map((daten) => ({
+			date: datumIso(daten.datum),
+			groups: daten.familien.map(({ slug }) => familienGruppenKey(slug)),
+			note: daten.anmerkung ?? null,
+		})),
+	}
+}

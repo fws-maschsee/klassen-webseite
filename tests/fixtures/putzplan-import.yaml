@@ -1,0 +1,103 @@
+# Steht fuer die `src/content/putzplan.yaml` einer Klasse, wie sie AM TAG DES
+# IMPORTS aussieht: gueltig nach allen vier Planregeln, damit
+# `import_putzplan` sie annimmt.
+#
+# Getrennt von `putzplan.yaml` in diesem Verzeichnis, und zwar aus einem
+# konkreten Grund: Jene Datei enthaelt absichtlich einen Termin mit nur EINER
+# Familie — sie belegt, dass das Schema `.min(1)` und nicht `.length(2)` ist.
+# Die Datenbank verlangt genau zwei; beide Aussagen sind richtig und gehoeren
+# deshalb in zwei Dateien. Wer sie in eine legte, muesste eine davon aufgeben.
+#
+# Zehn Familien, zehn Termine, jede Familie zweimal. Zehn ist die kleinste
+# Zahl, bei der jede Familie ein zweites Mal drankommen kann, ohne die
+# Abstandsregel (mindestens vier Termine) oder die Paarungsregel (jede Paarung
+# nur einmal) zu verletzen — mit acht Familien bliebe fuer den fuenften Termin
+# nur die Wiederholung der ersten Paarung.
+#
+# ABSICHTLICH nicht chronologisch: der Import sortiert selbst, und ein
+# nachgetragener Termin landet in der echten Datei dort, wo gerade Platz war.
+#
+# Die Namen sind erfunden. Eine echte Einteilung gehoert nicht in dieses
+# Repository — sie nennt die Familien einer bestimmten Klasse.
+
+- id: "2026-08-28"
+  datum: 2026-08-28
+  familien:
+    # Ein Schraegstrich gehoert zu EINER Familie mit zwei Nachnamen.
+    - name: Probst/Vogel
+      slug: probst-vogel
+    - name: Sonnenschein
+      slug: sonnenschein
+
+- id: "2026-08-21"
+  datum: 2026-08-21
+  familien:
+    - name: Musterfrau
+      slug: musterfrau
+    - name: Beispiel
+      slug: beispiel
+
+- id: "2026-09-04"
+  datum: 2026-09-04
+  familien:
+    - name: Winter
+      slug: winter
+    - name: Sommer
+      slug: sommer
+
+- id: "2026-09-11"
+  datum: 2026-09-11
+  familien:
+    - name: Herbst
+      slug: herbst
+    - name: Frühling
+      slug: fruehling
+
+- id: "2026-09-18"
+  datum: 2026-09-18
+  familien:
+    - name: Nordwind
+      slug: nordwind
+    - name: Südstern
+      slug: suedstern
+
+- id: "2026-09-25"
+  datum: 2026-09-25
+  familien:
+    - name: Musterfrau
+      slug: musterfrau
+    - name: Probst/Vogel
+      slug: probst-vogel
+
+- id: "2026-10-02"
+  datum: 2026-10-02
+  familien:
+    - name: Beispiel
+      slug: beispiel
+    - name: Winter
+      slug: winter
+  anmerkung: (Do, da Fr Feiertag)
+
+- id: "2026-10-09"
+  datum: 2026-10-09
+  familien:
+    - name: Sonnenschein
+      slug: sonnenschein
+    - name: Herbst
+      slug: herbst
+
+- id: "2026-10-16"
+  datum: 2026-10-16
+  familien:
+    - name: Sommer
+      slug: sommer
+    - name: Nordwind
+      slug: nordwind
+
+- id: "2026-10-23"
+  datum: 2026-10-23
+  familien:
+    - name: Frühling
+      slug: fruehling
+    - name: Südstern
+      slug: suedstern

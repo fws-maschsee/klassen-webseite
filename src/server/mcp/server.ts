@@ -7,6 +7,7 @@ import { registerInstanceTools } from './tools/instance.ts'
 import { registerListQueueTools } from './tools/listQueue.ts'
 import { registerMailingListTools } from './tools/mailingLists.ts'
 import { registerMitgliederTools } from './tools/members.ts'
+import { registerPutzplanTools } from './tools/putzplan.ts'
 import { registerRecipientSettingsTools } from './tools/recipientSettings.ts'
 
 /**
@@ -34,6 +35,7 @@ export const buildMcpServer = (auth: McpAuth): McpServer => {
 	registerMailingListTools(server, auth)
 	registerListQueueTools(server, auth)
 	registerRecipientSettingsTools(server, auth)
+	registerPutzplanTools(server, auth)
 
 	return server
 }
