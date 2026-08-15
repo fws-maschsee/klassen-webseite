@@ -1,0 +1,159 @@
+---
+import Layout from '@levino/shipyard-docs/astro/Layout.astro'
+import { getCollection, getEntry, render } from 'astro:content'
+import { bearbeitenUrl, klassenConfig } from '../../../src/klasse/config.ts'
+import {
+  plaene,
+  TAG_KUERZEL,
+  TAG_NAMEN,
+  TAGE,
+  zeitspanne,
+} from '../../../src/klasse/stundenplan.ts'
+
+/**
+ * Der Stundenplan — Prosa aus dem Markdown, Raster aus den Daten.
+ *
+ * Gebaut wie die Putzplan-Seite und aus denselben Gründen: Die Prosa kommt aus
+ * dem Docs-Eintrag der Klasse, damit Titel, Beschreibung und der Platz in der
+ * Seitenleiste dort bleiben, wo die Klasse sie pflegt; die Tabelle entsteht aus
+ * der YAML, damit es sie nur einmal gibt.
+ *
+ * Das Muster `/docs/stundenplan` ist vollständig statisch und damit
+ * spezifischer als shipyards Docs-Catch-all `/docs/[...slug]` — Astro
+ * entscheidet sich deshalb für diese Datei. Ein Platzhalter darin machte die
+ * Reihenfolge zur Glückssache, und die Seite zeigte mal das Raster und mal die
+ * Prosa allein.
+ *
+ * `prerender = false` ist hier keine Notwendigkeit — die YAML ändert sich nur
+ * mit einem Deploy — steht aber trotzdem da, damit die Seite hinter derselben
+ * Middleware-Prüfung liegt wie der Rest und nicht als vorgebackene Datei an ihr
+ * vorbeigeht.
+ */
+export const prerender = false
+
+const eintrag = await getEntry('docs', 'stundenplan')
+
+/**
+ * Keine Unterlage `stundenplan` — dann gibt es diese Seite in dieser Klasse
+ * nicht, und zwar mit 404 statt mit einer leeren Seite. Genau wie beim
+ * Putzplan: Die Route darf deshalb bedingungslos eingehängt werden, weil eine
+ * Klasse ohne Stundenplan dieselbe Antwort bekommt wie vorher.
+ */
+if (!eintrag || eintrag.data.render === false) {
+  return new Response(null, { status: 404 })
+}
+
+const { Content, headings } = await render(eintrag)
+
+const gruppenplaene = plaene(await getCollection('stundenplan'))
+
+/**
+ * Die Überschriften der Gruppen wandern ins Inhaltsverzeichnis, damit es
+ * vollständig bleibt — bei zwei Gruppen sind das die zwei Sprungmarken, nach
+ * denen jemand auf einer langen Seite sucht.
+ */
+const anker = (gruppe: string) =>
+  gruppe === ''
+    ? 'stundenplan'
+    : `gruppe-${gruppe.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-')}`
+
+const ueberschrift = (gruppe: string) =>
+  gruppe === '' ? 'Stundenplan' : `Gruppe ${gruppe}`
+
+const inhaltsverzeichnis = [
+  ...headings,
+  ...gruppenplaene.map((plan) => ({
+    depth: 2,
+    text: ueberschrift(plan.gruppe),
+    slug: anker(plan.gruppe),
+  })),
+]
+
+const klasse = klassenConfig()
+const editUrl = bearbeitenUrl(klasse, 'src/content/docs/stundenplan.md')
+---
+
+<Layout headings={inhaltsverzeichnis} routeBasePath="docs" editUrl={editUrl}>
+  <Content />
+
+  {gruppenplaene.map((plan) => (
+    <>
+      <h2 id={anker(plan.gruppe)}>{ueberschrift(plan.gruppe)}</h2>
+
+      {/*
+        Der Rahmen scrollt und nicht die Seite: Sechs Spalten passen auf kein
+        Handy, und eine Seite, die als Ganzes seitlich wandert, verliert dabei
+        die Navigation. `not-prose` nimmt Tailwinds Typografie die Tabelle aus
+        der Hand — sie setzt `display: block` auf Tabellen und macht damit jedes
+        `rowspan` wirkungslos, und ohne `rowspan` steht der Hauptunterricht
+        viermal untereinander statt einmal über beide Stunden.
+      */}
+      <div class="not-prose my-6 overflow-x-auto">
+        <table class="table table-sm w-full border-collapse text-left align-top">
+          <thead>
+            <tr>
+              <th scope="col" class="whitespace-nowrap">Zeit</th>
+              {TAGE.map((tag) => (
+                <th scope="col">
+                  <span class="hidden sm:inline">{TAG_NAMEN[tag]}</span>
+                  <span class="sm:hidden">{TAG_KUERZEL[tag]}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {plan.zeilen.map((zeile) => (
+              <>
+                <tr>
+                  <th scope="row" class="whitespace-nowrap font-normal">
+                    <span class="block text-xs opacity-60">{zeile.bezeichnung}</span>
+                    <span class="block">{zeitspanne(zeile.von, zeile.bis)}</span>
+                  </th>
+                  {zeile.zellen.map((zelle) =>
+                    zelle.art === 'ueberdeckt' ? null : zelle.art === 'frei' ? (
+                      <td rowspan={zelle.zeilen} class="align-middle opacity-40">
+                        <span class="sr-only">frei</span>
+                        <span aria-hidden="true">–</span>
+                      </td>
+                    ) : (
+                      <td rowspan={zelle.zeilen} class="align-middle">
+                        {zelle.fach}
+                      </td>
+                    ),
+                  )}
+                </tr>
+
+                {/*
+                  Die Pause bekommt eine eigene Zeile quer über die Tabelle.
+                  Über eine Pause hinweg wird nie zusammengefasst (siehe
+                  `pauseDanach` im Schema) — deshalb kann diese Zeile kein
+                  `rowspan` zerschneiden.
+                */}
+                {zeile.pauseDanach && (
+                  <tr>
+                    <td
+                      colspan={TAGE.length + 1}
+                      class="bg-base-200 py-1 text-center text-xs opacity-70"
+                    >
+                      {zeile.pauseDanach}
+                    </td>
+                  </tr>
+                )}
+              </>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  ))}
+
+  {gruppenplaene.length > 0 && (
+    <p>
+      <a href="/docs/stundenplan.pdf">Diesen Plan als PDF herunterladen</a> — je
+      Gruppe eine Seite zum Ausdrucken, mit freien Zeilen für das
+      Nachmittagsprogramm (Instrumentalunterricht, Orchester, AGs), das jedes
+      Kind für sich einträgt. Das PDF entsteht beim Herunterladen aus denselben
+      Daten wie die Tabelle oben und kann deshalb nicht davon abweichen.
+    </p>
+  )}
+</Layout>

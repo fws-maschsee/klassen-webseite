@@ -64,6 +64,18 @@ export const GETEILTE_ROUTEN: readonly GeteilteRoute[] = [
 			'Derselbe Putzplan als PDF, bei jedem Aufruf aus der Datenbank gesetzt (Typst). Liegt NEBEN der Seite und damit hinter dem Login: im Plan stehen Familiennamen. Der Pfad ist vollstaendig statisch, sonst faengt shipyards /docs/[...slug] ihn ab und liefert HTML an einen PDF-Reader.',
 	},
 	{
+		pattern: '/docs/stundenplan',
+		entrypoint: geteilt('astro/pages/docs/stundenplan.astro'),
+		grund:
+			'Stundenplan: Prosa aus der Unterlage, Raster aus `src/content/stundenplan.yaml` der Klasse. Vollstaendig statisches Muster, damit es gegen shipyards /docs/[...slug] gewinnt. Eine Klasse ohne die Unterlage antwortet mit 404, eine ohne die YAML zeigt die Prosa allein.',
+	},
+	{
+		pattern: '/docs/stundenplan.pdf',
+		entrypoint: geteilt('astro/pages/docs/stundenplan.pdf.ts'),
+		grund:
+			'Derselbe Stundenplan als PDF (Typst), eine Seite je Gruppe, mit leeren Zeilen fuers Nachmittagsprogramm. Liegt NEBEN der Seite und damit hinter dem Login. Der Pfad ist vollstaendig statisch, sonst faengt shipyards /docs/[...slug] ihn ab und liefert HTML an einen PDF-Reader.',
+	},
+	{
 		pattern: '/verteiler',
 		entrypoint: geteilt('astro/pages/verteiler/index.astro'),
 		grund:

@@ -49,6 +49,7 @@ dreimal.
 | `astro/content.config.ts` — das Schema der Inhalte, nicht die Inhalte | (nichts mehr: der Worker je Klasse ist entfallen, es gibt einen Dispatcher für die ganze Zone) |
 | die Astro-Integration mit dem ganzen Stack (Adapter, shipyard, Markdown-Plugins) | Playwright-/E2E-Tests, die eine laufende Instanz brauchen |
 | `src/klasse/putzplan.ts`, `src/lib/db/putzplan.ts` — Regeln und Darstellung des Putzplans | die Putz-Einteilung selbst — jetzt in der **Datenbank** der Klasse, bis zum Import noch als `src/content/putzplan.yaml` |
+| `src/klasse/stundenplan.ts`, `src/klasse/stundenplanPdf.ts` — Schema, Raster und PDF des Stundenplans | der Stundenplan selbst — `src/content/stundenplan.yaml` im **Klassen-Repo** |
 | die Unit-Tests des geteilten Codes | |
 
 **Die Inhalte bleiben in den Klassen-Repos, und zwar aus einem Grund, der sich
@@ -896,6 +897,25 @@ ihrem Termin nicht erscheint. Die Seite sieht dabei vollständig aus.
 > Personen anschreiben muss und sich nicht zwischen zwei Deploys ändert, gilt
 > diese Regel unverändert weiter.
 
+**Das lebende Beispiel ist seitdem der Stundenplan** (`src/klasse/stundenplan.ts`,
+`astro/pages/docs/stundenplan.astro`, `src/content/stundenplan.yaml` in der
+Klasse). Er passt auf die Regel, wo der Putzplan aus ihr herausgewachsen ist: Er
+muss niemanden anschreiben, und er ändert sich einmal im Schuljahr — also mit
+einem Deploy und nicht zwischen zweien.
+
+Zwei Entscheidungen daran sind über den Stundenplan hinaus brauchbar:
+
+- **Der Hauptunterricht steht als ZWEI Zeitfenster in der Datei** (8:15–9:10 und
+  9:10–10:00), obwohl er auf der Seite als ein Block erscheint. Anders wäre der
+  Donnerstag nicht abzubilden, an dem die eine Gruppe in genau diesen beiden
+  Stunden das Fach wechselt und die andere nicht. Zusammengefasst wird beim
+  Anzeigen (`planFuerGruppe`), nicht in den Daten — die Daten führen die feinere
+  Auflösung, die Darstellung die gröbere. Umgekehrt ginge es nicht.
+- **Welche Gruppen es gibt, steht nirgends** — `gruppenAus()` liest sie aus der
+  Datei. Eine Gruppe, die oben deklariert wäre und unten in keiner Zeile
+  vorkäme, ergäbe einen leeren Plan; eine, die unten vorkäme und oben fehlte,
+  ein stilles Loch. Beides kann nicht passieren, wenn es die Liste nicht gibt.
+
 Wo was liegt:
 
 | | Datei | Repo |
@@ -928,7 +948,7 @@ lassen:
 **Eine Klasse ohne die Datei muss weiter bauen.** Astros `file()` schreibt für
 eine fehlende Datei `File not found` als **Fehler** ins Build-Log — bei jedem
 Build, ohne dass jemand etwas zu beheben hätte. Deshalb der Vorschalter
-`optionaleDatei()` aus `src/klasse/putzplan.ts`: Fehlt die Datei, bleibt die
+`optionaleDatei()` aus `src/klasse/optionaleDatei.ts`: Fehlt die Datei, bleibt die
 Sammlung leer und im Log steht eine Information. Die Seite antwortet dann so:
 
 - **kein Docs-Eintrag `putzen/putzplan`** → `404`. Die Seite erscheint nicht.

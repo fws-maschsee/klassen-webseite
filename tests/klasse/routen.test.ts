@@ -79,10 +79,21 @@ describe('GETEILTE_ROUTEN', () => {
 		// nicht pruefen, weil `npm test` ohne vorherigen Build lief. Es gibt kein
 		// `dist/` mehr — Vite kompiliert die Routen aus dem Baum der Klasse.
 		// Damit ist die schaerfere Aussage moeglich: die Datei ist da.
+		// Zwei erlaubte Orte, und der zweite hat einen Grund: Eine Route, die
+		// `astro:content` braucht, kann NICHT unter `src/routes/` liegen.
+		// `astro:content` ist ein virtuelles Modul und existiert nur innerhalb
+		// einer Astro-Kompilierung; im Nodeteil des Projekts (`tsconfig.json`)
+		// gibt es dafuer keine Typen, und `npm run typecheck` bricht ab. Solche
+		// Routen liegen deshalb unter `astro/`, wo `tsconfig.astro.json` sie
+		// mitliest — heute ist das das Stundenplan-PDF.
 		for (const route of GETEILTE_ROUTEN.filter(
 			(r) => !r.entrypoint.endsWith('.astro'),
 		)) {
-			expect(route.entrypoint).toContain('/src/routes/')
+			expect(
+				route.entrypoint.includes('/src/routes/') ||
+					route.entrypoint.includes('/astro/'),
+				route.entrypoint,
+			).toBe(true)
 			expect(route.entrypoint.endsWith('.ts')).toBe(true)
 			expect(fs.existsSync(route.entrypoint), route.entrypoint).toBe(true)
 		}

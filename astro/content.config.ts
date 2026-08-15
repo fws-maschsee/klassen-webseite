@@ -2,11 +2,12 @@ import { defineCollection } from 'astro:content'
 import { blogSchema } from '@levino/shipyard-blog'
 import { createDocsCollection } from '@levino/shipyard-docs'
 import { glob } from 'astro/loaders'
+import { optionaleDatei } from '../src/klasse/optionaleDatei.ts'
+import { PUTZPLAN_DATEI, putzplanSchema } from '../src/klasse/putzplan.ts'
 import {
-	optionaleDatei,
-	PUTZPLAN_DATEI,
-	putzplanSchema,
-} from '../src/klasse/putzplan.ts'
+	STUNDENPLAN_DATEI,
+	stundenplanSchema,
+} from '../src/klasse/stundenplan.ts'
 
 /**
  * Das SCHEMA der Inhalte, nicht die Inhalte.
@@ -50,4 +51,16 @@ const putzplan = defineCollection({
 	schema: putzplanSchema,
 })
 
-export const collections = { docs, blog, putzplan }
+/**
+ * Der Stundenplan, aus einer einzigen YAML-Datei der Klasse.
+ *
+ * Dieselbe Bauart wie der Putzplan und aus demselben Grund `optionaleDatei`:
+ * Nicht jede Klasse hat ihren Plan als Daten hinterlegt, und die fehlende Datei
+ * ist kein Fehler. Schema und Rasteraufbau stehen in `src/klasse/stundenplan.ts`.
+ */
+const stundenplan = defineCollection({
+	loader: optionaleDatei(STUNDENPLAN_DATEI),
+	schema: stundenplanSchema,
+})
+
+export const collections = { docs, blog, putzplan, stundenplan }

@@ -1,0 +1,58 @@
+# Erfundener Plan einer erfundenen Klasse — Testdaten, kein Abbild einer echten
+# Klasse. Er deckt bewusst die drei Fälle ab, an denen das Raster scheitern
+# kann: eine Doppelstunde über zwei Fenster (Hauptunterricht), eine Gruppe mit
+# zwei verschiedenen Fächern in genau diesen beiden Fenstern (Donnerstag), und
+# eine Gruppe, die nachmittags nichts mehr hat.
+- id: "0815"
+  von: "08:15"
+  bis: "09:10"
+  bezeichnung: 1. Stunde
+  mo: Hauptunterricht
+  di: Hauptunterricht
+  do:
+    A: Fach Eins
+    B: Fach Zwei
+  fr: Hauptunterricht
+
+- id: "0910"
+  von: "09:10"
+  bis: "10:00"
+  bezeichnung: 2. Stunde
+  pauseDanach: Große Pause
+  mo: Hauptunterricht
+  di: Hauptunterricht
+  do:
+    A: Fach Drei
+    B: Fach Zwei
+  fr: Hauptunterricht
+
+- id: "1020"
+  von: "10:20"
+  bis: "11:05"
+  bezeichnung: 1. Fachstunde
+  mo: Sammelfach
+  di:
+    A: Fach Eins
+    B: Fach Vier
+  do: Hauptunterricht
+  fr: Klassenlehrerstunde
+
+- id: "1110"
+  von: "11:10"
+  bis: "11:55"
+  bezeichnung: 2. Fachstunde
+  pauseDanach: Mittagspause
+  mo: Sammelfach
+  di: Sport
+  do: Hauptunterricht
+  fr: Klassenlehrerstunde
+
+- id: "1305"
+  von: "13:05"
+  bis: "13:50"
+  bezeichnung: 4. Fachstunde
+  mo:
+    A: Fach Vier
+  di:
+    B: Fach Eins
+  do: Musik
