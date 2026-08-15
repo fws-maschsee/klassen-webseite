@@ -25,12 +25,23 @@ import { listKeyIdFromPem } from '../lib/lists/signatureEd25519.ts'
  *   `listPublicKeyPem`, mit mitsignierten Metadaten (siehe
  *   `src/lib/lists/incomingAuth.ts`). Einliefern kann damit nur, wer den
  *   privaten Schlüssel hat, und den hat allein der Dispatcher.
+ * - `/api/zitadel/` : Der Empfänger für ZITADEL Actions v2 (`user.removed`).
+ *   Ebenfalls NICHT ungeschützt, sondern signaturgeprüft: HMAC-SHA256 gegen
+ *   den `signingKey` des Targets, Zeitstempel mitsigniert (siehe
+ *   `src/lib/zitadel/signature.ts`). ZITADEL kann kein Sitzungscookie
+ *   mitbringen; ohne diesen Eintrag liefe der Aufruf in die Anmeldemaske und
+ *   ein gelöschtes Konto bliebe hier für immer stehen.
  *
  * Diese Liste zu erweitern heißt, Inhalte zu veröffentlichen: `astro build`
  * kompiliert `src/content/` der Klasse (Berichte, Protokolle, Unterlagen) mit
- * ins Image.
+ * ins Image. Für die beiden `/api/`-Präfixe gilt das nicht — dort liegen keine
+ * Inhalte, sondern zwei Endpunkte, die ihre eigene Prüfung mitbringen.
  */
-export const PUBLIC_PATHS = ['/public/', '/api/lists/'] as const
+export const PUBLIC_PATHS = [
+	'/public/',
+	'/api/lists/',
+	'/api/zitadel/',
+] as const
 
 /** Schulweite Vorgaben. Sie unterscheiden Klassen nicht, sondern Schulen. */
 const SCHUL_VORGABEN = {

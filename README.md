@@ -103,6 +103,13 @@ der Trennung, und sie geht in die unangenehme Richtung:
 > endet mit dem Grant, der Platz im Verteiler nicht. Es gibt keinen
 > Automatismus, keine Erinnerung und keine Meldung.
 
+**Eine** Ausnahme gibt es seit dem 15.08., und sie ist eng: Wird das KONTO in
+ZITADEL gelöscht (nicht: der Grant entzogen), räumt die
+[Lösch-Kaskade](#konten-zustelladresse-und-die-lösch-kaskade) den
+Adressbuch-Eintrag mit ab, den dieses Konto verwaltet hat. Ein entzogener Grant
+tut das weiterhin nicht, und ein Eintrag ohne Konto — Großeltern, Schulbüro,
+alles aus der Klassenliste Abgeschriebene — ist davon nie betroffen.
+
 Das heißt: **personenbezogene Daten stehen genau so lange im Verteiler, wie die
 Klassenverwaltung sie stehen lässt.** Wer eine Klasse verwaltet, hat damit eine
 Pflicht und nicht nur eine Möglichkeit — beim Schuljahreswechsel, bei einem
@@ -110,7 +117,7 @@ Schulwechsel, bei einem Todesfall. Die Werkzeuge dafür:
 
 | Was | Wie |
 | --- | --- |
-| Person ganz aus dem Adressbuch entfernen | `delete_mitglied` über MCP, oder „löschen" in der Adressbuch-Tabelle unter `/verwaltung`. Gruppenzuordnungen, Opt-outs und Versandprotokoll gehen mit (FK CASCADE) |
+| Person ganz aus dem Adressbuch entfernen | `delete_mitglied` über MCP, oder „löschen" in der Adressbuch-Tabelle unter `/verwaltung`. Gruppenzuordnungen, Opt-outs und offene Adressänderungen gehen mit (FK CASCADE). Das **Versandprotokoll bleibt** — es ist ein Nachweis, siehe unten |
 | Person nur aus einem Verteiler nehmen, Eintrag behalten | `remove_from_group` (oder `bulk_remove_from_group` für mehrere) |
 | Nachsehen, wen eine Liste erreicht | `list_list_recipients` — das ist die Liste, die wirklich Post bekommt |
 
@@ -129,9 +136,227 @@ kennt.
 Bewacht wird die Trennung von
 [`tests/auth/getrennte-datenschichten.test.ts`](tests/auth/getrennte-datenschichten.test.ts):
 Er wird rot, sobald ein Modul wieder Grants bezieht **und** ins Adressbuch
-schreibt, sobald der Weg einer Listenmail ZITADEL befragt, sobald das Adressbuch
-eine Spalte mit Verweis auf ZITADEL bekommt und sobald der MCP-Server ein
-Werkzeug anbietet, das einen Abgleich verspricht.
+schreibt, sobald der Weg einer Listenmail ZITADEL befragt, sobald im Adressbuch
+eine ZWEITE Spalte mit Verweis auf ein Konto auftaucht (die eine erlaubte heißt
+`user_sub`, siehe unten), sobald `groups` oder `group_memberships` eine
+bekommen, und sobald der MCP-Server ein Werkzeug anbietet, das einen Abgleich
+verspricht.
+
+## Konten, Zustelladresse und die Lösch-Kaskade
+
+Seit dem 15.08. gibt es einen **Bezug** zwischen Anmeldekonto und
+Adressbuch-Eintrag. Er ist nicht die zurückgekehrte Spiegelung, und der
+Unterschied ist der ganze Punkt:
+
+> Der Bezug sagt: **dieses Konto verwaltet diesen Eintrag.** Er sagt **nicht**,
+> wer Post bekommt. Das entscheidet weiterhin allein die Gruppenzugehörigkeit,
+> und die setzt ein Mensch.
+
+| | Spiegelung (entfernt am 07.08.) | Bezug (seit 15.08.) |
+| --- | --- | --- |
+| Was sie holte | die **Menge** aller Grant-Inhaber aus ZITADEL | nichts — die Identität der Person, die gerade selbst mit gültiger Sitzung da ist, kommt als Argument |
+| Was sie schrieb | Einträge anlegen, ändern, löschen | einen Eintrag verknüpfen oder anlegen, für genau diese eine Person |
+| Gruppen | setzte sie (`LIST_MEMBER_GROUP`) | **keine.** Ein so entstandener Eintrag steht in keiner Gruppe |
+| Beim Grant-Entzug | löschte den Eintrag | nichts |
+
+### Das Schema
+
+```
+users                          mitglieder
+  sub          (PK)  ◄───────── user_sub   (FK, ON DELETE CASCADE, UNIQUE)
+  login_email                   id         (PK)
+  name                          first_name, last_name
+  first_seen_at                 email      ← die ZUSTELLADRESSE
+  last_seen_at                  created_at, updated_at
+```
+
+* `users.sub` ist der ZITADEL-`sub` aus dem ID-Token. Namen und Adressen
+  ändern sich, er nicht.
+* `mitglieder.user_sub` ist `NULL` für alle Einträge **ohne** Konto — und das
+  ist der Normalfall und bleibt es: Großeltern, Lehrkräfte, das Schulbüro,
+  alles aus der Klassenliste Abgeschriebene. Die haben keinen Zugang und sollen
+  trotzdem Post bekommen.
+* `UNIQUE` auf `user_sub`: Ein Konto verwaltet **höchstens einen** Eintrag.
+* `user_sub` steht **nicht** in der Spaltenliste von `src/lib/db/members.ts`.
+  Der `sub` erscheint damit weder in `/verwaltung` noch in einer MCP-Antwort —
+  dieselbe Vorsichtsmaßnahme, die einst `zitadel_user_id` drin gehalten hat.
+
+### Was beim Anmelden passiert
+
+Die Anmelde-Middleware ruft nach erfolgreicher Prüfung `merkeAnmeldung()`
+(`src/lib/db/users.ts`) auf:
+
+1. Konto festhalten. `first_seen_at` bleibt stehen, `last_seen_at` wandert mit.
+2. Ist schon ein Eintrag verknüpft? Dann ist alles getan — an ihm wird
+   **nichts** nachgezogen, weder Name noch Adresse. Was dort steht, hat ein
+   Mensch stehen lassen wollen.
+3. Sonst: Gibt es einen Eintrag mit **derselben Adresse und ohne Konto**? Den
+   übernehmen. Das ist der häufige Fall — die Klassenliste war zuerst da.
+4. Sonst: einen anlegen, mit Name und Anmeldeadresse, **in keiner Gruppe**.
+
+Fall 4 ist der wichtige. Ein Zugang ist keine Verteilerzugehörigkeit, und
+deshalb wartet niemand stillschweigend auf Post: `/einstellungen` sagt der
+Person oben auf der Seite, dass sie in keiner Gruppe steht, was das bedeutet
+und an wen sie sich wenden muss.
+
+Scheitert das Festhalten (gesperrte Datei, kaputte Zeile), wird es protokolliert
+und der Seitenaufruf läuft weiter. Der Bezug ist Buchhaltung und kein Zugang;
+er darf niemanden aussperren, der sich gerade richtig angemeldet hat.
+
+### Die Zustelladresse ist nicht die Anmeldeadresse
+
+Sie wird beim Anlegen von dort übernommen und ist danach **frei änderbar** —
+ausdrücklich so gewollt: Anmeldung und Information sind zwei Dinge. Wer sich mit
+der Arbeitsadresse anmeldet, weil dort der Passwortspeicher liegt, darf die
+Elternpost trotzdem privat lesen.
+
+Geändert wird sie unter `/einstellungen` (hinter dem Login). Der Weg:
+
+1. Neue Adresse eintragen. Es entsteht eine Zeile in `email_change_requests` —
+   **eine eigene Tabelle**, kein zweites Feld am Mitglied. Was nicht gilt, steht
+   nicht in der Tabelle, in der das Gültige steht; ein `email_neu` neben `email`
+   wäre genau das Feld, das die nächste Auswertung versehentlich mitliest.
+2. Eine Mail geht an die **neue** Adresse, mit einem Link auf
+   `/public/adresse-bestaetigen/<token>`. **Ohne Anmeldung** erreichbar, weil der
+   Klick im Mailprogramm passiert und das gern einen anderen Browser öffnet.
+3. Erst der Klick auf den Knopf dort setzt `mitglieder.email`. Bis dahin ändert
+   sich nichts.
+
+Der Link **läuft nach sieben Tagen ab** und ist **einmal** benutzbar
+(`UPDATE … WHERE confirmed_at IS NULL` — wer damit eine Zeile ändert, hat den
+Zuschlag). Bestätigt wird auf Knopfdruck und nicht beim Aufrufen: Virenscanner
+und Vorschaufunktionen rufen Links in Mails von sich aus ab und hätten den
+Schlüssel sonst verbraucht — dieselbe Überlegung wie bei `/public/abmelden/`.
+
+**Warum überhaupt bestätigen:** Ohne diesen Schritt könnte jemand die Post einer
+anderen Familie auf die eigene Adresse umleiten, und die Betroffenen merkten es
+erst daran, dass nichts mehr kommt — Wochen später und ohne Anhaltspunkt.
+
+Mitgenommen werden dabei die **Verteiler-Einstellungen**
+(`list_recipient_settings`): Sie hängen an der Adresse, nicht am Eintrag. Ohne
+diesen Schritt stünde, wer die Elterndiskussion abbestellt hat, nach einem
+Adresswechsel wieder darin.
+
+### Die Lösch-Kaskade
+
+`POST /api/zitadel/events` nimmt ZITADEL-Ereignisse entgegen (Actions v2,
+„Target"). Bei `user.removed` fällt der `users`-Eintrag, und daran hängt per
+Fremdschlüssel der Rest:
+
+```
+DELETE FROM users WHERE sub = ?
+  └─ mitglieder            (user_sub, ON DELETE CASCADE)
+       ├─ group_memberships     (ON DELETE CASCADE)
+       ├─ list_suppressions     (ON DELETE CASCADE)
+       └─ email_change_requests (ON DELETE CASCADE)
+```
+
+Ein einziges `DELETE`, der Rest sind Fremdschlüssel. Das ist Absicht und nicht
+Faulheit: Eine Liste von Hand-Anweisungen wäre beim nächsten neuen Feld
+unvollständig, und niemand merkte es — ein vergessenes Opt-out fällt erst auf,
+wenn wieder Post kommt.
+
+Zwei Dinge macht die Kaskade **nicht**:
+
+* **`list_recipient_settings`** hängt an der ADRESSE (damit auch
+  `extra_recipients` ohne Adressbuch-Eintrag sich abmelden können). Ein
+  Fremdschlüssel ist dort unmöglich, also löscht `loescheKonto()` ausdrücklich —
+  für die Zustell- **und** die Anmeldeadresse, die auseinanderlaufen dürfen.
+* **`address_suppressions` bleibt stehen.** Dort steht, was das System an einer
+  Adresse festgestellt hat: hart gebounct, Beschwerde. Das zu löschen hieße,
+  beim nächsten Mal wieder an eine Adresse zu schicken, die schon einmal „nein"
+  gesagt hat.
+
+Und weiter gilt:
+
+* **Einträge ohne Bezug zu diesem Konto bleiben unberührt.** Nur weil jemand
+  gelöscht wird, verschwindet nicht ein gleichnamiger Eintrag aus der
+  Klassenliste. Es gibt hier keine Suche über Namen oder Adressen — nur den
+  `sub`, der in `users` steht oder eben nicht.
+* **Das Versandprotokoll bleibt stehen.** `email_send_log.mitglied_id` hing
+  bisher mit `ON DELETE CASCADE` an `mitglieder`; seit
+  `20260815090200_send_log_ohne_kaskade.sql` ist der Fremdschlüssel weg und der
+  Wert bleibt als bloßer Text stehen. Es ist ein **Nachweis** („ist die Rundmail
+  rausgegangen, und an wen nicht"), und ein Nachweis, den das Löschen eines
+  Beteiligten entfernt, ist keiner. **Offen bleibt dabei ausdrücklich:** Die id
+  ist aus dem Namen abgeleitet, das Protokoll behält also einen Namen über das
+  Löschen der Person hinaus — dasselbe gilt für die Adressen in `list_outbound`.
+  Wie lange ein Nachweis aufbewahrt wird, ist eine Aufbewahrungsfrage und hier
+  **nicht** entschieden; sie braucht eine Frist und ein Aufräumen, keine
+  Kaskade.
+* **Unbekannter `sub`: 200 und nichts tun.** ZITADEL schickt Ereignisse für alle
+  Konten seiner Instanz, auch für die anderer Klassen.
+* **Idempotent.** Dasselbe Ereignis zweimal ist beim zweiten Mal ein unbekannter
+  `sub`. Ein Empfänger, der beim zweiten Mal scheitert, bringt die Gegenstelle
+  zum Wiederholen — genau dann, wenn schon alles erledigt ist.
+
+### Die Signaturprüfung ist Pflicht
+
+Der Endpunkt ist öffentlich erreichbar (`/api/zitadel/` steht in
+`PUBLIC_PATHS`), weil ZITADEL kein Sitzungscookie mitbringen kann. Ohne Prüfung
+könnte jeder mit einem `curl` Adressbucheinträge löschen.
+
+```
+POST /api/zitadel/events
+ZITADEL-Signature: t=<Unix-Sekunden>,v1=<hex HMAC-SHA256>
+```
+
+Unterschrieben wird `${t}.${rawBody}` — der Zeitstempel gehört **mit** in die
+Rechnung, sonst wäre ein mitgeschnittener Aufruf ein Dauerausweis. Er darf
+höchstens 300 Sekunden abweichen. Gerechnet wird über den **rohen** Rumpf und
+nicht über das geparste JSON: Zwei Programme serialisieren dasselbe Objekt
+verschieden, und wer über sein eigenes `JSON.stringify` rechnet, prüft seine
+Formatierung.
+
+Die Reihenfolge im Endpunkt ist der Entwurf: erst der Header, dann wird der
+Rumpf überhaupt eingelesen, dann die Unterschrift geprüft — und **erst danach**
+JSON gelesen. Was nicht bewiesen ist, wird nicht ausgelegt.
+
+Nach draußen geht nur `401 invalid signature`. Eine Antwort, die zwischen
+„Zeitstempel zu alt" und „Unterschrift falsch" unterscheidet, ist eine Anleitung
+zum Ausprobieren; der Grund steht im Protokoll.
+
+Fehlt `ZITADEL_WEBHOOK_SIGNING_KEY`, antwortet der Endpunkt mit **503** und tut
+nichts. Nicht 200 („erledigt", was gelogen wäre) und erst recht nicht
+„ungeprüft durchlassen" — 503 heißt für ZITADEL „später erneut versuchen".
+
+### Was in `fws-maschsee/server-config` von Hand einzurichten ist
+
+Das gehört in ein **anderes Repository** und ist hier bewusst nicht angelegt.
+Unter `tofu/zitadel/` braucht es **je Klasse** zwei Ressourcen:
+
+```hcl
+# 1. Das Target: wohin ZITADEL ruft, und womit es unterschreibt.
+resource "zitadel_action_v2_target" "klassen_webseite_events" {
+  name             = "klassen-webseite-<klasse>"
+  endpoint         = "https://<domain der klasse>/api/zitadel/events"
+  timeout          = "10s"
+  interrupt_on_err = false          # ein Ausfall der Seite darf kein
+                                     # Löschen in ZITADEL aufhalten
+  rest_async {}                      # wir antworten nur, wir reden nicht mit
+}
+
+# 2. Die Execution: welches Ereignis dorthin geht.
+resource "zitadel_action_v2_execution" "user_removed" {
+  condition {
+    event {
+      event = "user.removed"
+    }
+  }
+  targets = [zitadel_action_v2_target.klassen_webseite_events.id]
+}
+```
+
+Der `signingKey` fällt beim Anlegen des Targets **einmalig** an
+(`zitadel_action_v2_target.…​.signing_key`) und ist danach nicht mehr abrufbar.
+Er muss aus dem Tofu-State in das Deployment der Klasse, als
+`ZITADEL_WEBHOOK_SIGNING_KEY` (siehe `.env.example`). Beide Seiten müssen
+denselben Wert haben, sonst weist die App jeden Aufruf mit 401 ab.
+
+Ob das Target auf `user.removed` als *Event* oder über eine `function`-Bedingung
+hängt, entscheidet die ZITADEL-Version — der Code hier prüft den Ereignistyp
+selbst und übergeht alles andere mit `200 {"result":"ignored"}`. Ein zu weit
+gefasstes Abonnement ist damit unschädlich, ein zu enges fällt still aus.
 
 ## Einbinden
 

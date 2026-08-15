@@ -28,11 +28,19 @@ beforeEach(() => {
 })
 
 describe('Schema des Adressbuchs', () => {
-	test('kennt nur Name, E-Mail und Zeitstempel', () => {
+	test('kennt nur Name, E-Mail, Zeitstempel und den Bezug zum Konto', () => {
 		// Die frueheren Spalten `salutation`, `phone`, `notes` und
 		// `zitadel_user_id` sind alle wieder gefallen. Dass hier eine
 		// ABGESCHLOSSENE Liste steht und kein `toContain`, ist der Punkt: eine
 		// neue Spalte im Adressbuch soll auffallen und begruendet werden muessen.
+		//
+		// `user_sub` ist am 15.08. dazugekommen und ist genau so eine begruendete
+		// Ausnahme: Sie sagt, welches ANMELDEKONTO diesen Eintrag verwaltet — und
+		// nichts darueber, wer Post bekommt. Sie traegt keine Zugehoerigkeit, wird
+		// nur fuer die Person gesetzt, die gerade selbst angemeldet ist, und ist
+		// die Kette, an der die Loesch-Kaskade haengt. Die ausfuehrliche
+		// Abgrenzung zur entfernten Spiegelung steht in
+		// `tests/auth/getrennte-datenschichten.test.ts`.
 		const columns = db
 			.prepare<[], { name: string }>('PRAGMA table_info(mitglieder)')
 			.all()
@@ -44,6 +52,7 @@ describe('Schema des Adressbuchs', () => {
 			'email',
 			'created_at',
 			'updated_at',
+			'user_sub',
 		])
 	})
 
