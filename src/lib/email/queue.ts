@@ -13,6 +13,8 @@ import { globallySuppressedAddresses } from '../db/suppressions.ts'
 import type { SendLogRow } from '../db/types.ts'
 import { loadEmail } from '../emails/loader.ts'
 import { isEmailRecipient, resolveRecipients } from '../emails/recipients.ts'
+import type { AccountCheckReport } from '../versand/kontopruefung.ts'
+import { pruefeKonten } from '../versand/kontopruefung.ts'
 import { mailFrom, mailFromName, mailReplyTo } from './config.ts'
 import { renderForRecipient } from './render.ts'
 import type { EmailTransport } from './transport.ts'
@@ -78,6 +80,14 @@ export type EnqueueResult = {
 	skipped_no_email: number
 	/** Adresse ist global gesperrt (Bounce/Beschwerde). */
 	skipped_suppressed: number
+	/**
+	 * Kein Konto mit Rolle in dieser Klasse — nur in `enforce` groesser als
+	 * null. Jeder dieser Empfaenger steht ausserdem als `skipped`-Zeile im
+	 * Versandprotokoll, mit dem Grund. Still verschwinden darf niemand.
+	 */
+	skipped_no_account: number
+	/** Bericht der Konten-Pruefung, siehe `src/lib/versand/kontopruefung.ts`. */
+	account_check?: AccountCheckReport
 }
 
 export const enqueueEmailToRecipients = async (
@@ -93,6 +103,7 @@ export const enqueueEmailToRecipients = async (
 		skipped_already_queued: 0,
 		skipped_no_email: 0,
 		skipped_suppressed: 0,
+		skipped_no_account: 0,
 	}
 
 	// Harte Stopps: `skip` deaktiviert den Versand, `sentExternally` markiert
@@ -100,7 +111,31 @@ export const enqueueEmailToRecipients = async (
 	// nichts eingereiht — unabhaengig vom Send-Log.
 	if (email.skip || email.sentExternally) return result
 
-	const recipients = resolveRecipients(email.recipients, db)
+	const aufgeloest = resolveRecipients(email.recipients, db)
+
+	// OHNE KONTO, KEINE E-MAIL. Ein entzogener Grant loest kein Ereignis aus —
+	// der Webhook aus ZITADEL kennt nur `user.removed`, also das geloeschte
+	// Konto, nicht die entzogene Rolle. Ohne diese Pruefung bekaeme jemand nach
+	// dem Rollenentzug unbegrenzt weiter Post. Die Begruendung im Langen steht
+	// in `src/lib/versand/kontopruefung.ts`.
+	//
+	// Geprueft werden nur Eintraege MIT Adresse: Wer keine hat, faellt ohnehin
+	// gleich als `skipped_no_email` heraus, und eine leere Adresse waere in der
+	// Pruefung ein Empfaenger ohne Konto — also derselbe Fall unter dem
+	// falschen Namen.
+	//
+	// In `enforce` wirft die Pruefung bei einer Stoerung von ZITADEL, und dieser
+	// Wurf bleibt bewusst UNGEFANGEN: Er kommt beim MCP-Werkzeug `send_email`
+	// als Fehler an, und nichts wird eingereiht. Lieber keine Rundmail als eine
+	// an Leute, die nicht mehr dazugehoeren.
+	const ohneAdresse = aufgeloest.filter((m) => !isEmailRecipient(m))
+	const pruefung = await pruefeKonten(
+		aufgeloest.filter(isEmailRecipient),
+		(m) => ({ email: m.email as string, from_address_book: true }),
+		{ db, occasion: `Rundmail ${slug}` },
+	)
+	result.account_check = pruefung.report
+	const recipients = [...pruefung.recipients, ...ohneAdresse]
 
 	const alreadySent = options.force
 		? new Set<string>()
@@ -127,6 +162,23 @@ export const enqueueEmailToRecipients = async (
 	const suppressed = globallySuppressedAddresses(db)
 
 	const tx = db.transaction(() => {
+		// Zuerst die Geschnittenen — als `skipped`-Zeile mit Grund. Ohne sie
+		// stuende im Versandprotokoll nur eine kleinere Zahl, und niemand koennte
+		// sagen, wer fehlt. In `report` ist diese Schleife leer, weil dort nichts
+		// geschnitten wird.
+		for (const { recipient, reason } of pruefung.cut) {
+			if (pruefung.recipients.includes(recipient)) continue
+			recordSend(
+				{
+					email_slug: slug,
+					mitglied_id: recipient.id,
+					status: 'skipped',
+					error_message: `Kein Konto mit Rolle in dieser Klasse (${reason})`,
+				},
+				db,
+			)
+			result.skipped_no_account++
+		}
 		for (const mitglied of recipients) {
 			if (alreadyQueued.has(mitglied.id)) {
 				result.skipped_already_queued++

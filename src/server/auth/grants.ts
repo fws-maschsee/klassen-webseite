@@ -90,13 +90,30 @@ export const resetGrantsConfig = (): void => {
 const ACTIVE_STATE = 'USER_GRANT_STATE_ACTIVE'
 
 /**
- * Nur die drei Felder, die fuer eine Berechtigungspruefung gebraucht werden.
- * Die Antwort von ZITADEL traegt mehr — `email`, `firstName`, `lastName`,
- * `displayName` —, und genau die sind hier bewusst NICHT modelliert: was nicht
- * getippt ist, wandert auch nicht versehentlich ins Adressbuch.
+ * Was aus der Grant-Antwort gelesen wird.
+ *
+ * Bis zum 15.08. standen hier nur `userId`, `roleKeys` und `state`, und `email`
+ * war ausdruecklich NICHT modelliert — mit der Begruendung, was nicht getippt
+ * ist, wandere auch nicht versehentlich ins Adressbuch. Die Begruendung stimmt
+ * weiter, die Schlussfolgerung traegt aber nicht mehr, seit es die
+ * Konten-Pruefung vor dem Versand gibt (`src/lib/versand/kontopruefung.ts`).
+ *
+ * Warum die Adresse dort gebraucht wird: `mitglieder.user_sub` entsteht erst
+ * beim ERSTEN Login. Gemessen am 15.08. hatten in beiden Klassen praktisch
+ * alle Familien laengst ein Konto in ZITADEL, aber fast niemand einen gesetzten
+ * `user_sub` — eine Pruefung allein ueber den `sub` haette jeden Verteiler auf
+ * eine Handvoll Adressen zusammengestrichen. Die Adresse ist der Schluessel,
+ * der HEUTE beide Seiten verbindet.
+ *
+ * `firstName`, `lastName` und `displayName` bleiben ungetippt: Namen braucht
+ * keine Berechtigungsfrage. Und die Adresse verlaesst diese Schicht nur, um
+ * VERGLICHEN und (obfuskiert) BERICHTET zu werden — geschrieben wird mit ihr
+ * nichts. Das bewacht `tests/auth/getrennte-datenschichten.test.ts`: kein
+ * Modul darf Grants beziehen und zugleich das Adressbuch schreiben.
  */
 type GrantRow = {
 	userId?: string
+	email?: string
 	roleKeys?: string[]
 	state?: string
 }
@@ -110,25 +127,24 @@ type GrantRow = {
 const isActive = (row: GrantRow): boolean =>
 	(row.state ?? ACTIVE_STATE) === ACTIVE_STATE
 
-const search = async (
-	queries: unknown[],
-	limit = 1000,
-): Promise<GrantRow[]> => {
+/**
+ * Ein Aufruf gegen die Management-API. Jede Stoerung — Netz, Status, Rumpf —
+ * wird zu `GrantsUnavailableError`, weil sie an jeder Aufrufstelle dasselbe
+ * bedeutet: Wir wissen es gerade nicht, also wird nicht durchgewunken.
+ */
+const post = async <T>(pfad: string, rumpf: unknown): Promise<T> => {
 	const config = getGrantsConfig()
 	let response: Response
 	try {
-		response = await fetch(
-			`${config.issuer}/management/v1/users/grants/_search`,
-			{
-				method: 'POST',
-				headers: {
-					authorization: `Bearer ${config.token}`,
-					'x-zitadel-orgid': config.orgId,
-					'content-type': 'application/json',
-				},
-				body: JSON.stringify({ query: { limit }, queries }),
+		response = await fetch(`${config.issuer}${pfad}`, {
+			method: 'POST',
+			headers: {
+				authorization: `Bearer ${config.token}`,
+				'x-zitadel-orgid': config.orgId,
+				'content-type': 'application/json',
 			},
-		)
+			body: JSON.stringify(rumpf),
+		})
 	} catch (error) {
 		throw new GrantsUnavailableError(
 			`ZITADEL nicht erreichbar: ${(error as Error).message}`,
@@ -139,7 +155,17 @@ const search = async (
 			`ZITADEL antwortete mit HTTP ${response.status}`,
 		)
 	}
-	const body = (await response.json()) as { result?: GrantRow[] }
+	return (await response.json()) as T
+}
+
+const search = async (
+	queries: unknown[],
+	limit = 1000,
+): Promise<GrantRow[]> => {
+	const body = await post<{ result?: GrantRow[] }>(
+		'/management/v1/users/grants/_search',
+		{ query: { limit }, queries },
+	)
 	return body.result ?? []
 }
 
@@ -200,4 +226,109 @@ export const rolesForUser = async (userId: string): Promise<string[]> => {
 				.flatMap((row) => row.roleKeys ?? []),
 		),
 	]
+}
+
+/** Ein Konto mit mindestens einem aktiven Grant im Projekt dieser Klasse. */
+export type GrantedAccount = {
+	/** ZITADEL-`sub`. Derselbe Wert wie `mitglieder.user_sub`. */
+	userId: string
+	/** Anmeldeadresse, normalisiert. Leer, wenn ZITADEL keine mitliefert. */
+	email: string
+	/** Projektrollen aus ALLEN aktiven Grants dieser Person. */
+	roles: string[]
+}
+
+/**
+ * ALLE Konten mit aktivem Grant im Projekt dieser Klasse — eine Abfrage.
+ *
+ * Das Gegenstueck zu `rolesForUser`: dort eine Person, hier die ganze Menge.
+ * Gebraucht wird sie genau einmal je Versand (`kontopruefung.ts`); die
+ * Alternative waere ein Aufruf je Empfaenger, also sechzig statt einem.
+ *
+ * DAS IST NICHT DAS ZURUECKGEBAUTE `usersWithRole()`. Jenes lieferte Namen und
+ * Adressen, damit ein Aufrufer daraus Adressbuch-Eintraege ANLEGT. Diese
+ * Funktion liefert dieselbe Menge, um sie mit dem Adressbuch zu VERGLEICHEN —
+ * sie schreibt nichts, und der Waechter
+ * (`tests/auth/getrennte-datenschichten.test.ts`) laesst auch niemanden
+ * schreiben, der sie aufruft.
+ *
+ * Auf das Projekt DIESER Klasse eingeschraenkt, weil `projectGrants()` es ist.
+ * Ohne diesen Filter kaemen die Grants beider Klassen zurueck (gemessen: 117
+ * statt 59) — und dann bekaeme eine Familie der einen Klasse Post aus der
+ * anderen durchgewunken.
+ */
+export const grantedAccounts = async (): Promise<GrantedAccount[]> => {
+	const rows = await projectGrants()
+	const byUser = new Map<string, GrantedAccount>()
+	for (const row of rows) {
+		if (!row.userId) continue
+		const email = (row.email ?? '').trim().toLowerCase()
+		const vorhanden = byUser.get(row.userId)
+		if (!vorhanden) {
+			byUser.set(row.userId, {
+				userId: row.userId,
+				email,
+				roles: [...new Set(row.roleKeys ?? [])],
+			})
+			continue
+		}
+		// Zwei Grants derselben Person im selben Projekt sind moeglich. Die
+		// Rollen werden vereinigt — sonst haenge die Antwort daran, welche Zeile
+		// ZITADEL zuerst liefert.
+		for (const rolle of row.roleKeys ?? []) {
+			if (!vorhanden.roles.includes(rolle)) vorhanden.roles.push(rolle)
+		}
+		if (!vorhanden.email && email) vorhanden.email = email
+	}
+	return [...byUser.values()]
+}
+
+/**
+ * Ein Konto in der Organisation dieser Klasse — unabhaengig davon, ob es einen
+ * Grant hat.
+ */
+export type KnownAccount = { userId: string; email: string }
+
+/**
+ * Alle Konten der Organisation, ebenfalls in EINER Abfrage.
+ *
+ * Wozu, wenn `grantedAccounts()` doch schon sagt, wer darf: um die BEGRUENDUNG
+ * eines Schnitts zu kennen. „Konto in ZITADEL geloescht" und „Grant entzogen"
+ * fuehren zur selben Entscheidung, verlangen aber vom Menschen, der den
+ * Bericht liest, zwei verschiedene Handgriffe. Ohne diese Abfrage stuende in
+ * jedem Bericht nur „kein Grant" — und ein geloeschtes Konto, das im Adressbuch
+ * noch steht, faende niemand.
+ *
+ * Deshalb ruft `kontopruefung.ts` sie erst dann auf, wenn ueberhaupt jemand
+ * geschnitten wuerde. Im gruenen Fall kostet die Pruefung weiterhin genau eine
+ * Anfrage.
+ *
+ * Die Antwortform ist bewusst nachsichtig gelesen: Die Management-API v1 nennt
+ * die Adresse je nach Kontotyp an drei Stellen. Was fehlt, bleibt leer — eine
+ * fehlende Adresse macht die Begruendung ungenauer, nie die Entscheidung
+ * falsch.
+ */
+export const knownAccounts = async (): Promise<KnownAccount[]> => {
+	type UserRow = {
+		id?: string
+		userName?: string
+		preferredLoginName?: string
+		human?: { email?: { email?: string } }
+	}
+	const body = await post<{ result?: UserRow[] }>(
+		'/management/v1/users/_search',
+		{ query: { limit: 1000 } },
+	)
+	return (body.result ?? []).flatMap((row) => {
+		if (!row.id) return []
+		const email = (
+			row.human?.email?.email ??
+			row.preferredLoginName ??
+			row.userName ??
+			''
+		)
+			.trim()
+			.toLowerCase()
+		return [{ userId: row.id, email }]
+	})
 }
