@@ -44,6 +44,22 @@ import { type CutReason, pruefeKonten } from '../versand/kontopruefung.ts'
  * Eintrag — der DSGVO-Weg) oder `delete_mitglied` (nur der Eintrag). Beides
  * benennt eine Person, und beides tut ein Mensch.
  *
+ * GEMELDET WIRD NUR, WENN ES ETWAS ZU MELDEN GIBT. Entscheidung des Betreibers,
+ * im Wortlaut: „das will ich nicht andauernd bekommen. ich will nur fehler
+ * sehen." Der Unterschied ist, WER anfaengt:
+ *
+ *   GEFRAGT (dieses Modul ueber `reconcile_accounts`): Es antwortet immer, auch
+ *   mit „keine Abweichung". Wer fragt, will eine Antwort — auch die beruhigende.
+ *
+ *   VON SELBST (ein regelmaessiger Lauf, ein Bericht an einer Mail, eine
+ *   Benachrichtigung): Es schweigt bei sauberem Ergebnis. Dafuer gibt es
+ *   `hatAbweichungen()` weiter unten, und wer einen solchen Weg baut, fragt es
+ *   VOR dem Verschicken. Eine woechentliche Mail mit lauter Nullen wird nach
+ *   dem dritten Mal weggeklickt — und dann klickt man die vierte mit weg, in
+ *   der etwas steht.
+ *
+ * Ins PROTOKOLL darf ein sauberes Ergebnis; das liest nur, wer hinsieht.
+ *
  * ES IST KEIN UEBERTRAG, und der Waechter
  * (`tests/auth/getrennte-datenschichten.test.ts`) laesst auch keinen zu: Hier
  * wird aus ZITADEL GELESEN und mit dem Adressbuch VERGLICHEN. Geschrieben wird
@@ -207,9 +223,28 @@ export const abgleichen = async (
 }
 
 /**
+ * Gibt es ueberhaupt etwas zu melden?
+ *
+ * DIE FRAGE, DIE JEDER SELBSTTAETIGE WEG VOR DEM VERSCHICKEN STELLEN MUSS.
+ * Ein Werkzeug, das jemand aufruft, antwortet auch mit „nichts gefunden" — das
+ * ist die Antwort auf eine Frage. Eine Mail, die niemand bestellt hat, braucht
+ * dagegen einen Anlass, sonst erzieht sie ihren Empfaenger zum Wegklicken.
+ *
+ * Sie steht hier als eigene Funktion und nicht als `if` an der Aufrufstelle,
+ * damit es beim naechsten selbsttaetigen Weg nicht wieder jemand herleiten muss
+ * — und damit sie einen Namen hat, den ein Test nennen kann.
+ */
+export const hatAbweichungen = (bericht: AbgleichBericht): boolean =>
+	bericht.entries_without_account.length > 0 ||
+	bericht.accounts_without_entry.length > 0
+
+/**
  * Der Bericht als Text fuer einen Menschen. Deutsch, und mit dem Handgriff
  * dabei: Ein Befund ohne den naechsten Schritt laesst den Leser genau dort
  * stehen, wo er vorher stand.
+ *
+ * „Keine Abweichung." steht hier fuer den GEFRAGTEN Fall. Ein selbsttaetiger
+ * Weg schickt diesen Satz nicht — er fragt vorher `hatAbweichungen()`.
  */
 export const abgleichAlsText = (bericht: AbgleichBericht): string => {
 	const zeilen = [

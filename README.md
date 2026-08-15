@@ -443,6 +443,26 @@ wird von einem Menschen getan.
 Erreichbar ist er als **MCP-Werkzeug `reconcile_accounts`** (Rolle `admin`), also
 ohne Anmeldung an der Weboberfläche: Man kann ihn fragen.
 
+### Gemeldet wird nur, wenn es etwas zu melden gibt
+
+Entscheidung des Betreibers, im Wortlaut: *„das will ich nicht andauernd
+bekommen. ich will nur fehler sehen."* Der Unterschied ist, wer anfängt:
+
+* **Gefragt** — `reconcile_accounts` antwortet immer, auch mit „keine
+  Abweichung". Wer fragt, will eine Antwort, auch die beruhigende.
+* **Von selbst** — jeder regelmäßige Lauf, jeder Bericht an einer Mail, jede
+  Benachrichtigung **schweigt bei sauberem Ergebnis**. Dafür gibt es
+  `hatAbweichungen()`, und wer so einen Weg baut, fragt sie **vor** dem
+  Verschicken.
+
+Das gilt schon heute an der einen Stelle, an der ein Bericht von selbst jemanden
+erreicht: Die Putz-Erinnerung (jeden Sonntag) hängt den Bericht der
+Konten-Prüfung nur an, wenn er etwas enthält — sonst geht **gar keine** Meldung
+an den Betrieb (`tests/klasse/putzplan-erinnerung.test.ts`). Eine wöchentliche
+Mail mit lauter Nullen wird nach dem dritten Mal weggeklickt, und dann klickt man
+die vierte mit weg, in der etwas steht. Ins **Protokoll** darf ein sauberes
+Ergebnis: Das liest nur, wer hinsieht.
+
 **Was er heute schon gefunden hat:** Genau dieser Abgleich, von Hand
 durchgeführt, fand am 15.08. **drei Abweichungen** — zwei Konten einer
 weggezogenen Familie, die noch Zugang hatten, und eine Person ohne Konto. Ein

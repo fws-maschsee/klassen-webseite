@@ -41,9 +41,11 @@ import {
 	sendezeitFuer,
 } from '../../src/klasse/putzplanErinnerung.ts'
 import { upsertGroup } from '../../src/lib/db/groups.ts'
+import { upsertMitglied } from '../../src/lib/db/members.ts'
 import { erinnerungZuTermin } from '../../src/lib/db/putzplanReminders.ts'
 import { suppressAddress } from '../../src/lib/db/suppressions.ts'
 import type { SendInput } from '../../src/lib/email/transport.ts'
+import { resetGrantsConfig } from '../../src/server/auth/grants.ts'
 import { createTestDb } from '../helpers/db.ts'
 import { TESTKLASSE } from '../setup.ts'
 
@@ -144,6 +146,13 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.useRealTimers()
+	vi.unstubAllGlobals()
+	delete process.env.LIST_ACCOUNT_CHECK
+	delete process.env.ZITADEL_ISSUER
+	delete process.env.ZITADEL_ORG_ID
+	delete process.env.ZITADEL_PROJECT_ID
+	delete process.env.ZITADEL_SERVICE_TOKEN
+	resetGrantsConfig()
 	db.close()
 })
 
@@ -319,6 +328,61 @@ describe('Familie ohne erreichbare Adresse', () => {
 		// Kein stiller Versand an niemanden — eine Meldung.
 		expect(anFamilien()).toHaveLength(0)
 		expect(anBetrieb()).toHaveLength(1)
+	})
+
+	test('ist alles in Ordnung, geht KEINE Meldung an den Betrieb', async () => {
+		// „das will ich nicht andauernd bekommen. ich will nur fehler sehen."
+		// (Levin, 15.08.) — Der Erinnerungsdienst laeuft JEDEN Sonntag von
+		// selbst. Eine Meldung mit lauter Nullen kaeme woechentlich, und wer sie
+		// dreimal weggeklickt hat, klickt die vierte mit weg, in der etwas steht.
+		// Was jemanden aktiv erreicht, braucht einen Anlass.
+		//
+		// Hier ist die Lage sauber: alle drei Adressen erreichbar UND alle drei
+		// mit Konto und Leserolle in ZITADEL. Die Konten-Pruefung laeuft also und
+		// findet nichts — genau der Fall, in dem geschwiegen gehoert.
+		// Dieselben drei Adressen stehen auch im Adressbuch — sonst meldete die
+		// Pruefung zu Recht drei Konten OHNE Eintrag, und das waere ein Anlass.
+		for (const [id, email] of [
+			['anke', 'anke@example.org'],
+			['jens', 'jens@example.org'],
+			['mira', 'mira@example.org'],
+		] as const) {
+			upsertMitglied({ id, first_name: id, last_name: 'Beispiel', email }, db)
+		}
+		process.env.LIST_ACCOUNT_CHECK = 'report'
+		process.env.ZITADEL_ISSUER = 'https://id.example.org'
+		process.env.ZITADEL_ORG_ID = 'org-1'
+		process.env.ZITADEL_PROJECT_ID = 'proj-1'
+		process.env.ZITADEL_SERVICE_TOKEN = 'tok'
+		resetGrantsConfig()
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					new Response(
+						JSON.stringify({
+							result: [
+								'anke@example.org',
+								'jens@example.org',
+								'mira@example.org',
+							].map((email, i) => ({
+								userId: `u-${i}`,
+								email,
+								roleKeys: ['mitglied'],
+								state: 'USER_GRANT_STATE_ACTIVE',
+							})),
+						}),
+						{ status: 200 },
+					),
+			),
+		)
+
+		const ergebnis = await nachsehen(SONNTAG_17_UHR)
+
+		expect(ergebnis).toMatchObject({ kind: 'sent', recipients: 3 })
+		expect(anFamilien()).toHaveLength(3)
+		// Und niemand bekommt einen Bericht darueber, dass nichts zu berichten war.
+		expect(anBetrieb()).toHaveLength(0)
 	})
 
 	test('eine gesperrte Adresse zählt nicht als erreicht', async () => {

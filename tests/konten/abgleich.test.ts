@@ -1,6 +1,10 @@
 import type { Database } from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { abgleichAlsText, abgleichen } from '../../src/lib/konten/abgleich.ts'
+import {
+	abgleichAlsText,
+	abgleichen,
+	hatAbweichungen,
+} from '../../src/lib/konten/abgleich.ts'
 import { resetGrantsConfig } from '../../src/server/auth/grants.ts'
 import { createTestDb } from '../helpers/db.ts'
 
@@ -110,7 +114,13 @@ describe('Der Abgleich', () => {
 		expect(bericht.entries_with_account).toBe(1)
 		expect(bericht.entries_without_account).toEqual([])
 		expect(bericht.accounts_without_entry).toEqual([])
+		// GEFRAGT wird immer geantwortet — auch beruhigend.
 		expect(abgleichAlsText(bericht)).toContain('Keine Abweichung.')
+		// VON SELBST wird geschwiegen. „das will ich nicht andauernd bekommen.
+		// ich will nur fehler sehen." (Levin, 15.08.) Wer einen regelmaessigen
+		// Lauf oder eine Benachrichtigung baut, fragt das hier VOR dem
+		// Verschicken — eine Mail mit lauter Nullen erzieht zum Wegklicken.
+		expect(hatAbweichungen(bericht)).toBe(false)
 	})
 
 	test('meldet einen Eintrag ohne Konto — mit Grund und Gruppen', async () => {
@@ -147,6 +157,7 @@ describe('Der Abgleich', () => {
 			},
 		])
 		expect(bericht.entries_with_account).toBe(1)
+		expect(hatAbweichungen(bericht)).toBe(true)
 	})
 
 	test('unterscheidet entzogene Rolle von geloeschtem Konto', async () => {
@@ -194,6 +205,8 @@ describe('Der Abgleich', () => {
 		expect(bericht.accounts_without_entry).toEqual([
 			{ user_id: 'u-emil', email: 'emil@example.org', roles: ['admin'] },
 		])
+		// Auch die Gegenrichtung allein ist ein Anlass.
+		expect(hatAbweichungen(bericht)).toBe(true)
 		expect(abgleichAlsText(bericht)).toContain('emil@example.org')
 	})
 
