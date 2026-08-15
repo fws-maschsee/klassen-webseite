@@ -33,6 +33,16 @@ import { runMigrations } from '../../src/migrations.ts'
  * das Grants bezieht UND das Adressbuch schreibt, ist einer — wie es heisst,
  * spielt keine Rolle. Von ZITADEL zu SPRECHEN bleibt dagegen erlaubt; ein Test,
  * der das Wort verbietet, verbietet die Begruendung mit.
+ *
+ * STAND 15.08.: Es gibt jetzt einen BEZUG zwischen Anmeldekonto und
+ * Adressbuch-Eintrag (`users`, `mitglieder.user_sub`). Das ist keine Rueckkehr
+ * der Spiegelung, und der Unterschied steht ausformuliert am Schema-Block
+ * weiter unten. Fuer die statischen Zusicherungen hier aendert sich nichts:
+ * `src/lib/db/users.ts` schreibt das Adressbuch, spricht aber mit ZITADEL nicht
+ * — es bekommt die Identitaet der Person, die gerade selbst anklopft, als
+ * Argument. Genau deshalb bleibt „bezieht Grants UND schreibt" das richtige
+ * Verbot: Wer den Bezug zu einem Abgleich ausbauen wollte, muesste erst wieder
+ * die Menge der Grant-Inhaber holen — und daran scheitert er hier.
  */
 
 const WURZEL = fileURLToPath(new URL('../..', import.meta.url))
@@ -135,23 +145,111 @@ describe('Getrennte Datenschichten: statisch', () => {
 })
 
 describe('Getrennte Datenschichten: Schema', () => {
-	test('das Adressbuch traegt keine Spalte, die auf ZITADEL zeigt', () => {
-		// Eine solche Spalte ist der Wiedererkennungsschluessel, den eine
-		// Spiegelung braucht. Ohne sie muesste ein Uebertrag Personen ueber Namen
-		// oder Adresse identifizieren, und daran scheitert er sichtbar statt
-		// still.
+	/**
+	 * DER EINE ERLAUBTE BEZUG, und warum er hier steht statt gar nicht.
+	 *
+	 * Bis zum 15.08. verbot dieser Block JEDE Spalte, die auf ein Konto zeigt —
+	 * mit der Begruendung, sie sei der Wiedererkennungsschluessel, den eine
+	 * Spiegelung braucht. Das stimmt weiterhin. Trotzdem gibt es jetzt
+	 * `mitglieder.user_sub`, und das ist eine Entscheidung des Betreibers, keine
+	 * Aufweichung durch die Hintertuer.
+	 *
+	 * Der Unterschied, an dem man beides auseinanderhaelt:
+	 *
+	 *   Die Spiegelung holte die MENGE aller Grant-Inhaber und schrieb sie ins
+	 *   Adressbuch — Eintraege anlegen, aendern, loeschen, ungefragt.
+	 *
+	 *   Der Bezug entsteht ausschliesslich fuer die Person, die GERADE SELBST
+	 *   mit gueltiger Sitzung da ist. Er sagt „dieses Konto verwaltet diesen
+	 *   Eintrag" und nichts weiter. Er traegt keine Zugehoerigkeit: Ein dabei
+	 *   angelegter Eintrag steht in KEINER Gruppe und bekommt keine Mail, bis
+	 *   ein Mensch ihn hineinsetzt.
+	 *
+	 * Was diese Tests deshalb ab jetzt pruefen: dass es bei GENAU DIESER einen
+	 * Spalte bleibt, dass sie die Loesch-Kaskade traegt, und dass die Gruppen —
+	 * also die Antwort auf „wer bekommt Post" — von einem Konto nach wie vor
+	 * nichts wissen.
+	 */
+	const schema = () => {
 		const db = new Database(':memory:')
 		runMigrations(db)
-		for (const tabelle of ['mitglieder', 'groups', 'group_memberships']) {
-			const spalten = db
+		return db
+	}
+
+	test('nur `mitglieder.user_sub` zeigt auf ein Konto, sonst nichts', () => {
+		const db = schema()
+		const spaltenVon = (tabelle: string): string[] =>
+			db
 				.prepare<[], { name: string }>(`PRAGMA table_info(${tabelle})`)
 				.all()
 				.map((s) => s.name)
+
+		// `groups` und `group_memberships` beantworten „wer bekommt Post". Dort
+		// darf ein Konto nicht vorkommen — sonst waere die Zugehoerigkeit doch
+		// wieder aus der Anmeldung ableitbar.
+		for (const tabelle of ['groups', 'group_memberships']) {
+			const spalten = spaltenVon(tabelle)
 			expect(spalten.length).toBeGreaterThan(0)
 			expect(
 				spalten.filter((name) => /zitadel|grant|oidc|sso|sub$/i.test(name)),
 			).toEqual([])
 		}
+
+		// Im Adressbuch genau eine, und zwar diese.
+		expect(
+			spaltenVon('mitglieder').filter((name) =>
+				/zitadel|grant|oidc|sso|sub$/i.test(name),
+			),
+		).toEqual(['user_sub'])
+		db.close()
+	})
+
+	test('der Bezug traegt die Loesch-Kaskade und ist auf einen Eintrag begrenzt', () => {
+		const db = schema()
+
+		// ON DELETE CASCADE ist kein Beiwerk: Sie ist der Grund, aus dem das
+		// Loeschen eines Kontos nicht aus einer Liste von Hand-Anweisungen
+		// besteht, die beim naechsten neuen Feld unvollstaendig waere.
+		const fk = db
+			.prepare<
+				[],
+				{ table: string; from: string; to: string; on_delete: string }
+			>('PRAGMA foreign_key_list(mitglieder)')
+			.all()
+			.find((z) => z.from === 'user_sub')
+		expect(fk?.table).toBe('users')
+		expect(fk?.on_delete).toBe('CASCADE')
+
+		// Ein Konto verwaltet HOECHSTENS EINEN Eintrag. Ohne diesen Index waere
+		// nach einer Adressaenderung nicht mehr entscheidbar, welcher „der
+		// eigene" ist — und die Kaskade traefe zwei Familien statt einer.
+		const indizes = db
+			.prepare<[], { name: string; unique: number }>(
+				'PRAGMA index_list(mitglieder)',
+			)
+			.all()
+		const eindeutig = indizes.filter((i) => {
+			const spalten = db
+				.prepare<[], { name: string }>(`PRAGMA index_info(${i.name})`)
+				.all()
+				.map((s) => s.name)
+			return i.unique === 1 && spalten.join(',') === 'user_sub'
+		})
+		expect(eindeutig.length).toBe(1)
+		db.close()
+	})
+
+	test('das Versandprotokoll haengt nicht mehr an der Person', () => {
+		// Es ist ein Nachweis. Ein Nachweis, den das Loeschen eines Beteiligten
+		// entfernt, ist keiner — und mit der Loesch-Kaskade am Konto waere genau
+		// das passiert (siehe Migration 20260815090200).
+		const db = schema()
+		const fks = db
+			.prepare<[], { table: string; from: string }>(
+				'PRAGMA foreign_key_list(email_send_log)',
+			)
+			.all()
+		expect(fks.map((f) => f.from)).toEqual(['email_slug'])
 		db.close()
 	})
 })

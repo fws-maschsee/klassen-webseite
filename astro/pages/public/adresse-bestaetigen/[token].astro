@@ -1,0 +1,149 @@
+---
+import Layout from '../../../layouts/Schlicht.astro'
+import { klassenConfig } from '../../../../src/klasse/config.ts'
+import {
+	anforderungZuToken,
+	bestaetigeAdresswechsel,
+} from '../../../../src/lib/db/emailChange.ts'
+import { openDb } from '../../../../src/lib/db/index.ts'
+
+export const prerender = false
+
+/**
+ * „Ja, die Post soll an diese Adresse gehen."
+ *
+ * OHNE ANMELDUNG erreichbar, deshalb unter `/public/`. Der Klick passiert im
+ * Mailprogramm, und das oeffnet Links gern in einem anderen Browser als dem, in
+ * dem die Sitzung liegt — auf dem Telefon fast immer. Eine Bestaetigungsseite
+ * hinter dem Login waere eine, die man erst nach einer Anmeldung sieht, die man
+ * gerade nicht hat.
+ *
+ * Der Schluessel im Link IST der Nachweis: Wer die Mail an der neuen Adresse
+ * lesen kann, gehoert zu ihr. Mehr behauptet diese Seite nicht, und mehr
+ * braucht es auch nicht — die Aenderung wurde ja hinter dem Login angestossen.
+ *
+ * BESTAETIGT WIRD ERST AUF KNOPFDRUCK, nicht beim Aufrufen — dieselbe
+ * Ueberlegung wie bei `/public/abmelden/[token]`: Virenscanner und
+ * Vorschaufunktionen rufen Links in Mails von sich aus ab. Bei einem Schluessel,
+ * der nur EINMAL gilt, waere das besonders aergerlich: Das Programm haette ihn
+ * verbraucht, und der Mensch bekaeme „schon eingeloest" zu sehen, ohne je
+ * geklickt zu haben.
+ */
+
+const { label: klasse, contactMail, contactName, siteUrl } = klassenConfig()
+const db = openDb()
+
+const token = Astro.params.token ?? ''
+const anforderung = anforderungZuToken(token, db)
+
+const jetzt = new Date()
+let bestaetigt = false
+let fehler: 'unknown' | 'expired' | 'used' | null = null
+
+if (Astro.request.method === 'POST') {
+	const ergebnis = bestaetigeAdresswechsel(token, db, jetzt)
+	if (ergebnis.ok) bestaetigt = true
+	else fehler = ergebnis.grund
+}
+
+/** Ohne POST: Was waere zu tun? Dieselben Faelle, nur noch nicht eingelöst. */
+const offen =
+	anforderung !== null &&
+	!anforderung.confirmed_at &&
+	anforderung.expires_at > jetzt.toISOString()
+
+const zustand: 'confirmed' | 'unknown' | 'expired' | 'used' | 'open' = bestaetigt
+	? 'confirmed'
+	: (fehler ??
+		(anforderung === null
+			? 'unknown'
+			: anforderung.confirmed_at
+				? 'used'
+				: offen
+					? 'open'
+					: 'expired'))
+
+const zustaendig = contactName ?? contactMail
+---
+
+<Layout title="Neue Adresse bestätigen" untertitel={klasse}>
+	<div class="prose max-w-none">
+		{
+			zustand === 'confirmed' && (
+				<>
+					<p>
+						<strong>{anforderung?.new_email}</strong> ist jetzt die Adresse, an
+						die die Post der {klasse} geht.
+					</p>
+					<p>
+						Was du von welchem Verteiler bekommst, stellst du nach der Anmeldung
+						unter <a href={`${siteUrl}/einstellungen`}>Einstellungen</a> ein.
+						Angemeldet wird sich weiterhin mit deiner bisherigen Anmeldeadresse —
+						die beiden sind absichtlich getrennt.
+					</p>
+				</>
+			)
+		}
+
+		{
+			zustand === 'open' && (
+				<>
+					<p>
+						Soll die Post der {klasse} künftig an{' '}
+						<strong>{anforderung?.new_email}</strong> gehen?
+					</p>
+					<form method="POST" class="not-prose">
+						<button type="submit" class="btn btn-primary">
+							Ja, diese Adresse benutzen
+						</button>
+					</form>
+					<p class="text-sm opacity-70">
+						Bis dahin bleibt alles, wie es ist. Die Anmeldung ändert sich
+						dadurch nicht.
+					</p>
+				</>
+			)
+		}
+
+		{
+			zustand === 'used' && (
+				<>
+					<p>Dieser Link ist schon eingelöst.</p>
+					<p>
+						Wahrscheinlich hast du zweimal geklickt — dann ist alles in Ordnung
+						und die Adresse steht bereits. Wenn nicht, sag{' '}
+						<a href={`mailto:${contactMail}`}>{zustaendig}</a> Bescheid.
+					</p>
+				</>
+			)
+		}
+
+		{
+			zustand === 'expired' && (
+				<>
+					<p>Dieser Link ist abgelaufen.</p>
+					<p>
+						Bestätigungslinks gelten sieben Tage. Melde dich an und trage die
+						Adresse unter <a href={`${siteUrl}/einstellungen`}>Einstellungen</a>{' '}
+						noch einmal ein; dann kommt eine frische Mail.
+					</p>
+				</>
+			)
+		}
+
+		{
+			zustand === 'unknown' && (
+				<>
+					<p>Diesen Link kennen wir nicht.</p>
+					<p>
+						Wahrscheinlich ist er beim Kopieren zerbrochen — in Textmails werden
+						lange Adressen manchmal umgebrochen. Melde dich an und trage die
+						Adresse unter <a href={`${siteUrl}/einstellungen`}>Einstellungen</a>{' '}
+						noch einmal ein, oder schreib{' '}
+						<a href={`mailto:${contactMail}`}>{zustaendig}</a>.
+					</p>
+				</>
+			)
+		}
+	</div>
+</Layout>

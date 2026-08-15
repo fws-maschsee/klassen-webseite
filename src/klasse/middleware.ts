@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'astro'
 import './locals.ts'
+import { merkeAnmeldung } from '../lib/db/users.ts'
 import {
 	GrantsConfigError,
 	GrantsUnavailableError,
@@ -83,6 +84,35 @@ export const createKlassenMiddleware = (
 			}
 
 			context.locals.user = session ?? undefined
+
+			// Wer hier ankommt, hat eine gueltige Sitzung — genau der Moment, in
+			// dem der Bezug zwischen Konto und Adressbuch-Eintrag entsteht (siehe
+			// `src/lib/db/users.ts`). Er entsteht NUR fuer die Person, die gerade
+			// selbst da ist, und er legt sie in KEINE Gruppe.
+			//
+			// Warum hier und nicht in `/auth/callback`: Eine Sitzung gilt 30 Tage.
+			// Der Rueckweg vom IdP laeuft also hoechstens einmal im Monat durch,
+			// und „zuletzt gesehen" waere ein Wert, der einmal im Monat stimmt.
+			//
+			// Warum das den Seitenaufruf nicht scheitern laesst: Der Bezug ist
+			// Buchhaltung, kein Zugang. Eine gesperrte Datei oder eine kaputte
+			// Zeile darf niemanden aussperren, der sich gerade richtig angemeldet
+			// hat.
+			if (session) {
+				try {
+					merkeAnmeldung({
+						sub: session.sub,
+						email: session.email,
+						name: session.name,
+					})
+				} catch (fehler) {
+					console.error(
+						`[anmeldung] Bezug fuer ${session.sub} nicht festgehalten: ${
+							fehler instanceof Error ? fehler.message : String(fehler)
+						}`,
+					)
+				}
+			}
 
 			const pageResponse = await next()
 			if (setCookie) {
