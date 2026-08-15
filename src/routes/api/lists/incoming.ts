@@ -96,9 +96,9 @@ export const POST: APIRoute = async ({ request }) => {
 	// VERGLEICHT die Empfaenger mit den Grant-Inhabern und laesst die
 	// Nicht-Passenden weg; sie schreibt nichts. Sie musste kommen, weil der
 	// frueher an dieser Stelle notierte Preis zu hoch war: Ein entzogener Grant
-	// nahm niemandem die Post, und ein Entzug loest kein Ereignis aus, das der
-	// Webhook auffangen koennte (`user.removed` meldet das geloeschte Konto,
-	// nicht die entzogene Rolle).
+	// nahm niemandem die Post, und ein Entzug loest kein Ereignis aus, das man
+	// auffangen koennte (ZITADEL meldet hoechstens das geloeschte Konto, nicht
+	// die entzogene Rolle).
 	//
 	// Damit ist der Eingang nicht mehr unabhaengig von ZITADELs Verfuegbarkeit.
 	// In der Vorgabe-Betriebsart `report` aendert eine Stoerung nichts an der

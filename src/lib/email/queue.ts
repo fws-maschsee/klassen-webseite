@@ -113,9 +113,9 @@ export const enqueueEmailToRecipients = async (
 
 	const aufgeloest = resolveRecipients(email.recipients, db)
 
-	// OHNE KONTO, KEINE E-MAIL. Ein entzogener Grant loest kein Ereignis aus —
-	// der Webhook aus ZITADEL kennt nur `user.removed`, also das geloeschte
-	// Konto, nicht die entzogene Rolle. Ohne diese Pruefung bekaeme jemand nach
+	// OHNE KONTO, KEINE E-MAIL. Ein entzogener Grant loest kein Ereignis aus, auf
+	// das man hoeren koennte: ZITADEL meldet hoechstens das geloeschte Konto,
+	// nicht die entzogene Rolle. Ohne diese Pruefung bekaeme jemand nach
 	// dem Rollenentzug unbegrenzt weiter Post. Die Begruendung im Langen steht
 	// in `src/lib/versand/kontopruefung.ts`.
 	//

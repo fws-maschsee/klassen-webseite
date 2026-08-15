@@ -144,8 +144,9 @@ describe('Getrennte Datenschichten: statisch', () => {
 	 * (`src/lib/versand/kontopruefung.ts`). Sie vergleicht die Empfaenger mit
 	 * den Grant-Inhabern und laesst die Nicht-Passenden weg — sie schreibt
 	 * nichts, weder ins Adressbuch noch sonstwohin. Sie MUSS fragen: Ein
-	 * entzogener Grant loest kein Ereignis aus (der Webhook kennt nur
-	 * `user.removed`), also gibt es keinen anderen Weg, ihn zu bemerken, als
+	 * entzogener Grant loest kein Ereignis aus, auf das man hoeren koennte (der
+	 * Empfaenger fuer `user.removed` ist am 15.08. entfernt worden — er war nie
+	 * verdrahtet), also gibt es keinen anderen Weg, ihn zu bemerken, als
 	 * nachzusehen.
 	 *
 	 * WAS DER TEST DESHALB JETZT ZUSICHERT: dass es bei GENAU DIESER EINEN

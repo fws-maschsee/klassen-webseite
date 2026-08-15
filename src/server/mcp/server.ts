@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { instanceLabel, instanceName } from '../../lib/db/instance.ts'
 import type { McpAuth } from './guard.ts'
+import { registerAccountTools } from './tools/accounts.ts'
 import { registerEmailTools } from './tools/emails.ts'
 import { registerGroupTools } from './tools/groups.ts'
 import { registerInstanceTools } from './tools/instance.ts'
@@ -36,6 +37,7 @@ export const buildMcpServer = (auth: McpAuth): McpServer => {
 	registerListQueueTools(server, auth)
 	registerRecipientSettingsTools(server, auth)
 	registerPutzplanTools(server, auth)
+	registerAccountTools(server, auth)
 
 	return server
 }

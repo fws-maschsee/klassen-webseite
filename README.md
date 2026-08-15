@@ -156,8 +156,8 @@ Vor **jedem** Versand — Verteiler, Rundmail, Putz-Erinnerung — vergleicht
 Empfänger mit den Konten, die im ZITADEL-Projekt dieser Klasse einen aktiven
 Grant mit Leserolle haben.
 
-**Warum es sie gibt:** Ein entzogener Grant löst kein Ereignis aus. Der Webhook
-aus ZITADEL kennt nur `user.removed` — also das *gelöschte Konto*, nicht die
+**Warum es sie gibt:** Ein entzogener Grant löst kein Ereignis aus, auf das man
+hören könnte — ZITADEL meldet höchstens das *gelöschte Konto*, nicht die
 *entzogene Rolle*. Wer die Klasse verlässt, verliert in der Praxis aber den
 Grant und behält das Konto. Ohne diese Prüfung bekäme diese Person unbegrenzt
 weiter Post, denn im Adressbuch ändert ein Rollenentzug nichts.
@@ -335,9 +335,18 @@ Adresswechsel wieder darin.
 
 ### Die Lösch-Kaskade
 
-`POST /api/zitadel/events` nimmt ZITADEL-Ereignisse entgegen (Actions v2,
-„Target"). Bei `user.removed` fällt der `users`-Eintrag, und daran hängt per
-Fremdschlüssel der Rest:
+**Der Normalfall ist austragen, nicht löschen.** Wer die Schule verlässt,
+verliert seine Rollen; das Konto wird gegebenenfalls deaktiviert, und im
+Adressbuch nimmt ein Mensch den Eintrag aus den Gruppen oder löscht ihn
+(`remove_from_group`, `delete_mitglied`). Gelöscht wird ein **Konto** nur auf
+Verlangen — das ist der Auskunfts- und Löschanspruch aus der DSGVO, und dafür
+gibt es diese Kaskade.
+
+Ausgelöst wird sie über das MCP-Werkzeug **`delete_account`** (Rolle `admin`,
+ein `user_sub` als Argument). Ein Aufruf, den ein Mensch tut und der eine Person
+benennt — kein Ereignis, das nebenbei eintrifft:
+`loescheKonto()` in [`src/lib/db/users.ts`](src/lib/db/users.ts) löscht den
+`users`-Eintrag, und daran hängt per Fremdschlüssel der Rest:
 
 ```
 DELETE FROM users WHERE sub = ?
@@ -380,79 +389,36 @@ Und weiter gilt:
   Wie lange ein Nachweis aufbewahrt wird, ist eine Aufbewahrungsfrage und hier
   **nicht** entschieden; sie braucht eine Frist und ein Aufräumen, keine
   Kaskade.
-* **Unbekannter `sub`: 200 und nichts tun.** ZITADEL schickt Ereignisse für alle
-  Konten seiner Instanz, auch für die anderer Klassen.
-* **Idempotent.** Dasselbe Ereignis zweimal ist beim zweiten Mal ein unbekannter
-  `sub`. Ein Empfänger, der beim zweiten Mal scheitert, bringt die Gegenstelle
-  zum Wiederholen — genau dann, wenn schon alles erledigt ist.
+* **Unbekannter `sub`: kein Fehler, sondern `found: false`.** Wer schon gelöscht
+  ist, ist gelöscht; ein zweiter Aufruf ist harmlos.
 
-### Die Signaturprüfung ist Pflicht
+Bewiesen wird die Kaskade zweimal, und beides ist Absicht: gegen ein
+In-Memory-Schema in [`tests/konten/kaskade.test.ts`](tests/konten/kaskade.test.ts)
+und gegen eine echte Datei mit dem echten Schema in
+[`tests/integration/anmeldung.test.ts`](tests/integration/anmeldung.test.ts).
+Sie wird vielleicht **einmal im Jahr** benutzt. Ein Weg, den niemand geht, ist
+der Weg, der kaputt ist, wenn man ihn braucht — und hier heißt „kaputt" im
+schlimmsten Fall: Wir haben zugesagt, Daten zu löschen, und haben es nicht
+getan.
 
-Der Endpunkt ist öffentlich erreichbar (`/api/zitadel/` steht in
-`PUBLIC_PATHS`), weil ZITADEL kein Sitzungscookie mitbringen kann. Ohne Prüfung
-könnte jeder mit einem `curl` Adressbucheinträge löschen.
+### Hier lag ein Webhook, und er hat nie gefeuert
 
-```
-POST /api/zitadel/events
-ZITADEL-Signature: t=<Unix-Sekunden>,v1=<hex HMAC-SHA256>
-```
+Bis zum 15.08. hing die Kaskade an `POST /api/zitadel/events`: ein Empfänger für
+ZITADEL **Actions v2**, HMAC-signiert mit einem `ZITADEL_WEBHOOK_SIGNING_KEY`,
+der bei `user.removed` löschen sollte. Route, Signaturprüfung, Ereignis-Auswertung
+und der Schlüssel sind **entfernt**.
 
-Unterschrieben wird `${t}.${rawBody}` — der Zeitstempel gehört **mit** in die
-Rechnung, sonst wäre ein mitgeschnittener Aufruf ein Dauerausweis. Er darf
-höchstens 300 Sekunden abweichen. Gerechnet wird über den **rohen** Rumpf und
-nicht über das geparste JSON: Zwei Programme serialisieren dasselbe Objekt
-verschieden, und wer über sein eigenes `JSON.stringify` rechnet, prüft seine
-Formatierung.
+Der Grund ist nicht Geschmack: In der Instanz gibt es **keine Actions-v2-Targets**
+(`Target not found`). Das Target, das diesen Endpunkt hätte rufen sollen, wurde
+nie angelegt — der Endpunkt hat in seiner ganzen Lebenszeit keinen einzigen
+Aufruf gesehen. Was blieb, war ein öffentlich erreichbarer Pfad und ein geteiltes
+Geheimnis, das gepflegt, gedreht und beim Deployment mitgeschleppt werden will.
+**Ein Ereignis, das nie kommt, ist keine Absicherung; es ist Angriffsfläche.**
 
-Die Reihenfolge im Endpunkt ist der Entwurf: erst der Header, dann wird der
-Rumpf überhaupt eingelesen, dann die Unterschrift geprüft — und **erst danach**
-JSON gelesen. Was nicht bewiesen ist, wird nicht ausgelegt.
-
-Nach draußen geht nur `401 invalid signature`. Eine Antwort, die zwischen
-„Zeitstempel zu alt" und „Unterschrift falsch" unterscheidet, ist eine Anleitung
-zum Ausprobieren; der Grund steht im Protokoll.
-
-Fehlt `ZITADEL_WEBHOOK_SIGNING_KEY`, antwortet der Endpunkt mit **503** und tut
-nichts. Nicht 200 („erledigt", was gelogen wäre) und erst recht nicht
-„ungeprüft durchlassen" — 503 heißt für ZITADEL „später erneut versuchen".
-
-### Was in `fws-maschsee/server-config` von Hand einzurichten ist
-
-Das gehört in ein **anderes Repository** und ist hier bewusst nicht angelegt.
-Unter `tofu/zitadel/` braucht es **je Klasse** zwei Ressourcen:
-
-```hcl
-# 1. Das Target: wohin ZITADEL ruft, und womit es unterschreibt.
-resource "zitadel_action_v2_target" "klassen_webseite_events" {
-  name             = "klassen-webseite-<klasse>"
-  endpoint         = "https://<domain der klasse>/api/zitadel/events"
-  timeout          = "10s"
-  interrupt_on_err = false          # ein Ausfall der Seite darf kein
-                                     # Löschen in ZITADEL aufhalten
-  rest_async {}                      # wir antworten nur, wir reden nicht mit
-}
-
-# 2. Die Execution: welches Ereignis dorthin geht.
-resource "zitadel_action_v2_execution" "user_removed" {
-  condition {
-    event {
-      event = "user.removed"
-    }
-  }
-  targets = [zitadel_action_v2_target.klassen_webseite_events.id]
-}
-```
-
-Der `signingKey` fällt beim Anlegen des Targets **einmalig** an
-(`zitadel_action_v2_target.…​.signing_key`) und ist danach nicht mehr abrufbar.
-Er muss aus dem Tofu-State in das Deployment der Klasse, als
-`ZITADEL_WEBHOOK_SIGNING_KEY` (siehe `.env.example`). Beide Seiten müssen
-denselben Wert haben, sonst weist die App jeden Aufruf mit 401 ab.
-
-Ob das Target auf `user.removed` als *Event* oder über eine `function`-Bedingung
-hängt, entscheidet die ZITADEL-Version — der Code hier prüft den Ereignistyp
-selbst und übergeht alles andere mit `200 {"result":"ignored"}`. Ein zu weit
-gefasstes Abonnement ist damit unschädlich, ein zu enges fällt still aus.
+Und selbst verdrahtet hätte er das Falsche gemeldet. `user.removed` ist das
+**gelöschte Konto**. Der Normalfall ist aber der **entzogene Grant** — und der
+löst überhaupt kein Ereignis aus. An seine Stelle gehört deshalb nichts, worauf
+man wartet, sondern etwas, das **fragt**.
 
 ## Einbinden
 

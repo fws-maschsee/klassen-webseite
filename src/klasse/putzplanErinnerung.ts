@@ -469,9 +469,9 @@ export const sendeFaelligeErinnerung = async (
 		),
 	]
 
-	// OHNE KONTO, KEINE E-MAIL. Ein entzogener Grant loest kein Ereignis aus —
-	// der Webhook aus ZITADEL kennt nur `user.removed`, also das geloeschte
-	// Konto, nicht die entzogene Rolle. Ohne diese Pruefung erinnerte diese
+	// OHNE KONTO, KEINE E-MAIL. Ein entzogener Grant loest kein Ereignis aus, auf
+	// das man hoeren koennte: ZITADEL meldet hoechstens das geloeschte Konto,
+	// nicht die entzogene Rolle. Ohne diese Pruefung erinnerte diese
 	// Datei eine Familie noch Jahre nach ihrem Weggang an den Putzdienst.
 	// Begruendung im Langen: `src/lib/versand/kontopruefung.ts`.
 	//

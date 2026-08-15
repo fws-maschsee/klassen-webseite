@@ -172,18 +172,15 @@ describe('defineKlassenConfig', () => {
 })
 
 describe('PUBLIC_PATHS', () => {
-	test('enthaelt genau die drei Pfade, die ohne Cookie auskommen muessen', () => {
+	test('enthaelt genau die zwei Pfade, die ohne Cookie auskommen muessen', () => {
 		// Diese Liste zu erweitern heisst, Protokolle zu veroeffentlichen.
 		//
-		// `/api/zitadel/` ist am 15.08. dazugekommen: der Empfaenger fuer
-		// ZITADEL Actions v2 (`user.removed`). Er ist nicht UNGEPRUEFT, sondern
-		// HMAC-signaturgeprueft — dieselbe Bauart wie `/api/lists/`. Was hier
-		// nicht steht und auch nicht dazukommt, ist ein Pfad, der Inhalte
-		// ausliefert.
-		expect([...PUBLIC_PATHS]).toEqual([
-			'/public/',
-			'/api/lists/',
-			'/api/zitadel/',
-		])
+		// `/api/zitadel/` stand hier vom 15.08. bis zum selben Tag: der Empfaenger
+		// fuer ZITADEL Actions v2 (`user.removed`). Er ist wieder weg, weil das
+		// Target dazu nie angelegt wurde — ein oeffentlicher Pfad, hinter dem nie
+		// ein Aufruf ankam. Sein Nachfolger, der Abgleich, FRAGT bei ZITADEL nach
+		// und braucht deshalb gar keinen anmeldefreien Pfad. Was hier nicht steht
+		// und auch nicht dazukommt, ist ein Pfad, der Inhalte ausliefert.
+		expect([...PUBLIC_PATHS]).toEqual(['/public/', '/api/lists/'])
 	})
 })

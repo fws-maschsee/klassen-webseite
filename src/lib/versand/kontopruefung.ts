@@ -13,9 +13,12 @@ import { openDb } from '../db/index.ts'
 /**
  * OHNE KONTO, KEINE E-MAIL — die Pruefung vor jedem Versand.
  *
- * WARUM ES SIE GIBT. Ein entzogener Grant loest kein Ereignis aus. Der Webhook
- * aus ZITADEL kennt nur `user.removed` (`src/routes/api/zitadel/events.ts`) —
- * er meldet also das GELOESCHTE KONTO, nicht die entzogene Rolle. Wer die
+ * WARUM ES SIE GIBT. Ein entzogener Grant loest kein Ereignis aus, auf das man
+ * hoeren koennte: ZITADEL meldet hoechstens das GELOESCHTE KONTO, nicht die
+ * entzogene Rolle. (Es gab dafuer bis zum 15.08. einen Empfaenger fuer
+ * `user.removed`; er ist entfernt, weil das Target dazu nie angelegt wurde und
+ * er nie gefeuert hat. An seiner Stelle steht der Abgleich,
+ * `src/lib/konten/abgleich.ts`.) Wer die
  * Klasse verlaesst, verliert in der Praxis aber den Grant und behaelt das
  * Konto. Ohne diese Pruefung bekaeme diese Person unbegrenzt weiter Post: Der
  * Versand nimmt seine Empfaenger allein aus dem Adressbuch, und im Adressbuch

@@ -242,9 +242,9 @@ export const handleIncomingListMail = async (
 		}
 	}
 
-	// OHNE KONTO, KEINE E-MAIL. Ein entzogener Grant löst kein Ereignis aus —
-	// der Webhook aus ZITADEL kennt nur `user.removed`, also das gelöschte
-	// Konto, nicht die entzogene Rolle. Ohne diese Prüfung bekäme jemand nach
+	// OHNE KONTO, KEINE E-MAIL. Ein entzogener Grant löst kein Ereignis aus, auf
+	// das man hören könnte: ZITADEL meldet höchstens das gelöschte Konto, nicht
+	// die entzogene Rolle. Ohne diese Prüfung bekäme jemand nach
 	// dem Rollenentzug unbegrenzt weiter Post, denn im Adressbuch ändert ein
 	// Entzug nichts. Die Begründung im Langen steht in
 	// `src/lib/versand/kontopruefung.ts`.
