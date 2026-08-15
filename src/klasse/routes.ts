@@ -55,7 +55,7 @@ export const GETEILTE_ROUTEN: readonly GeteilteRoute[] = [
 		pattern: '/docs/putzen/putzplan',
 		entrypoint: geteilt('astro/pages/docs/putzen/putzplan.astro'),
 		grund:
-			'Putzplan: Prosa aus der Unterlage, Tabelle aus der Sammlung `putzplan`. Liegt auf dem BESTEHENDEN Docs-Pfad, weil Eltern ihn gespeichert haben; das statische Muster gewinnt gegen shipyards /docs/[...slug]. Eine Klasse ohne src/content/putzplan.yaml antwortet unverändert — die Seite kommt ohne Tabelle, eine Klasse ohne die Unterlage mit 404.',
+			'Putzplan: Prosa aus der Unterlage, Tabelle aus der DATENBANK (`cleaning_dates`, gepflegt über MCP). Liegt auf dem BESTEHENDEN Docs-Pfad, weil Eltern ihn gespeichert haben; das statische Muster gewinnt gegen shipyards /docs/[...slug]. Eine Klasse ohne Termine in der Datenbank antwortet unverändert — die Seite kommt ohne Tabelle, eine Klasse ohne die Unterlage mit 404.',
 	},
 	{
 		pattern: '/verteiler',

@@ -48,7 +48,7 @@ dreimal.
 | `db/migrations/**` — das Datenbankschema | `deploy/**`, `Dockerfile`, `.env`, Sealed Secrets |
 | `astro/content.config.ts` — das Schema der Inhalte, nicht die Inhalte | (nichts mehr: der Worker je Klasse ist entfallen, es gibt einen Dispatcher für die ganze Zone) |
 | die Astro-Integration mit dem ganzen Stack (Adapter, shipyard, Markdown-Plugins) | Playwright-/E2E-Tests, die eine laufende Instanz brauchen |
-| `src/klasse/putzplan.ts` — Schema und Darstellung des Putzplans | `src/content/putzplan.yaml` — die Putz-Einteilung selbst |
+| `src/klasse/putzplan.ts`, `src/lib/db/putzplan.ts` — Regeln und Darstellung des Putzplans | die Putz-Einteilung selbst — jetzt in der **Datenbank** der Klasse, bis zum Import noch als `src/content/putzplan.yaml` |
 | die Unit-Tests des geteilten Codes | |
 
 **Die Inhalte bleiben in den Klassen-Repos, und zwar aus einem Grund, der sich
@@ -416,7 +416,8 @@ Es gibt keine `exports`-Karte mehr, die Namen auf Dateien abbildet — der Pfad
 | `#geteilt/server/app.ts` | `./server-app` | `startServer({ config })` |
 | `#geteilt/migrations.ts` | `./migrations` | `packageMigrations()`, `packageMigrationsDir()`, `alleMigrations()`, `runMigrations()` |
 | `#geteilt/klasse/kalender.ts` | `./kalender` | `pruefeKalender(projektWurzel, config)`, `webcalUrl(config)` |
-| `#geteilt/klasse/putzplan.ts` | — | `putzplanSchema`, `optionaleDatei()`, `putzplanZeilen()`, `PUTZPLAN_DATEI` — neu, siehe [Strukturierte Daten](#strukturierte-daten-eine-yaml-datei-eine-sammlung-eine-erzeugte-seite) |
+| `#geteilt/klasse/putzplan.ts` | — | `naechsterPutztermin()`, `familienEmpfaenger()` — die Schnittstelle des Erinnerungsdienstes; dazu `planAlsEintraege()`, `putzplanZeilen()` für die Seite und `putzplanSchema`, `optionaleDatei()`, `putzplanAusDatei()`, `PUTZPLAN_DATEI` für den einmaligen Import. Siehe [Vom YAML-Putzplan in die Datenbank](#vom-yaml-putzplan-in-die-datenbank) |
+| `#geteilt/lib/db/putzplan.ts` | — | der Plan selbst: `planLesen()`, `setzeTermin()`, `tauscheTermine()`, `ersetzePlan()` und die vier Planregeln im Schreibpfad |
 | `geteilt/src/styles/klasse.css` | `./styles/global.css` | der Tailwind-Einstieg; per `@import` aus `src/styles/app.css` der Klasse, nicht per Subpath-Import |
 | `#geteilt/lib/…`, `#geteilt/server/…`, `#geteilt/remark/…` | `./lib/*`, … | der geteilte Code, einzeln |
 | `#geteilt/klasse/…` | `./klasse/*` | Interna der Integration (`config`, `routes`, `locals`) |
@@ -535,14 +536,21 @@ zustellte. Bei einer Putz-Einteilung wäre der Ausfall leiser und teurer: Ein
 Tausch, der in einer der beiden Tabellen fehlt, bedeutet, dass eine Familie zu
 ihrem Termin nicht erscheint. Die Seite sieht dabei vollständig aus.
 
+> **Der Putzplan ist seit dem Umzug in die Datenbank kein Beispiel mehr für
+> diese Regel** — er war der Anlass, sie zu formulieren, und der erste Fall, der
+> aus ihr herausgewachsen ist. Warum, und in welcher Reihenfolge das abläuft,
+> steht unten unter „Vom YAML-Putzplan in die Datenbank". Für alles, was keine
+> Personen anschreiben muss und sich nicht zwischen zwei Deploys ändert, gilt
+> diese Regel unverändert weiter.
+
 Wo was liegt:
 
 | | Datei | Repo |
 | --- | --- | --- |
-| die Daten | `src/content/putzplan.yaml` | **Klassen-Repo** |
-| Schema, Loader, Darstellung | `src/klasse/putzplan.ts` | hier |
+| die Daten | `src/content/<sammlung>.yaml` | **Klassen-Repo** |
+| Schema, Loader, Darstellung | `src/klasse/<sammlung>.ts` | hier |
 | die Sammlung | `astro/content.config.ts` | hier |
-| die Seite | `astro/pages/docs/putzen/putzplan.astro` | hier |
+| die Seite | `astro/pages/…` | hier |
 | die Route | `src/klasse/routes.ts` | hier |
 
 Die Aufteilung ist dieselbe wie bei `docs` und `blog` und hat denselben Grund:
@@ -596,6 +604,103 @@ steht, hat eine Elternseite mit Prosa und **ohne Einteilung** — `astro build`,
 YAML-Datei unreferenziert unter `src/content/` liegt und Astro sie ignoriert.
 Deshalb gehören Datei, Markdown-Änderung und Zeiger in einen Commit, und deshalb
 darf der Klassen-PR nicht vor dem hiesigen gemergt werden.
+
+## Vom YAML-Putzplan in die Datenbank
+
+Der Putzplan stand als `src/content/putzplan.yaml` im Klassen-Repo und ist in
+die Datenbank umgezogen. **Er ist damit die Ausnahme von der Regel eine Zeile
+weiter oben, und zwar aus drei Gründen, die alle in der Datei nicht zu beheben
+waren:**
+
+- **Sie konnte niemanden anschreiben.** Die YAML kannte nur Familiennamen
+  (`morzynski`), die Menschen stehen im Adressbuch (`mitglieder`), und zwischen
+  beidem gab es keine Verbindung. Ein Erinnerungsdienst hätte aus `morzynski`
+  keine Mailadresse gewinnen können.
+- **Jeder Tausch war ein Commit plus Deploy** — zehn Minuten für etwas, das
+  Eltern in einer Minute untereinander ausmachen.
+- **Namen in git bleiben in der Historie.** Ein gelöschter Familienname ist
+  gelöscht; ein committeter ist es nicht.
+
+Was sich dadurch ändert:
+
+| | vorher | jetzt |
+| --- | --- | --- |
+| die Daten | `src/content/putzplan.yaml` (Klassen-Repo) | `cleaning_dates`, `cleaning_assignments` |
+| eine Familie | ein Name plus `slug` in der YAML | eine **Gruppe** `familie-<slug>` in `groups` |
+| ändern | Commit, PR, Deploy | ein Satz an den MCP-Client |
+| die vier Planregeln | ein Test über der Datei | der **Schreibpfad**, `src/lib/db/putzplan.ts` |
+
+Eine Familie ist eine Gruppe im bestehenden Modell und **kein neues
+Personenmodell**: Die Auflösung Gruppe → Personen → Adressen gibt es, sie löst
+Untergruppen rekursiv mit auf, und sie ist getestet.
+
+### Die vier Regeln stehen im Schreibpfad, nicht in einem Test
+
+Solange die YAML die einzige Quelle war, hat ein Test über ihr genügt: Wer sie
+änderte, machte einen Commit, und die CI der Klasse sagte nein. Über MCP gibt es
+keinen Commit mehr, gegen den eine CI laufen könnte. Deshalb prüft
+`src/lib/db/putzplan.ts` bei **jedem** Schreibvorgang, in einer Transaktion, und
+lehnt mit einem lesbaren Satz ab:
+
+1. genau zwei Familien je Termin,
+2. keine Familie zweimal am selben Termin,
+3. mindestens **vier Termine** Abstand zwischen zwei Einsätzen derselben Familie
+   (gezählt in Positionen des Plans, nicht in Wochen — Ferien unterbrechen den
+   Plan, nicht die Reihenfolge),
+4. keine Paarung zweimal im ganzen Plan.
+
+Geprüft wird immer der **gesamte** Plan danach, nicht nur der geänderte Termin:
+Drei der vier Regeln sind gar keine Eigenschaft eines einzelnen Termins, und eine
+Umbesetzung kann den Abstand ihres Nachfolgers kaputtmachen.
+
+### Die Reihenfolge des Umzugs, je Klasse
+
+**Die YAML-Datei wird nicht im selben Schritt gelöscht.** Sie ist die einzige
+Kopie der Einteilung, solange die Datenbank sie nicht hat, und ob die Datenbank
+sie richtig hat, weiß man erst, wenn jemand nachgesehen hat.
+
+1. **Diesen PR mergen** und in der Klasse den Submodule-Zeiger nachziehen. Die
+   Migration legt die beiden Tabellen an; sie sind leer, die Seite kommt ohne
+   Tabelle. **Dieses Fenster ist kurz zu halten** — Schritt 2 gehört unmittelbar
+   hinter das Deploy, sonst sehen Eltern einen Putzplan ohne Einteilung.
+2. **`import_putzplan` aufrufen** (MCP, Rolle `admin`). Es liest
+   `src/content/putzplan.yaml` aus dem Arbeitsverzeichnis des Servers, legt für
+   jede Familie der Datei die Gruppe `familie-<slug>` an (Label = ihr Name) und
+   schreibt den ganzen Plan. Idempotent; steht schon ein Plan da, bricht es ab
+   und verlangt `replace: true`.
+   *Verstößt die Datei gegen eine der vier Regeln, wird sie abgelehnt und nichts
+   geschrieben.* Der häufigste Fall ist ein Termin mit nur **einer** Familie —
+   im YAML-Schema erlaubt (`.min(1)`), in der Datenbank nicht. Solche Termine
+   sind vor dem Import in der Datei zu berichtigen.
+3. **`get_putzplan` gegen die YAML halten.** Stimmen Termine, Anmerkungen und
+   Familien? Das ist die Prüfung, für die die Datei noch da ist.
+4. **Personen zuordnen**: je Familie `set_group_members` bzw. `add_to_group`.
+   Erst danach kann der Plan jemanden anschreiben. `familienEmpfaenger` liefert
+   für eine Familie ohne Mitglied mit Adresse eine **leere** Liste — kein
+   Fehler, aber auch keine Erinnerung.
+5. **Erst jetzt** im Klassen-Repo `src/content/putzplan.yaml` löschen. Danach
+   können in diesem Repo auch Schema, Loader und die Sammlung `putzplan`
+   entfallen — sie haben dann keinen Leser mehr.
+
+### Die Schnittstelle für den Erinnerungsdienst
+
+Aus `src/klasse/putzplan.ts`, und **nur** von dort:
+
+```ts
+naechsterPutztermin(ab: Date, db): { datum: Date; gruppen: string[] } | null
+familienEmpfaenger(groupKey: string, db): { email: string; name: string | null }[]
+```
+
+`gruppen` sind Group-**Keys** und gehen unverändert in `familienEmpfaenger`
+weiter; ein Anzeigename wäre dort eine Sackgasse, weil sich aus ihm keine
+Adresse auflösen lässt. `ab` zählt den Tag selbst mit — ein Dienst, der am Morgen
+des Putztermins läuft, meint diesen Termin und nicht den in einer Woche.
+
+`familienEmpfaenger` gibt eine **leere Liste** zurück, wenn es die Gruppe nicht
+gibt oder niemand darin eine Adresse hat. Das ist die wichtigste Zusage: Der
+Aufrufer bekommt in beiden Fällen nichts und kann den Fall erkennen, statt eine
+erfundene Adresse zu bekommen und eine Erinnerung an jemanden zu schicken, den
+sie nichts angeht.
 
 ## Was in einer weiterverteilten Listenmail steht
 
