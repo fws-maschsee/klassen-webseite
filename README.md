@@ -921,9 +921,10 @@ lassen:
   `id` jedes Eintrags. In der YAML gehört sie **in Anführungszeichen**
   (`id: "2026-08-21"`), weil ein nacktes `2026-08-21` als Datum geparst würde
   und der Loader einen String braucht.
-- **Mengen als `.min(1)`, nicht als feste Zahl.** Zwei Familien pro Termin ist
-  die Regel, aber keine Eigenschaft der Daten — bei ungerader Familienzahl
-  bleibt der letzte Termin mit einer übrig.
+- **Mengen als `.min(1)`, nicht als feste Zahl.** Wie viele Familien einen
+  Termin besetzen dürfen, ist eine Regel des Plans und keine Eigenschaft der
+  Datei — sie steht im Schreibpfad und lehnt dort mit einem Satz ab, statt am
+  Parser zu scheitern.
 
 **Eine Klasse ohne die Datei muss weiter bauen.** Astros `file()` schreibt für
 eine fehlende Datei `File not found` als **Fehler** ins Build-Log — bei jedem
@@ -995,12 +996,26 @@ keinen Commit mehr, gegen den eine CI laufen könnte. Deshalb prüft
 `src/lib/db/putzplan.ts` bei **jedem** Schreibvorgang, in einer Transaktion, und
 lehnt mit einem lesbaren Satz ab:
 
-1. genau zwei Familien je Termin,
+1. mindestens **zwei** und höchstens **drei** Familien je Termin,
 2. keine Familie zweimal am selben Termin,
 3. mindestens **vier Termine** Abstand zwischen zwei Einsätzen derselben Familie
    (gezählt in Positionen des Plans, nicht in Wochen — Ferien unterbrechen den
    Plan, nicht die Reihenfolge),
 4. keine Paarung zweimal im ganzen Plan.
+
+Zu Regel 1: Die **Untergrenze** ist die eigentliche Regel — eine Familie soll
+nicht allein putzen müssen. Die **Obergrenze** hält den Termin beisammen, der
+sonst zum Sammelbecken für alle würde, die woanders nicht konnten. Ein Dreier
+ist außerdem die Antwort auf eine ungerade Familienzahl, bei der lauter Zweier
+zwangsläufig einen Einzelnen übrig ließen.
+
+Zu Regel 4: Eine **Paarung** sind zwei Familien, die zusammen eingeteilt sind.
+Ein Termin zu dritt enthält davon **drei** (`A+B`, `A+C`, `B+C`) und verbraucht
+sie alle — denn ob zwei Familien sich zu zweit oder zu dritt begegnet sind,
+ändert nichts daran, *dass* sie sich begegnet sind. Die Alternative, die ganze
+Belegung als Schlüssel zu nehmen, hätte die Regel still wirkungslos gemacht:
+`A+B+C` kollidierte dann nie mit `A+B`. Der Preis ist, dass ein Dreier den
+restlichen Plan stärker einschränkt als ein Zweier.
 
 Geprüft wird immer der **gesamte** Plan danach, nicht nur der geänderte Termin:
 Drei der vier Regeln sind gar keine Eigenschaft eines einzelnen Termins, und eine

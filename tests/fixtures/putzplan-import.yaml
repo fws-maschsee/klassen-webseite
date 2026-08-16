@@ -4,9 +4,10 @@
 #
 # Getrennt von `putzplan.yaml` in diesem Verzeichnis, und zwar aus einem
 # konkreten Grund: Jene Datei enthaelt absichtlich einen Termin mit nur EINER
-# Familie — sie belegt, dass das Schema `.min(1)` und nicht `.length(2)` ist.
-# Die Datenbank verlangt genau zwei; beide Aussagen sind richtig und gehoeren
-# deshalb in zwei Dateien. Wer sie in eine legte, muesste eine davon aufgeben.
+# Familie — sie belegt, dass das Schema `.min(1)` ist und die Untergrenze nicht
+# selbst durchsetzt. Die Datenbank verlangt mindestens zwei; beide Aussagen sind
+# richtig und gehoeren deshalb in zwei Dateien. Wer sie in eine legte, muesste
+# eine davon aufgeben.
 #
 # Zehn Familien, zehn Termine, jede Familie zweimal. Zehn ist die kleinste
 # Zahl, bei der jede Familie ein zweites Mal drankommen kann, ohne die

@@ -145,7 +145,13 @@ describe('ein gueltiger Plan', () => {
 		expect(plan.map((t) => t.date)).toEqual(
 			[...GUELTIGER_PLAN.map((t) => t.date)].sort(),
 		)
-		for (const termin of plan) expect(termin.groups).toHaveLength(2)
+		// Gegen die EINGABE geprueft und nicht gegen eine feste Anzahl: Die
+		// Zusicherung ist, dass der Plan unveraendert zurueckkommt, und die gilt
+		// unabhaengig davon, wie viele Familien ein Termin hat.
+		for (const erwartet of GUELTIGER_PLAN) {
+			const termin = plan.find((t) => t.date === erwartet.date)
+			expect(termin?.groups).toEqual([...erwartet.groups].sort())
+		}
 	})
 
 	test('laesst sich zweimal einspielen, ohne sich zu aendern', () => {
@@ -157,25 +163,39 @@ describe('ein gueltiger Plan', () => {
 	})
 })
 
-describe('Regel 1: genau zwei Gruppen je Termin', () => {
+describe('Regel 1: mindestens zwei, hoechstens drei Gruppen je Termin', () => {
+	/**
+	 * Die Belegung an EINEM einzelnen Termin, ohne den Rest des Plans.
+	 *
+	 * Ein Plan aus genau einem Termin, damit hier wirklich nur Regel 1 spricht:
+	 * Auf `GUELTIGER_PLAN` aufgesetzt scheiterte ein zusaetzlicher Termin je
+	 * nach Besetzung schon am Abstand oder an einer vergebenen Paarung, und der
+	 * Test zeigte dann etwas anderes, als sein Name sagt.
+	 */
+	const nurDieserTermin = (...slugs: string[]) =>
+		ersetzePlan([{ date: '2026-08-21', groups: slugs.map(key) }], db)
+
 	test('lehnt einen Termin mit nur EINER Familie ab', () => {
-		planEinspielen()
-		expect(() =>
-			setzeTermin({ date: '2026-11-06', groups: [key('musterfrau')] }, db),
-		).toThrow(PutzplanVerstoss)
+		// Levins Anforderung, und die eigentliche Regel: Niemand putzt allein.
+		expect(() => nurDieserTermin('musterfrau')).toThrow(PutzplanVerstoss)
 	})
 
-	test('lehnt einen Termin mit DREI Familien ab', () => {
-		planEinspielen()
+	test('nimmt einen Termin mit ZWEI Familien an', () => {
+		const plan = nurDieserTermin('musterfrau', 'beispiel')
+		expect(plan[0]?.groups).toHaveLength(2)
+	})
+
+	test('nimmt einen Termin mit DREI Familien an', () => {
+		// Der Zweck dieser Aenderung. Frueher stand hier das Gegenteil: Drei
+		// Familien waren ein Verstoss gegen "genau zwei".
+		const plan = nurDieserTermin('musterfrau', 'beispiel', 'probst-vogel')
+		expect(plan[0]?.groups).toHaveLength(3)
+	})
+
+	test('lehnt einen Termin mit VIER Familien ab', () => {
 		expect(() =>
-			setzeTermin(
-				{
-					date: '2026-11-06',
-					groups: [key('musterfrau'), key('beispiel'), key('winter')],
-				},
-				db,
-			),
-		).toThrow(/genau 2/)
+			nurDieserTermin('musterfrau', 'beispiel', 'probst-vogel', 'winter'),
+		).toThrow(/hoechstens 3/)
 	})
 
 	test('schreibt bei einem Verstoss NICHTS', () => {
@@ -322,6 +342,68 @@ describe('Regel 4: keine Paarung zweimal im ganzen Plan', () => {
 			),
 		).toThrow()
 		expect(planLesen(db)).toEqual(vorher)
+	})
+})
+
+describe('Regel 4 bei einem Termin zu dritt', () => {
+	/**
+	 * Ein Plan, dessen erster Termin ein DREIER ist. Die vier Termine danach
+	 * schaffen den Abstand, ohne den die Paarungsregel gar nicht zu Wort kaeme:
+	 * Auf Position 4 (dem 18.09.) sind `musterfrau`, `beispiel` und
+	 * `probst-vogel` wieder einteilbar, und `suedstern` war noch nie dran.
+	 *
+	 * `GUELTIGER_PLAN` taugt hier nicht — dort steht jede Familie bereits
+	 * zweimal, und jeder weitere Termin scheitert vorher am Abstand.
+	 */
+	const PLAN_MIT_DREIER = [
+		{
+			date: '2026-08-21',
+			groups: [key('musterfrau'), key('beispiel'), key('probst-vogel')],
+		},
+		{ date: '2026-08-28', groups: [key('sonnenschein'), key('winter')] },
+		{ date: '2026-09-04', groups: [key('sommer'), key('herbst')] },
+		{ date: '2026-09-11', groups: [key('fruehling'), key('nordwind')] },
+	]
+
+	test('verbraucht ALLE drei Paarungen des Termins', () => {
+		// Die eigentliche Entscheidung dieser Aenderung: Ein Dreier ist nicht
+		// eine Paarung, sondern drei. musterfrau und beispiel sind sich am 21.08.
+		// begegnet — dass probst-vogel dabei war, aendert daran nichts.
+		ersetzePlan(PLAN_MIT_DREIER, db)
+		expect(() =>
+			setzeTermin(
+				{ date: '2026-09-18', groups: [key('musterfrau'), key('beispiel')] },
+				db,
+			),
+		).toThrow(/Paarung/)
+	})
+
+	test('lehnt einen zweiten Dreier ab, der eine Paarung wiederholt', () => {
+		// Auch andersherum: Der neue Termin ist selbst ein Dreier und teilt mit
+		// dem ersten nur EIN Paar. Das genuegt.
+		ersetzePlan(PLAN_MIT_DREIER, db)
+		expect(() =>
+			setzeTermin(
+				{
+					date: '2026-09-18',
+					groups: [key('musterfrau'), key('beispiel'), key('suedstern')],
+				},
+				db,
+			),
+		).toThrow(/Paarung/)
+	})
+
+	test('sperrt nur das Paar und nicht die Familie', () => {
+		// Die Gegenprobe. Ohne sie bliebe unbemerkt, wenn die Regel eine Familie
+		// nach einem Dreier gleich ganz aus dem Plan draengte, statt nur ihre
+		// bereits verbrauchten Paarungen zu sperren.
+		ersetzePlan(PLAN_MIT_DREIER, db)
+		expect(() =>
+			setzeTermin(
+				{ date: '2026-09-18', groups: [key('musterfrau'), key('suedstern')] },
+				db,
+			),
+		).not.toThrow()
 	})
 })
 
