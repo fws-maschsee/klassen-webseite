@@ -113,6 +113,42 @@ describe('erzeugtes Stylesheet', () => {
 		expect(stylesheet).toMatch(/^\s*\.shadow-xl \{/m)
 	})
 
+	test('enthaelt die Stundenplan-Stile', () => {
+		// `src/remark/stundenplanTabelle.ts` verteilt diese Klassennamen an die
+		// Tabelle. Fehlt ihr Gegenstueck im Stylesheet, sieht der Stundenplan aus
+		// wie eine nackte Markdown-Tabelle — und kein Build, kein `astro check`
+		// und kein Test der Auszeichnung merkt es. Genau die Luecke, fuer die es
+		// diese Datei gibt.
+		for (const klasse of [
+			'.stundenplan',
+			'.stundenplan-rahmen',
+			'.stundenplan-band',
+			'.stundenplan-leer',
+			'.fach-haupt',
+			'.fach-sprache',
+			'.fach-kunst',
+			'.fach-bewegung',
+			'.fach-frei',
+		]) {
+			expect(stylesheet).toContain(klasse)
+		}
+	})
+
+	test('die Stundenplan-Toene kommen aus Tokens, nicht aus festen Farbwerten', () => {
+		// Die Bedingung fuer den Dunkelmodus: Jeder Ton wird aus einem
+		// daisyUI-Token und dem Seitengrund angeruehrt und folgt dem Theme damit
+		// von allein. Ein eingetragener Hex-Wert waere im Hellen schoen und im
+		// Dunklen grell — und niemand merkt es, weil beide Modi bauen.
+		const block = /table\.stundenplan\s*\{[^}]*\}/.exec(stylesheet)?.[0] ?? ''
+		expect(block).toContain('--color-base-100')
+		expect(block).toMatch(/--fws-fach-haupt:\s*color-mix\(/)
+		expect(block).not.toMatch(/#[0-9a-f]{3,8}\b/i)
+		// Und der Dunkelmodus greift ueber beide Wege: das gesetzte Theme und die
+		// Systemvorgabe, bevor das Umschalt-Skript gelaufen ist.
+		expect(stylesheet).toContain('[data-theme="dark"] table.stundenplan')
+		expect(stylesheet).toMatch(/prefers-color-scheme:\s*dark/)
+	})
+
 	test('enthaelt shipyards Komponentenstile und Typography', () => {
 		// Aus `@levino/shipyard-base`s eigener `globals.css`; ohne den Import
 		// waeren Admonitions unformatierte Absaetze.
