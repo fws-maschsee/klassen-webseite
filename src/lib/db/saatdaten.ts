@@ -89,16 +89,11 @@ const familienKey = (nachname: string): string =>
 /**
  * Die Einteilung des Putzplans, als Paare von Familien-Indizes.
  *
- * Nicht frei zusammengewuerfelt: `ersetzePlan` prueft den Plan gegen die vier
- * Regeln aus `putzplan.ts`, und ein ungueltiger Plan wuerde den Start der
- * Vorschau abbrechen. Diese Folge haelt alle vier ein — genau zwei Familien je
- * Termin, keine Familie doppelt, mindestens vier Termine Abstand zwischen zwei
- * Einsaetzen derselben Familie, und jede Paarung genau einmal.
- *
- * Nebenbei ist sie der Grund, warum es zehn Familien sind und nicht acht: Bei
- * acht Familien und zwei je Termin muss jede Familie in JEDEM Fenster von vier
- * Terminen genau einmal vorkommen — der Plan hat dann zwangslaeufig die
- * Periode vier und wiederholt ab dem fuenften Termin seine Paarungen.
+ * Der Plan prueft nichts mehr an einer Einteilung — es gibt keine Planregeln.
+ * Diese Folge ist trotzdem sauber gewaehlt: Sie soll in der Vorschau wie eine
+ * echte Einteilung aussehen, also jede Familie gleich oft und keine zwei
+ * Termine hintereinander dranhaben. Wer sie anfasst, macht nichts kaputt —
+ * hoechstens eine Vorschau, die unrealistisch aussieht.
  */
 const PUTZPAARE: readonly (readonly [number, number])[] = [
 	[0, 1],

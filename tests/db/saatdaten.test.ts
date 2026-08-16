@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { listChildGroups, listGroups } from '../../src/lib/db/groups.ts'
 import { listMailingLists } from '../../src/lib/db/mailingLists.ts'
 import { listMitglieder } from '../../src/lib/db/members.ts'
-import { planLesen, planVerstoesse } from '../../src/lib/db/putzplan.ts'
+import { planLesen } from '../../src/lib/db/putzplan.ts'
 import {
 	abweichungGegenFrisch,
 	seedDemoData,
@@ -77,16 +77,19 @@ describe('Saatdaten fuer die Vorschau', () => {
 		expect(listMitglieder(db).length).toBe(nachher)
 	})
 
-	it('erzeugt einen Putzplan, der die vier Regeln einhaelt', () => {
-		// `ersetzePlan` prueft das bereits und wuerde werfen. Der Test steht
-		// trotzdem hier: Er sagt, WO der Fehler liegt, wenn jemand die Paarungen
-		// in `saatdaten.ts` anfasst.
+	it('erzeugt einen vollstaendigen Putzplan', () => {
+		// Geprueft wird, dass gesaet WURDE — nicht, ob die Einteilung "richtig"
+		// ist. Darueber urteilt nichts mehr; die Klasse entscheidet, wie ihr Plan
+		// aussieht, und die Vorschau ahmt das nur nach.
 		const db = createTestDb()
 
 		seedDemoData(db)
 
-		expect(planVerstoesse(planLesen(db))).toEqual([])
-		expect(planLesen(db).length).toBe(12)
+		const plan = planLesen(db)
+		expect(plan.length).toBe(12)
+		for (const termin of plan) {
+			expect(termin.groups.length).toBeGreaterThan(0)
+		}
 	})
 
 	it('benutzt ausschliesslich erfundene Adressen auf example.org', () => {
