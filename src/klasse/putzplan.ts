@@ -6,11 +6,7 @@ import type { Database } from 'better-sqlite3'
 import { getGroup } from '../lib/db/groups.ts'
 import { openDb } from '../lib/db/index.ts'
 import { listMitgliederByGroupEffective } from '../lib/db/members.ts'
-import {
-	naechsterTerminAb,
-	planMitNamen,
-	type TerminEingabe,
-} from '../lib/db/putzplan.ts'
+import { naechsterTerminAb, planMitNamen } from '../lib/db/putzplan.ts'
 
 /**
  * Der Putzplan einer Klasse: Schema der abzuloesenden YAML-Datei, die
@@ -353,88 +349,4 @@ export const familienEmpfaenger = (
 			.join(' ')
 		return [{ email, name: name.length > 0 ? name : null }]
 	})
-}
-
-/**
- * Was der Import aus der YAML-Datei einer Klasse herausholt: die Familien als
- * Gruppen und die Termine als Plan.
- *
- * BEIDES in dieser Reihenfolge, und deshalb in einem Rutsch: Erst muessen die
- * Familiengruppen existieren, sonst scheitert das Schreiben des Plans an
- * unbekannten Group-Keys. Zwei getrennte Leseläufe über dieselbe Datei wären
- * zwei Gelegenheiten, sie verschieden auszulegen.
- */
-export type PutzplanAusDatei = {
-	/** Familien als Gruppen: `key` aus dem `slug`, `label` aus dem `name`. */
-	familien: { key: string; label: string }[]
-	/** Die Termine, fertig fuer `ersetzePlan`. */
-	termine: TerminEingabe[]
-}
-
-/**
- * Liest die YAML-Datei — die EINZIGE Aufgabe, die ihr nach dem Umzug bleibt:
- * einmal eingelesen zu werden.
- *
- * Laeuft durch denselben Loader und dasselbe Schema wie vorher der Build. Ein
- * zweiter YAML-Leser fuer den Import waere eine zweite Auslegung derselben
- * Datei, und beim ersten Sonderfall — ein `datum` ohne Anfuehrungszeichen, eine
- * Familie mit Schraegstrich im Namen — laesen die beiden verschieden.
- *
- * Fehlt die Datei, kommt eine LEERE Ausbeute zurueck und kein Fehler: Nicht
- * jede Klasse hat einen Putzplan als Daten. Ob daraus ein Fehler wird, ent-
- * scheidet der Aufrufer — das Werkzeug `import_putzplan` sagt es dann deutlich.
- *
- * Der `LoaderContext` ist eine Attrappe wie in `tests/klasse/putzplan.test.ts`
- * und deckt nur ab, was `file()` wirklich benutzt. Ein Vollausbau waere eine
- * zweite, mitzupflegende Fassung von Astro.
- */
-export const putzplanAusDatei = async (
-	/** Wurzel des Klassen-Repos, gegen die `pfad` aufgeloest wird. */
-	wurzel: URL,
-	pfad: string = PUTZPLAN_DATEI,
-): Promise<PutzplanAusDatei> => {
-	const eintraege: PutzplanDaten[] = []
-
-	await optionaleDatei(pfad).load({
-		collection: 'putzplan',
-		store: {
-			clear: () => {
-				eintraege.length = 0
-			},
-			set: ({ data }: { id: string; data: unknown }) => {
-				eintraege.push(data as PutzplanDaten)
-				return true
-			},
-		},
-		logger: {
-			info: () => {},
-			warn: () => {},
-			error: () => {},
-			debug: () => {},
-		},
-		config: { root: wurzel },
-		parseData: async ({ data }: { data: unknown }) =>
-			putzplanSchema.parseAsync(data),
-		// biome-ignore lint/suspicious/noExplicitAny: Attrappe eines LoaderContext, siehe Kopfkommentar
-	} as any)
-
-	// Map und nicht Array: Dieselbe Familie steht in der Datei bei jedem ihrer
-	// Termine, mit gleichem `slug` und gleichem `name`. Der letzte Eintrag
-	// gewinnt — bei abweichender Schreibweise desselben Slugs ist das eine
-	// Entscheidung und kein Zufall: Es gibt EINE Gruppe je Slug.
-	const familien = new Map<string, string>()
-	for (const daten of eintraege) {
-		for (const { name, slug } of daten.familien) {
-			familien.set(familienGruppenKey(slug), name)
-		}
-	}
-
-	return {
-		familien: [...familien].map(([key, label]) => ({ key, label })),
-		termine: eintraege.map((daten) => ({
-			date: datumIso(daten.datum),
-			groups: daten.familien.map(({ slug }) => familienGruppenKey(slug)),
-			note: daten.anmerkung ?? null,
-		})),
-	}
 }

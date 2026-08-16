@@ -3,12 +3,14 @@ import { z } from 'zod'
 import {
 	FAMILIEN_PRAEFIX,
 	familienGruppenKey,
-	putzplanAusDatei,
 	undVerbunden,
 } from '../../../klasse/putzplan.ts'
 import { upsertGroup } from '../../../lib/db/groups.ts'
+import type { PlanAenderung } from '../../../lib/db/putzplan.ts'
 import {
-	ersetzePlan,
+	aendereTermin,
+	ersetzePlanMitBericht,
+	loescheTermine,
 	planLesen,
 	planMitNamen,
 	setzeTermin,
@@ -77,6 +79,32 @@ const mitFehlermeldung = <T>(
 	}
 }
 
+/**
+ * Der Aenderungsbericht eines Massenschreibens, in einem Satz.
+ *
+ * Eine eigene Funktion, damit der Bericht ueberall gleich klingt — und damit
+ * ein zweites Massenschreiben, falls es je eines gibt, nicht seine eigene
+ * Zaehlweise erfindet.
+ */
+const berichtSatz = (a: PlanAenderung): string => {
+	const teile = [
+		`${a.added.length} neu`,
+		`${a.removed.length} entfallen`,
+		`${a.changed.length} geaendert`,
+		`${a.unchanged} unveraendert`,
+	]
+	const satz = `Aenderungen: ${teile.join(', ')}.`
+	// Die ENTFALLENEN werden einzeln genannt. Sie sind der gefaehrliche Teil: Ein
+	// Dokument, dem versehentlich die Haelfte fehlt, sieht sonst aus wie ein
+	// gelungener Import.
+	if (a.removed.length === 0) return satz
+	const liste =
+		a.removed.length <= 10
+			? a.removed.join(', ')
+			: `${a.removed.slice(0, 10).join(', ')} und ${a.removed.length - 10} weitere`
+	return `${satz} Entfallen sind: ${liste}.`
+}
+
 /** Wie der Plan in der Antwort aussieht — englische Feldnamen, wie in der DB. */
 const planAusgabe = () => ({
 	dates: planMitNamen().map((termin) => ({
@@ -142,6 +170,45 @@ export const registerPutzplanTools = (
 	registerWriteTool(
 		server,
 		auth,
+		'update_putztermin',
+		{
+			title: 'Termin aendern oder verschieben',
+			description:
+				'Aendert einen VORHANDENEN Termin. Jedes Feld ist aenderbar, auch das Datum: `new_date` verschiebt den Termin, seine Einteilung und seine Anmerkung kommen mit. Was nicht genannt ist, bleibt stehen — `note` weglassen laesst die Anmerkung, `null` loescht sie. Den Termin muss es geben; zum Anlegen ist set_putztermin da. Auf ein Datum zu verschieben, an dem schon ein Termin steht, wird abgelehnt: An einem Tag gibt es einen Termin, nicht zwei.',
+			inputSchema: {
+				date: DatumSchema.describe('Der Termin, der geaendert werden soll.'),
+				new_date: DatumSchema.optional().describe(
+					'Neues Datum. Der Termin wird dorthin verschoben, mit Einteilung und Anmerkung.',
+				),
+				groups: z
+					.array(GroupKeySchema)
+					.optional()
+					.describe('Neue Einteilung. Weglassen laesst die bisherige stehen.'),
+				note: z
+					.string()
+					.nullable()
+					.optional()
+					.describe(
+						'Neue Anmerkung. Weglassen laesst die bisherige stehen, null loescht sie.',
+					),
+			},
+		},
+		({ date, new_date, groups, note }) =>
+			mitFehlermeldung(
+				() => aendereTermin(date, { date: new_date, groups, note }),
+				(plan) => {
+					const ziel = new_date ?? date
+					const termin = plan.find((t) => t.date === ziel)
+					const verschoben =
+						new_date && new_date !== date ? `${date} ist jetzt ${ziel}. ` : ''
+					return `${verschoben}Am ${ziel} putzen: ${undVerbunden(termin?.groups ?? [])}.${termin?.note ? ` Anmerkung: ${termin.note}` : ''} Der Plan hat ${plan.length} Termine.`
+				},
+			),
+	)
+
+	registerWriteTool(
+		server,
+		auth,
 		'swap_putztermine',
 		{
 			title: 'Zwei Termine tauschen',
@@ -156,6 +223,54 @@ export const registerPutzplanTools = (
 					const a = plan.find((t) => t.date === date_a)
 					const b = plan.find((t) => t.date === date_b)
 					return `Getauscht. Am ${date_a}: ${undVerbunden(a?.groups ?? [])}. Am ${date_b}: ${undVerbunden(b?.groups ?? [])}.`
+				},
+			),
+	)
+
+	registerWriteTool(
+		server,
+		auth,
+		'delete_putztermine',
+		{
+			title: 'Termine loeschen',
+			description:
+				'Nimmt Termine ganz aus dem Plan — einzelne Daten ueber `dates`, einen ganzen Zeitraum ueber `from`/`to` (beide einschliesslich), oder beides zusammen. Die Einteilungen des Termins gehen mit; es bleibt nichts zurueck, das auf ein geloeschtes Datum zeigt. Der Zeitraum ist der Fall, um den es geht: Beim Jahreswechsel steht der alte Plan noch da, waehrend der neue eingespielt wird, und ein Schuljahr von Hand abzuraeumen waeren ueber vierzig Aufrufe. Idempotent — ein Datum, das es nicht gibt, ist KEIN Fehler, sondern wird als nicht vorhanden gemeldet. Die Antwort nennt jedes geloeschte Datum und wie viele Einteilungen daran hingen.',
+			inputSchema: {
+				dates: z
+					.array(DatumSchema)
+					.optional()
+					.describe(
+						'Einzelne Termine, z.B. ["2026-08-21", "2026-08-28"]. Kann mit from/to kombiniert werden.',
+					),
+				from: DatumSchema.optional().describe(
+					'Erster Tag des Zeitraums, einschliesslich. Ohne `to` alles ab diesem Tag.',
+				),
+				to: DatumSchema.optional().describe(
+					'Letzter Tag des Zeitraums, einschliesslich. Ohne `from` alles bis zu diesem Tag.',
+				),
+			},
+		},
+		({ dates, from, to }) =>
+			mitFehlermeldung(
+				() => loescheTermine({ dates, from, to }),
+				({ deleted, missing }) => {
+					// Ein stilles "ok" ist bei einer Loeschung zu wenig: Wer sie
+					// ausgeloest hat, muss lesen koennen, was wirklich weg ist — sonst
+					// faellt ein zu weit gefasster Zeitraum erst Wochen spaeter auf.
+					const zuteilungen = deleted.reduce((n, t) => n + t.assignments, 0)
+					const teile: string[] = []
+					teile.push(
+						deleted.length === 0
+							? 'Nichts geloescht.'
+							: `${deleted.length} ${deleted.length === 1 ? 'Termin' : 'Termine'} geloescht (${zuteilungen} ${zuteilungen === 1 ? 'Einteilung' : 'Einteilungen'}): ${deleted.map((t) => t.date).join(', ')}.`,
+					)
+					if (missing.length > 0) {
+						teile.push(
+							`Nicht vorhanden und deshalb uebergangen: ${missing.join(', ')}.`,
+						)
+					}
+					teile.push(`Der Plan hat jetzt ${planLesen().length} Termine.`)
+					return teile.join(' ')
 				},
 			),
 	)
@@ -188,50 +303,62 @@ export const registerPutzplanTools = (
 	registerWriteTool(
 		server,
 		auth,
-		'import_putzplan',
+		'replace_putzplan',
 		{
-			title: 'Putzplan aus der YAML-Datei uebernehmen',
-			description: `EINMALIG: Uebernimmt die Einteilung aus src/content/putzplan.yaml des Klassen-Repos in die Datenbank, damit die Termine nicht von Hand nachgetragen werden muessen. Legt dabei fuer jede Familie der Datei die Gruppe "${FAMILIEN_PRAEFIX}<slug>" an (Label = ihr Name) und ersetzt den GESAMTEN Plan durch den Inhalt der Datei. Idempotent — derselbe Inhalt zweimal eingespielt ergibt denselben Zustand. Steht schon ein Plan in der Datenbank, bricht der Import ab, ausser mit \`replace: true\`: Sonst wuerde ein zweiter Lauf spaeter jeden inzwischen ueber MCP gemachten Tausch stillschweigend zuruecknehmen. Die Einteilung der Datei wird uebernommen, wie sie dort steht; abgelehnt wird nur eine Datei, deren Familien sich nicht als Gruppen anlegen lassen. Die YAML-Datei bleibt nach dem Import stehen und wird erst geloescht, wenn jemand geprueft hat, dass die Datenbank stimmt.`,
+			title: 'Ganzen Plan setzen',
+			description: `Setzt den GESAMTEN Putzplan auf das uebergebene Dokument. Ersetzen, nicht ergaenzen: Was in \`dates\` fehlt, ist danach weg. Genau damit spielt man einen neuen Jahresplan ein, ohne den alten vorher haendisch abzuraeumen. Idempotent — dasselbe Dokument zweimal eingespielt ergibt denselben Zustand. Die Antwort nennt, wie viele Termine neu, entfallen, geaendert und unveraendert sind, und zaehlt die entfallenen einzeln auf. Steht schon ein Plan in der Datenbank, bricht der Aufruf ab, ausser mit \`replace: true\`: Ein Aufruf, der unbemerkt einen ganzen Jahrgang ueberschreibt, ist gefaehrlich, und die Rueckfrage kostet einen zweiten Aufruf. Familien sind Gruppen nach der Konvention "${FAMILIEN_PRAEFIX}<slug>" und muessen VORHER existieren; wer sie im selben Zug anlegen will, gibt sie unter \`families\` mit. Ueber die Einteilung selbst urteilt nichts — wie viele Familien an einem Termin stehen und wer mit wem, entscheidet die Klasse.`,
 			inputSchema: {
+				dates: z
+					.array(
+						z.object({
+							date: DatumSchema,
+							groups: z
+								.array(GroupKeySchema)
+								.describe('Die Group-Keys der eingeteilten Familien.'),
+							note: z
+								.string()
+								.nullable()
+								.optional()
+								.describe('Anmerkung zum Termin, z.B. "(Do, da Fr Feiertag)".'),
+						}),
+					)
+					.describe(
+						'Der ganze Plan. Eine leere Liste loescht ihn — zusammen mit replace: true.',
+					),
+				families: z
+					.array(
+						z.object({
+							slug: GroupKeySchema.describe(
+								'Stabiler Schluessel, z.B. "morzynski". Praefix optional.',
+							),
+							label: z
+								.string()
+								.min(1)
+								.describe(
+									'Anzeigename ohne "Familie" davor, z.B. "Morzynski".',
+								),
+						}),
+					)
+					.optional()
+					.describe(
+						'Familien, die es noch nicht als Gruppe gibt. Werden vor dem Plan angelegt oder umbenannt.',
+					),
 				replace: z
 					.boolean()
 					.optional()
 					.describe(
-						'Default false. true ueberschreibt einen bereits vorhandenen Plan — nur benutzen, wenn seit dem letzten Import nichts ueber MCP geaendert wurde.',
-					),
-				path: z
-					.string()
-					.optional()
-					.describe(
-						'Abweichender Pfad der YAML-Datei, relativ zur Projektwurzel der Klasse. Default src/content/putzplan.yaml.',
+						'Default false. true ueberschreibt einen bereits vorhandenen Plan.',
 					),
 			},
 		},
-		async ({ replace, path }) => {
-			// Die Wurzel des Klassen-Repos ist das Arbeitsverzeichnis des Servers —
-			// dieselbe Annahme, unter der `./data/<klasse>.db` gefunden wird.
-			const wurzel = new URL(`file://${process.cwd()}/`)
-			const { familien, termine } = await putzplanAusDatei(wurzel, path)
-
-			if (termine.length === 0) {
-				return {
-					content: [
-						{
-							type: 'text' as const,
-							text: `Keine Termine gefunden. Gibt es ${path ?? 'src/content/putzplan.yaml'} in dieser Klasse? Der Pfad wird gegen das Arbeitsverzeichnis des Servers aufgeloest (${process.cwd()}).`,
-						},
-					],
-					isError: true,
-				}
-			}
-
+		({ dates, families, replace }) => {
 			const vorhanden = planLesen()
 			if (vorhanden.length > 0 && replace !== true) {
 				return {
 					content: [
 						{
 							type: 'text' as const,
-							text: `In der Datenbank stehen schon ${vorhanden.length} Termine (${vorhanden[0]?.date} bis ${vorhanden.at(-1)?.date}). Der Import ersetzt den GANZEN Plan und naehme damit jeden inzwischen gemachten Tausch zurueck. Mit replace: true trotzdem ausfuehren.`,
+							text: `In der Datenbank stehen schon ${vorhanden.length} Termine (${vorhanden[0]?.date} bis ${vorhanden.at(-1)?.date}). Dieser Aufruf ersetzt den GANZEN Plan und naehme damit jede inzwischen gemachte Aenderung zurueck. Mit replace: true trotzdem ausfuehren.`,
 						},
 					],
 					isError: true,
@@ -240,13 +367,24 @@ export const registerPutzplanTools = (
 
 			return mitFehlermeldung(
 				() => {
-					// Erst die Gruppen, dann der Plan: Umgekehrt scheiterte das
+					// Erst die Gruppen, dann der Plan: Umgekehrt scheitert das
 					// Schreiben an Group-Keys, die es noch nicht gibt.
-					for (const { key, label } of familien) upsertGroup({ key, label })
-					return ersetzePlan(termine)
+					//
+					// Gruppen werden NICHT aus den Group-Keys des Plans erraten. Ein
+					// Key ist `familie-probst-vogel`, der Anzeigename "Probst/Vogel" —
+					// aus dem einen laesst sich der andere nicht zurueckrechnen, und
+					// ein geratenes Label stuende danach auf der Seite, die die Eltern
+					// lesen. Wer eine neue Familie hat, nennt sie unter `families`
+					// oder legt sie vorher mit upsert_putzfamilie an.
+					for (const { slug, label } of families ?? []) {
+						upsertGroup({ key: familienGruppenKey(slug), label })
+					}
+					return ersetzePlanMitBericht(dates)
 				},
-				(plan) =>
-					`${plan.length} Termine uebernommen (${plan[0]?.date} bis ${plan.at(-1)?.date}), ${familien.length} Familien als Gruppen angelegt oder aktualisiert. Naechster Schritt: mit list_group_members je Familie die Personen zuordnen, damit der Plan jemanden anschreiben kann. Die YAML-Datei erst loeschen, wenn get_putzplan geprueft ist.`,
+				({ plan, aenderung }) =>
+					plan.length === 0
+						? `Der Plan ist jetzt leer. ${berichtSatz(aenderung)}`
+						: `${plan.length} Termine (${plan[0]?.date} bis ${plan.at(-1)?.date}). ${berichtSatz(aenderung)}`,
 			)
 		},
 	)

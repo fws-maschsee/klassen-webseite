@@ -278,6 +278,62 @@ export const setzeTermin = (
 		return [...plan.filter((t) => t.date !== eingabe.date), neu]
 	}, db)
 
+/** Was an einem Termin geaendert werden soll. Nicht genanntes bleibt stehen. */
+export type TerminAenderung = {
+	/** Neues Datum — der Termin wird verschoben. */
+	date?: string
+	/** Neue Einteilung. */
+	groups?: string[]
+	/** Neue Anmerkung; `null` loescht sie. */
+	note?: string | null
+}
+
+/**
+ * Aendert einen vorhandenen Termin — auch sein DATUM.
+ *
+ * Ein verschobener Termin ist eine Aenderung und kein Loeschen plus
+ * Neuanlegen. Dass er intern als das zweite geschrieben wird (das Datum ist
+ * der Schluessel der Zeile, und ein Schluessel laesst sich nicht in place
+ * umbiegen, ohne die Einteilungen mitzunehmen), ist eine Eigenschaft der
+ * Tabelle und geht den Aufrufer nichts an: Er sagt "der 21.8. wird der 22.8.",
+ * und Einteilung und Anmerkung kommen mit.
+ *
+ * Was nicht genannt ist, bleibt, wie es war — auch hier JSON-Merge-Patch:
+ * `note: undefined` laesst die Anmerkung stehen, `note: null` loescht sie.
+ *
+ * Der Unterschied zu `setzeTermin`: Das hier verlangt, dass es den Termin
+ * GIBT, und kann ihn verschieben. `setzeTermin` legt an oder besetzt um und
+ * laesst das Datum, wo es ist.
+ */
+export const aendereTermin = (
+	date: string,
+	aenderung: TerminAenderung,
+	db: Database = openDb(),
+): Termin[] =>
+	anwenden((plan) => {
+		const vorhanden = plan.find((t) => t.date === date)
+		if (!vorhanden) {
+			throw new Error(
+				`Kein Termin am ${date}. get_putzplan zeigt die vorhandenen Termine.`,
+			)
+		}
+		const neuesDatum = aenderung.date ?? date
+		if (neuesDatum !== date && plan.some((t) => t.date === neuesDatum)) {
+			// Zwei Termine am selben Tag kann die Tabelle nicht — das Datum ist ihr
+			// Schluessel. Der Satz sagt, was zu tun ist, statt den Aufrufer an einem
+			// UNIQUE-Fehler raten zu lassen.
+			throw new Error(
+				`Am ${neuesDatum} gibt es schon einen Termin. Verschiebe ihn zuerst oder loesche ihn mit delete_putztermine.`,
+			)
+		}
+		const neu: Termin = {
+			date: neuesDatum,
+			note: aenderung.note === undefined ? vorhanden.note : aenderung.note,
+			groups: aenderung.groups ?? vorhanden.groups,
+		}
+		return [...plan.filter((t) => t.date !== date), neu]
+	}, db)
+
 /**
  * Tauscht die Einteilung zweier Termine.
  *
@@ -322,23 +378,195 @@ export const loescheTermin = (
 ): Termin[] => anwenden((plan) => plan.filter((t) => t.date !== date), db)
 
 /**
- * Ersetzt den GESAMTEN Plan — der Weg des Imports aus der YAML.
+ * Welche Termine geloescht werden sollen: einzelne Daten, ein Zeitraum, oder
+ * beides.
+ */
+export type LoeschAuswahl = {
+	/** Einzelne Daten, `JJJJ-MM-TT`. */
+	dates?: readonly string[]
+	/** Erster Tag eines Zeitraums, einschliesslich. */
+	from?: string
+	/** Letzter Tag eines Zeitraums, einschliesslich. */
+	to?: string
+}
+
+/** Was tatsaechlich passiert ist — Feldnamen englisch, weil es in JSON steht. */
+export type LoeschErgebnis = {
+	/** Je geloeschtem Termin: das Datum und wie viele Einteilungen mitgingen. */
+	deleted: { date: string; assignments: number }[]
+	/** Angefragte Daten, die es gar nicht gab. Kein Fehler. */
+	missing: string[]
+}
+
+/**
+ * Loescht Termine — einzeln oder als Zeitraum — samt ihren Einteilungen.
  *
- * Ersetzen und nicht ergaenzen, weil sonst ein zweiter Lauf mit geaenderter
- * Datei die alten Termine stehen liesse und niemand saehe, welche davon noch
- * gelten. Idempotent: Derselbe Inhalt zweimal eingespielt ergibt denselben
- * Zustand.
+ * Dass es dieses Werkzeug gibt, gehoert zur Abschaffung der Planregeln: Wenn
+ * der Code die Einteilung nicht mehr beurteilt, muss ein Mensch den Plan von
+ * Hand in Ordnung bringen koennen — und dazu gehoert, alte Termine wieder
+ * loszuwerden. Der Anlass ist der Jahreswechsel: Ein neuer Plan wird
+ * eingespielt, waehrend der alte noch dasteht, und die Datumsbereiche
+ * ueberschneiden sich.
+ *
+ * Der ZEITRAUM ist der eigentliche Punkt. Ein Schuljahr hat ueber vierzig
+ * Termine; ohne `from`/`to` waere das Abraeumen eines alten Plans vierzig
+ * Aufrufe, und beim achten verliert man den Ueberblick, welche schon weg sind.
+ *
+ * IDEMPOTENT: Ein Datum, das es nicht gibt, ist kein Fehler, sondern steht in
+ * `missing`. Zweimal dasselbe geloescht ergibt beim zweiten Mal eine leere
+ * `deleted`-Liste — und keine Ausnahme, die den Aufrufer glauben laesst, es
+ * sei etwas schiefgegangen.
+ *
+ * Nicht ueber `anwenden`: Dort wird der ganze Plan gelesen, umgeschrieben und
+ * zurueckgeschrieben. Zum Loeschen ist das der Umweg, und vor allem verlöre es
+ * die Auskunft, WIE VIELE Einteilungen mitgegangen sind — die steht nur vor
+ * dem `DELETE` fest.
+ */
+export const loescheTermine = (
+	auswahl: LoeschAuswahl,
+	db: Database = openDb(),
+): LoeschErgebnis => {
+	// Die Einteilungen haengen per `ON DELETE CASCADE` am Datum. Ohne dieses
+	// Pragma greift die Kaskade NICHT, und zurueck blieben Einteilungen, die auf
+	// einen Termin zeigen, den es nicht mehr gibt — ein Plan, der beim naechsten
+	// Lesen Zeilen zeigt, die niemand mehr erklaeren kann. `openDb()` setzt es;
+	// eine fremde Verbindung vielleicht nicht.
+	if (db.pragma('foreign_keys', { simple: true }) !== 1) {
+		throw new Error(
+			'loescheTermine: PRAGMA foreign_keys ist aus — die Loesch-Kaskade wuerde nicht greifen',
+		)
+	}
+
+	const { dates, from, to } = auswahl
+	if ((dates === undefined || dates.length === 0) && !from && !to) {
+		throw new Error(
+			'Nichts ausgewaehlt: entweder `dates` (einzelne Daten) oder `from`/`to` (ein Zeitraum) angeben.',
+		)
+	}
+	if (from && to && from > to) {
+		throw new Error(
+			`Der Zeitraum faengt nach seinem Ende an (${from} bis ${to}) — from und to vertauscht?`,
+		)
+	}
+
+	const lauf = db.transaction((): LoeschErgebnis => {
+		const vorhanden = new Set(
+			db
+				.prepare<[], { date: string }>('SELECT date FROM cleaning_dates')
+				.all()
+				.map((z) => z.date),
+		)
+
+		// Einzeln genannte Daten und der Zeitraum ergeben EINE Menge. Ein Datum,
+		// das in beidem steht, wird einmal geloescht und einmal gemeldet.
+		const treffer = new Set<string>()
+		const missing: string[] = []
+		for (const date of dates ?? []) {
+			if (vorhanden.has(date)) treffer.add(date)
+			else missing.push(date)
+		}
+		if (from || to) {
+			for (const date of vorhanden) {
+				if (from && date < from) continue
+				if (to && date > to) continue
+				treffer.add(date)
+			}
+		}
+
+		const zaehleZuteilungen = db.prepare<[string], { n: number }>(
+			'SELECT COUNT(*) AS n FROM cleaning_assignments WHERE date = ?',
+		)
+		const loeschen = db.prepare<[string]>(
+			'DELETE FROM cleaning_dates WHERE date = ?',
+		)
+
+		const deleted: { date: string; assignments: number }[] = []
+		for (const date of [...treffer].sort()) {
+			// Vor dem DELETE zaehlen — danach sind die Zeilen weg.
+			const assignments = zaehleZuteilungen.get(date)?.n ?? 0
+			loeschen.run(date)
+			deleted.push({ date, assignments })
+		}
+
+		return { deleted, missing }
+	})
+
+	return lauf()
+}
+
+/** Was ein Massenschreiben am Plan veraendert hat. Englisch, es steht in JSON. */
+export type PlanAenderung = {
+	/** Daten, die es vorher nicht gab. */
+	added: string[]
+	/** Daten, die es vorher gab und jetzt nicht mehr. */
+	removed: string[]
+	/** Daten, die geblieben sind, aber andere Einteilung oder Anmerkung haben. */
+	changed: string[]
+	/** Wie viele Termine unveraendert geblieben sind. */
+	unchanged: number
+}
+
+/** Zwei Termine sind gleich, wenn Einteilung und Anmerkung gleich sind. */
+const gleicherTermin = (a: Termin, b: Termin): boolean =>
+	a.note === b.note &&
+	a.groups.length === b.groups.length &&
+	[...a.groups].sort().join(' ') === [...b.groups].sort().join(' ')
+
+/**
+ * Ersetzt den GESAMTEN Plan und sagt, was sich dabei geaendert hat.
+ *
+ * ERSETZEN und nicht ergaenzen: Was im Dokument fehlt, ist danach weg. Genau
+ * das braucht der Jahreswechsel — ein neuer Plan wird eingespielt, ohne dass
+ * vorher jemand den alten von Hand abraeumt. Wuerde es ergaenzen, stuenden
+ * danach beide Plaene ineinander und niemand saehe, welche Termine noch
+ * gelten.
+ *
+ * Weil das viel auf einmal ist, kommt ein BERICHT zurueck. Ein Werkzeug, das
+ * einen ganzen Jahresplan austauscht und "ok" sagt, ist gefaehrlich: Ein
+ * Dokument, dem versehentlich die Haelfte fehlt, sieht im Erfolgsfall genauso
+ * aus wie das richtige. Wer `removed: 42` liest, merkt es.
+ *
+ * IDEMPOTENT: Derselbe Inhalt zweimal eingespielt ergibt denselben Zustand —
+ * beim zweiten Mal mit leeren Listen und `unchanged` gleich der Planlaenge.
+ */
+export const ersetzePlanMitBericht = (
+	termine: readonly TerminEingabe[],
+	db: Database = openDb(),
+): { plan: Termin[]; aenderung: PlanAenderung } => {
+	const lauf = db.transaction(() => {
+		const vorher = new Map(planLesen(db).map((t) => [t.date, t]))
+		const plan = anwenden(
+			() =>
+				termine.map(({ date, groups, note }) => ({
+					date,
+					groups,
+					note: note ?? null,
+				})),
+			db,
+		)
+
+		const added: string[] = []
+		const changed: string[] = []
+		let unchanged = 0
+		for (const termin of plan) {
+			const alt = vorher.get(termin.date)
+			if (!alt) added.push(termin.date)
+			else if (gleicherTermin(alt, termin)) unchanged++
+			else changed.push(termin.date)
+		}
+		const nachher = new Set(plan.map((t) => t.date))
+		const removed = [...vorher.keys()].filter((d) => !nachher.has(d)).sort()
+
+		return { plan, aenderung: { added, removed, changed, unchanged } }
+	})
+	return lauf()
+}
+
+/**
+ * Ersetzt den GESAMTEN Plan. Wie `ersetzePlanMitBericht`, nur ohne den
+ * Bericht — fuer Aufrufer, die nur den neuen Stand brauchen.
  */
 export const ersetzePlan = (
 	termine: readonly TerminEingabe[],
 	db: Database = openDb(),
-): Termin[] =>
-	anwenden(
-		() =>
-			termine.map(({ date, groups, note }) => ({
-				date,
-				groups,
-				note: note ?? null,
-			})),
-		db,
-	)
+): Termin[] => ersetzePlanMitBericht(termine, db).plan

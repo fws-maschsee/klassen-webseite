@@ -768,9 +768,9 @@ Es gibt keine `exports`-Karte mehr, die Namen auf Dateien abbildet — der Pfad
 | `#geteilt/server/app.ts` | `./server-app` | `startServer({ config })` |
 | `#geteilt/migrations.ts` | `./migrations` | `packageMigrations()`, `packageMigrationsDir()`, `alleMigrations()`, `runMigrations()` |
 | `#geteilt/klasse/kalender.ts` | `./kalender` | `pruefeKalender(projektWurzel, config)`, `webcalUrl(config)` |
-| `#geteilt/klasse/putzplan.ts` | — | `naechsterPutztermin()`, `familienEmpfaenger()` — die Schnittstelle des Erinnerungsdienstes; dazu `planAlsEintraege()`, `putzplanZeilen()` für die Seite und `putzplanSchema`, `optionaleDatei()`, `putzplanAusDatei()`, `PUTZPLAN_DATEI` für den einmaligen Import. Siehe [Vom YAML-Putzplan in die Datenbank](#vom-yaml-putzplan-in-die-datenbank) |
+| `#geteilt/klasse/putzplan.ts` | — | `naechsterPutztermin()`, `familienEmpfaenger()` — die Schnittstelle des Erinnerungsdienstes; dazu `planAlsEintraege()`, `putzplanZeilen()` für die Seite und `putzplanSchema`, `optionaleDatei()`, `PUTZPLAN_DATEI` für die (noch bestehende) Content-Collection |
 | `#geteilt/klasse/putzplanPdf.ts` | — | der Plan als PDF: `putzplanAlsPdf()`, `putzplanPdfDaten()`, `PUTZPLAN_VORLAGE`. Siehe [Der Putzplan als PDF](#der-putzplan-als-pdf) |
-| `#geteilt/lib/db/putzplan.ts` | — | der Plan selbst: `planLesen()`, `setzeTermin()`, `tauscheTermine()`, `ersetzePlan()` |
+| `#geteilt/lib/db/putzplan.ts` | — | der Plan selbst: `planLesen()`, `setzeTermin()`, `aendereTermin()`, `tauscheTermine()`, `loescheTermine()`, `ersetzePlanMitBericht()` |
 | `geteilt/src/styles/klasse.css` | `./styles/global.css` | der Tailwind-Einstieg; per `@import` aus `src/styles/app.css` der Klasse, nicht per Subpath-Import |
 | `#geteilt/lib/…`, `#geteilt/server/…`, `#geteilt/remark/…` | `./lib/*`, … | der geteilte Code, einzeln |
 | `#geteilt/klasse/…` | `./klasse/*` | Interna der Integration (`config`, `routes`, `locals`) |
@@ -1047,32 +1047,57 @@ Wer hier wieder eine Plausibilität einbauen will, sollte vorher wissen, welchen
 konkreten Schaden sie verhindert — und ob die Klasse ihn nicht lieber selbst
 verhindert.
 
-### Die Reihenfolge des Umzugs, je Klasse
+### Der Plan über MCP: volles CRUD auf dem Datensatz Termin
 
-**Die YAML-Datei wird nicht im selben Schritt gelöscht.** Sie ist die einzige
-Kopie der Einteilung, solange die Datenbank sie nicht hat, und ob die Datenbank
-sie richtig hat, weiß man erst, wenn jemand nachgesehen hat.
+Ein Termin ist ein Datensatz wie jeder andere, und alles, was man mit einem
+Datensatz tut, geht über MCP (Rolle `admin`, auch das Lesen — der Plan nennt
+Familiennamen):
 
-1. **Diesen PR mergen** und in der Klasse den Submodule-Zeiger nachziehen. Die
-   Migration legt die beiden Tabellen an; sie sind leer, die Seite kommt ohne
-   Tabelle. **Dieses Fenster ist kurz zu halten** — Schritt 2 gehört unmittelbar
-   hinter das Deploy, sonst sehen Eltern einen Putzplan ohne Einteilung.
-2. **`import_putzplan` aufrufen** (MCP, Rolle `admin`). Es liest
-   `src/content/putzplan.yaml` aus dem Arbeitsverzeichnis des Servers, legt für
-   jede Familie der Datei die Gruppe `familie-<slug>` an (Label = ihr Name) und
-   schreibt den ganzen Plan. Idempotent; steht schon ein Plan da, bricht es ab
-   und verlangt `replace: true`.
-   Die Einteilung wird übernommen, wie sie in der Datei steht. Abgelehnt wird
-   nur, was sich nicht anlegen lässt — etwa eine Familie ohne `slug`.
-3. **`get_putzplan` gegen die YAML halten.** Stimmen Termine, Anmerkungen und
-   Familien? Das ist die Prüfung, für die die Datei noch da ist.
-4. **Personen zuordnen**: je Familie `set_group_members` bzw. `add_to_group`.
-   Erst danach kann der Plan jemanden anschreiben. `familienEmpfaenger` liefert
-   für eine Familie ohne Mitglied mit Adresse eine **leere** Liste — kein
-   Fehler, aber auch keine Erinnerung.
-5. **Erst jetzt** im Klassen-Repo `src/content/putzplan.yaml` löschen. Danach
-   können in diesem Repo auch Schema, Loader und die Sammlung `putzplan`
-   entfallen — sie haben dann keinen Leser mehr.
+| | Werkzeug |
+| --- | --- |
+| lesen | `get_putzplan` |
+| anlegen / umbesetzen | `set_putztermin` |
+| ändern, auch das **Datum** | `update_putztermin` (`new_date` verschiebt) |
+| löschen — einzeln, als Liste, als **Zeitraum** | `delete_putztermine` |
+| den **ganzen Plan** setzen | `replace_putzplan` |
+| Besetzung zweier Termine vertauschen | `swap_putztermine` (Bequemlichkeit) |
+| Familie als Gruppe anlegen | `upsert_putzfamilie` |
+
+Drei Dinge daran sind Absicht:
+
+**Ein verschobener Termin ist eine Änderung.** `update_putztermin` mit
+`new_date` nimmt Einteilung und Anmerkung mit. Dass die Zeile intern neu
+geschrieben wird — das Datum ist ihr Schlüssel — geht den Aufrufer nichts an.
+
+**Löschen kann einen Zeitraum.** Ein Schuljahr hat über vierzig Termine; ohne
+`from`/`to` wäre das Abräumen eines alten Plans vierzig Aufrufe. Die
+Einteilungen gehen per `ON DELETE CASCADE` mit. Ein Datum, das es nicht gibt,
+ist **kein Fehler**, sondern steht als „nicht vorhanden" in der Antwort.
+
+**Das Massenschreiben ersetzt und berichtet.** `replace_putzplan` nimmt den
+Plan als **Dokument** entgegen — keine Datei, kein Pfad, kein Bezug auf das
+Arbeitsverzeichnis des Servers. Was in `dates` fehlt, ist danach weg; genau so
+spielt man einen neuen Jahresplan ein, ohne vorher abzuräumen. Es ist
+idempotent, und es sagt, **was sich geändert hat**: wie viele Termine neu,
+entfallen, geändert und unverändert sind, mit den entfallenen einzeln
+aufgezählt. Ein Werkzeug, das einen Jahrgang austauscht und „ok" sagt, ist
+gefährlich — ein Dokument, dem versehentlich die Hälfte fehlt, sähe im
+Erfolgsfall genauso aus wie das richtige. Steht schon ein Plan da, verlangt es
+zusätzlich `replace: true`.
+
+> **`import_putzplan` gibt es nicht mehr.** Es las `src/content/putzplan.yaml`
+> aus dem Arbeitsverzeichnis des Servers — eine einmalige Umzugshilfe, die als
+> dauerhaftes Werkzeug stehen geblieben war und nach dem Löschen der Datei ins
+> Leere griff. Eine MCP-Schnittstelle darf nicht davon abhängen, was zufällig
+> im Dateisystem liegt. `replace_putzplan` leistet dasselbe, nur mit dem Plan
+> als Parameter.
+
+**Familiengruppen werden nicht geraten.** Aus dem Group-Key
+`familie-probst-vogel` lässt sich der Anzeigename „Probst/Vogel" nicht
+zurückrechnen, und ein geratenes Label stünde auf der Seite, die die Eltern
+lesen. Die Gruppen müssen deshalb existieren; wer sie im selben Zug anlegen
+will, gibt sie `replace_putzplan` unter `families` mit (`slug` + `label`) oder
+ruft vorher `upsert_putzfamilie`.
 
 ### Die Schnittstelle für den Erinnerungsdienst
 

@@ -249,67 +249,204 @@ describe('upsert_putzfamilie', () => {
 	})
 })
 
-describe('import_putzplan', () => {
-	// Das Arbeitsverzeichnis der Tests ist die Wurzel dieses Repos, gegen die
-	// das Werkzeug seinen Pfad aufloest — dieselbe Annahme wie im Betrieb, wo
-	// es die Wurzel des Klassen-Repos ist.
-	const FIXTURE = 'tests/fixtures/putzplan-import.yaml'
+describe('delete_putztermine', () => {
+	it('loescht ein einzelnes Datum und benennt, was weg ist', async () => {
+		const client = await connect(['admin'])
+		await client.callTool({
+			name: 'set_putztermin',
+			arguments: {
+				date: '2026-09-04',
+				groups: ['familie-winter', 'familie-sommer'],
+			},
+		})
+		const text = textOf(
+			await client.callTool({
+				name: 'delete_putztermine',
+				arguments: { dates: ['2026-09-04'] },
+			}),
+		)
+		expect(text).toContain('2026-09-04')
+		expect(text).toContain('Einteilungen')
+		await client.close()
+	})
 
-	it('haelt an, wenn schon ein Plan in der Datenbank steht', async () => {
-		// Der Schutz gegen den zweiten Lauf: Ein Import ersetzt den GANZEN Plan
-		// und naehme jeden inzwischen gemachten Tausch stillschweigend zurueck.
-		// `beforeEach` hat einen Termin angelegt, also ist der Plan nicht leer.
+	it('loescht einen Zeitraum', async () => {
+		const client = await connect(['admin'])
+		for (const date of ['2026-11-06', '2026-11-13', '2026-11-20']) {
+			await client.callTool({
+				name: 'set_putztermin',
+				arguments: { date, groups: ['familie-winter'] },
+			})
+		}
+		const text = textOf(
+			await client.callTool({
+				name: 'delete_putztermine',
+				arguments: { from: '2026-11-06', to: '2026-11-20' },
+			}),
+		)
+		expect(text).toContain('3 Termine geloescht')
+		await client.close()
+	})
+
+	it('meldet ein unbekanntes Datum, ohne zu scheitern', async () => {
 		const client = await connect(['admin'])
 		const result = await client.callTool({
-			name: 'import_putzplan',
-			arguments: { path: FIXTURE },
+			name: 'delete_putztermine',
+			arguments: { dates: ['2030-12-24'] },
+		})
+		expect((result as { isError?: boolean }).isError).toBeFalsy()
+		expect(textOf(result)).toContain('Nicht vorhanden')
+		await client.close()
+	})
+
+	it('verweigert das Loeschen ohne die Rolle admin', async () => {
+		const client = await connect(['mitglied'])
+		const result = await client.callTool({
+			name: 'delete_putztermine',
+			arguments: { dates: ['2026-09-04'] },
+		})
+		expect((result as { isError?: boolean }).isError).toBe(true)
+		expect(textOf(result)).toContain('admin')
+		await client.close()
+	})
+})
+
+describe('update_putztermin', () => {
+	it('verschiebt einen Termin samt Einteilung und Anmerkung', async () => {
+		const client = await connect(['admin'])
+		await client.callTool({
+			name: 'set_putztermin',
+			arguments: {
+				date: '2026-12-04',
+				groups: ['familie-winter', 'familie-sommer'],
+				note: '(Do, da Fr Feiertag)',
+			},
+		})
+		const text = textOf(
+			await client.callTool({
+				name: 'update_putztermin',
+				arguments: { date: '2026-12-04', new_date: '2026-12-03' },
+			}),
+		)
+		expect(text).toContain('2026-12-03')
+
+		const plan = JSON.parse(
+			textOf(await client.callTool({ name: 'get_putzplan', arguments: {} })),
+		) as { dates: { date: string; note: string | null }[] }
+		const verschoben = plan.dates.find((d) => d.date === '2026-12-03')
+		expect(verschoben?.note).toBe('(Do, da Fr Feiertag)')
+		expect(plan.dates.map((d) => d.date)).not.toContain('2026-12-04')
+		await client.close()
+	})
+
+	it('sagt es, wenn es den Termin nicht gibt', async () => {
+		const client = await connect(['admin'])
+		const result = await client.callTool({
+			name: 'update_putztermin',
+			arguments: { date: '2030-01-01', note: 'x' },
+		})
+		expect((result as { isError?: boolean }).isError).toBe(true)
+		expect(textOf(result)).toContain('2030-01-01')
+		await client.close()
+	})
+})
+
+describe('replace_putzplan', () => {
+	it('haelt an, wenn schon ein Plan in der Datenbank steht', async () => {
+		// Der Schutz gegen den unbemerkten Ueberschreiber: Ein Aufruf ersetzt den
+		// GANZEN Plan. `beforeEach` hat einen Termin angelegt, also ist er nicht
+		// leer.
+		const client = await connect(['admin'])
+		const result = await client.callTool({
+			name: 'replace_putzplan',
+			arguments: {
+				dates: [{ date: '2026-08-21', groups: ['familie-winter'] }],
+			},
 		})
 		expect((result as { isError?: boolean }).isError).toBe(true)
 		expect(textOf(result)).toContain('replace: true')
 		await client.close()
 	})
 
-	it('uebernimmt Familien und Termine und ist beim zweiten Lauf still', async () => {
+	it('setzt den Plan aus dem Dokument und berichtet die Aenderung', async () => {
 		const client = await connect(['admin'])
-		const erst = textOf(
+		const text = textOf(
 			await client.callTool({
-				name: 'import_putzplan',
-				arguments: { path: FIXTURE, replace: true },
+				name: 'replace_putzplan',
+				arguments: {
+					replace: true,
+					dates: [
+						{
+							date: '2027-01-08',
+							groups: ['familie-winter', 'familie-sommer'],
+							note: '(Do, da Fr Feiertag)',
+						},
+						{ date: '2027-01-15', groups: ['familie-musterfrau'] },
+					],
+				},
 			}),
 		)
-		expect(erst).toContain('10 Termine uebernommen')
-		expect(erst).toContain('10 Familien')
+		expect(text).toContain('2 Termine')
+		expect(text).toContain('2 neu')
 
 		const plan = JSON.parse(
 			textOf(await client.callTool({ name: 'get_putzplan', arguments: {} })),
-		) as { dates: { date: string; groups: { label: string }[] }[] }
-		expect(plan.dates).toHaveLength(10)
-		// Das Label kommt aus der Datei und nicht aus dem Slug — sonst stuende
-		// "probst-vogel" auf der Elternseite.
-		expect(plan.dates.flatMap((d) => d.groups.map((g) => g.label))).toContain(
-			'Probst/Vogel',
-		)
-
-		// Zweiter Lauf, gleicher Zustand.
-		await client.callTool({
-			name: 'import_putzplan',
-			arguments: { path: FIXTURE, replace: true },
-		})
-		const nachher = JSON.parse(
-			textOf(await client.callTool({ name: 'get_putzplan', arguments: {} })),
-		)
-		expect(nachher).toEqual(plan)
+		) as { dates: { date: string }[] }
+		expect(plan.dates.map((d) => d.date)).toEqual(['2027-01-08', '2027-01-15'])
 		await client.close()
 	})
 
-	it('sagt es, wenn es die Datei nicht gibt', async () => {
+	it('ist beim zweiten Lauf still', async () => {
+		const client = await connect(['admin'])
+		const dates = [{ date: '2027-02-05', groups: ['familie-winter'] }]
+		await client.callTool({
+			name: 'replace_putzplan',
+			arguments: { replace: true, dates },
+		})
+		const zweit = textOf(
+			await client.callTool({
+				name: 'replace_putzplan',
+				arguments: { replace: true, dates },
+			}),
+		)
+		expect(zweit).toContain('0 neu')
+		expect(zweit).toContain('1 unveraendert')
+		await client.close()
+	})
+
+	it('legt mitgegebene Familien als Gruppen an', async () => {
+		// Aus einem Group-Key laesst sich der Anzeigename nicht zurueckrechnen —
+		// deshalb kommt er aus `families` und wird nicht geraten. Sonst stuende
+		// "probst-vogel" auf der Elternseite.
+		const client = await connect(['admin'])
+		await client.callTool({
+			name: 'replace_putzplan',
+			arguments: {
+				replace: true,
+				families: [{ slug: 'neuling', label: 'Neuling/Zweitname' }],
+				dates: [{ date: '2027-03-05', groups: ['familie-neuling'] }],
+			},
+		})
+		const plan = JSON.parse(
+			textOf(await client.callTool({ name: 'get_putzplan', arguments: {} })),
+		) as { dates: { groups: { label: string }[] }[] }
+		expect(plan.dates.flatMap((d) => d.groups.map((g) => g.label))).toContain(
+			'Neuling/Zweitname',
+		)
+		await client.close()
+	})
+
+	it('nennt eine unbekannte Gruppe beim Namen', async () => {
 		const client = await connect(['admin'])
 		const result = await client.callTool({
-			name: 'import_putzplan',
-			arguments: { path: 'src/content/gibtesnicht.yaml', replace: true },
+			name: 'replace_putzplan',
+			arguments: {
+				replace: true,
+				dates: [{ date: '2027-04-09', groups: ['familie-gibtesnicht'] }],
+			},
 		})
 		expect((result as { isError?: boolean }).isError).toBe(true)
-		expect(textOf(result)).toContain('gibtesnicht.yaml')
+		expect(textOf(result)).toContain('familie-gibtesnicht')
 		await client.close()
 	})
 })

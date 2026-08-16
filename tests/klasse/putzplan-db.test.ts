@@ -5,7 +5,6 @@ import {
 	familienGruppenKey,
 	naechsterPutztermin,
 	planAlsEintraege,
-	putzplanAusDatei,
 	putzplanZeilen,
 } from '../../src/klasse/putzplan.ts'
 import {
@@ -15,8 +14,12 @@ import {
 } from '../../src/lib/db/groups.ts'
 import { upsertMitglied } from '../../src/lib/db/members.ts'
 import {
+	aendereTermin,
 	ersetzePlan,
+	ersetzePlanMitBericht,
 	loescheTermin,
+	loescheTermine,
+	planLesen,
 	setzeTermin,
 	tauscheTermine,
 } from '../../src/lib/db/putzplan.ts'
@@ -56,9 +59,6 @@ const key = (slug: string) => familienGruppenKey(slug)
 /**
  * Ein Plan: zehn Termine im Wochenabstand, jede Familie zweimal.
  *
- * Derselbe Plan wie in `tests/fixtures/putzplan-import.yaml` — die Fixture
- * beschreibt ihn als Datei, hier steht er als Daten. Beide muessen dieselbe
- * Einteilung meinen, sonst prueft der Importtest etwas anderes als dieser hier.
  */
 const PLAN = [
 	{ date: '2026-08-21', groups: [key('musterfrau'), key('beispiel')] },
@@ -72,6 +72,12 @@ const PLAN = [
 	{ date: '2026-10-16', groups: [key('sommer'), key('nordwind')] },
 	{ date: '2026-10-23', groups: [key('fruehling'), key('suedstern')] },
 ]
+
+/**
+ * Die ersten beiden Termine mit Namen — sie kommen in mehreren Tests vor, und
+ * `PLAN[0]!` an jeder dieser Stellen waere ein Ausrufezeichen mehr als noetig.
+ */
+const [ERSTER, ZWEITER] = PLAN as [(typeof PLAN)[number], (typeof PLAN)[number]]
 
 let db: Database
 
@@ -335,60 +341,164 @@ describe('Termin loeschen', () => {
 	})
 })
 
-describe('Import aus der YAML-Datei', () => {
-	const FIXTURE = new URL('../fixtures/', import.meta.url)
+describe('Termine loeschen', () => {
+	test('loescht ein einzelnes Datum samt seinen Einteilungen', () => {
+		planEinspielen()
+		const { deleted, missing } = loescheTermine({ dates: ['2026-08-21'] }, db)
 
-	test('liest Familien und Termine aus der Datei', async () => {
-		const { familien, termine } = await putzplanAusDatei(
-			FIXTURE,
-			'putzplan-import.yaml',
-		)
-		expect(familien).toHaveLength(FAMILIEN.length)
-		expect(familien.map((f) => f.key).sort()).toEqual(
-			FAMILIEN.map((slug) => key(slug)).sort(),
-		)
-		expect(familien.find((f) => f.key === key('probst-vogel'))?.label).toBe(
-			'Probst/Vogel',
-		)
-		expect(termine).toHaveLength(PLAN.length)
+		expect(deleted).toEqual([{ date: '2026-08-21', assignments: 2 }])
+		expect(missing).toEqual([])
+		expect(planLesen(db).map((t) => t.date)).not.toContain('2026-08-21')
 	})
 
-	test('ergibt eingespielt genau den erwarteten Plan', async () => {
-		const { familien, termine } = await putzplanAusDatei(
-			FIXTURE,
-			'putzplan-import.yaml',
-		)
-		for (const { key: k, label } of familien) upsertGroup({ key: k, label }, db)
-		const plan = ersetzePlan(termine, db)
-
-		expect(plan.map(({ date, groups }) => ({ date, groups }))).toEqual(
-			PLAN.map(({ date, groups }) => ({
-				date,
-				groups: [...groups].sort(),
-			})),
-		)
-		expect(plan.find((t) => t.date === '2026-10-02')?.note).toBe(
-			'(Do, da Fr Feiertag)',
-		)
+	test('laesst keine verwaiste Einteilung zurueck', () => {
+		// Die Kaskade ist der eigentliche Punkt: Eine Einteilung, die auf ein
+		// geloeschtes Datum zeigt, waere eine Zeile, die niemand mehr erklaeren
+		// kann — und `planLesen` faende sie nie wieder.
+		planEinspielen()
+		loescheTermine({ dates: ['2026-08-21'] }, db)
+		const offen = db
+			.prepare<[string], { n: number }>(
+				'SELECT COUNT(*) AS n FROM cleaning_assignments WHERE date = ?',
+			)
+			.get('2026-08-21')
+		expect(offen?.n).toBe(0)
 	})
 
-	test('ist idempotent', async () => {
-		const { familien, termine } = await putzplanAusDatei(
-			FIXTURE,
-			'putzplan-import.yaml',
+	test('loescht einen ganzen Zeitraum', () => {
+		// Der Fall, um den es geht: einen alten Plan abraeumen, ohne vierzig
+		// Aufrufe zu machen.
+		planEinspielen()
+		const { deleted } = loescheTermine(
+			{ from: '2026-08-21', to: '2026-09-11' },
+			db,
 		)
-		for (const { key: k, label } of familien) upsertGroup({ key: k, label }, db)
-		const erst = ersetzePlan(termine, db)
-		const zweit = ersetzePlan(termine, db)
-		expect(zweit).toEqual(erst)
+
+		expect(deleted.map((t) => t.date)).toEqual([
+			'2026-08-21',
+			'2026-08-28',
+			'2026-09-04',
+			'2026-09-11',
+		])
+		expect(planLesen(db)).toHaveLength(PLAN.length - 4)
 	})
 
-	test('liefert nichts, wenn es die Datei nicht gibt', async () => {
-		const { familien, termine } = await putzplanAusDatei(
-			FIXTURE,
-			'gibtesnicht.yaml',
+	test('meldet ein unbekanntes Datum als nicht vorhanden statt zu werfen', () => {
+		planEinspielen()
+		const { deleted, missing } = loescheTermine(
+			{ dates: ['2030-01-01', '2026-08-21'] },
+			db,
 		)
-		expect(familien).toEqual([])
-		expect(termine).toEqual([])
+
+		expect(missing).toEqual(['2030-01-01'])
+		expect(deleted.map((t) => t.date)).toEqual(['2026-08-21'])
+	})
+
+	test('ist idempotent — zweimal dasselbe geloescht wirft nicht', () => {
+		planEinspielen()
+		loescheTermine({ dates: ['2026-08-21'] }, db)
+		const zweit = loescheTermine({ dates: ['2026-08-21'] }, db)
+
+		expect(zweit.deleted).toEqual([])
+		expect(zweit.missing).toEqual(['2026-08-21'])
+	})
+
+	test('verlangt eine Auswahl', () => {
+		planEinspielen()
+		expect(() => loescheTermine({}, db)).toThrow(/Nichts ausgewaehlt/)
+		expect(planLesen(db)).toHaveLength(PLAN.length)
+	})
+})
+
+describe('Termin aendern', () => {
+	test('verschiebt ihn auf ein neues Datum, mit Einteilung und Anmerkung', () => {
+		planEinspielen()
+		setzeTermin(
+			{ date: '2026-08-21', note: '(vorgezogen)', groups: ERSTER.groups },
+			db,
+		)
+		const plan = aendereTermin('2026-08-21', { date: '2026-08-22' }, db)
+
+		const verschoben = plan.find((t) => t.date === '2026-08-22')
+		expect(plan.map((t) => t.date)).not.toContain('2026-08-21')
+		expect(verschoben?.groups).toEqual([...ERSTER.groups].sort())
+		expect(verschoben?.note).toBe('(vorgezogen)')
+		expect(plan).toHaveLength(PLAN.length)
+	})
+
+	test('aendert nur, was genannt ist', () => {
+		planEinspielen()
+		setzeTermin(
+			{ date: '2026-08-21', note: '(bleibt)', groups: ERSTER.groups },
+			db,
+		)
+		const plan = aendereTermin('2026-08-21', { groups: [key('winter')] }, db)
+
+		const termin = plan.find((t) => t.date === '2026-08-21')
+		expect(termin?.groups).toEqual([key('winter')])
+		expect(termin?.note).toBe('(bleibt)')
+	})
+
+	test('loescht die Anmerkung mit null', () => {
+		planEinspielen()
+		setzeTermin(
+			{ date: '2026-08-21', note: '(weg damit)', groups: ERSTER.groups },
+			db,
+		)
+		const plan = aendereTermin('2026-08-21', { note: null }, db)
+		expect(plan.find((t) => t.date === '2026-08-21')?.note).toBeNull()
+	})
+
+	test('lehnt das Verschieben auf ein belegtes Datum ab', () => {
+		planEinspielen()
+		expect(() =>
+			aendereTermin('2026-08-21', { date: '2026-08-28' }, db),
+		).toThrow(/schon einen Termin/)
+		expect(planLesen(db)).toHaveLength(PLAN.length)
+	})
+
+	test('nennt einen Termin, den es nicht gibt', () => {
+		planEinspielen()
+		expect(() => aendereTermin('2030-01-01', { note: 'x' }, db)).toThrow(
+			/2030-01-01/,
+		)
+	})
+})
+
+describe('den ganzen Plan setzen', () => {
+	test('ersetzt und berichtet, was sich geaendert hat', () => {
+		planEinspielen()
+		const neu = [
+			// unveraendert
+			ERSTER,
+			// geaendert: andere Einteilung
+			{ date: ZWEITER.date, groups: [key('winter'), key('sommer')] },
+			// neu
+			{ date: '2027-01-08', groups: [key('herbst'), key('fruehling')] },
+		]
+		const { aenderung } = ersetzePlanMitBericht(neu, db)
+
+		expect(aenderung.added).toEqual(['2027-01-08'])
+		expect(aenderung.changed).toEqual([ZWEITER.date])
+		expect(aenderung.unchanged).toBe(1)
+		expect(aenderung.removed).toHaveLength(PLAN.length - 2)
+		expect(planLesen(db)).toHaveLength(3)
+	})
+
+	test('ist idempotent — zweimal dasselbe ergibt keine Aenderung', () => {
+		planEinspielen()
+		const zweit = ersetzePlanMitBericht(PLAN, db)
+
+		expect(zweit.aenderung.added).toEqual([])
+		expect(zweit.aenderung.removed).toEqual([])
+		expect(zweit.aenderung.changed).toEqual([])
+		expect(zweit.aenderung.unchanged).toBe(PLAN.length)
+	})
+
+	test('eine leere Liste raeumt den Plan ab', () => {
+		planEinspielen()
+		const { plan, aenderung } = ersetzePlanMitBericht([], db)
+		expect(plan).toEqual([])
+		expect(aenderung.removed).toHaveLength(PLAN.length)
 	})
 })
