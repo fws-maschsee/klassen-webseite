@@ -111,6 +111,28 @@ const ZEITANGABE = /^\d{1,2}[:.]\d{2}/
 const istFrei = (text: string): boolean =>
 	text === '' || text === '–' || text === '-' || text === '—'
 
+/**
+ * Eine Zelle darf `Fach (Raum)` heissen — „Englisch (Klassenzimmer 5A)".
+ *
+ * Der Raum gehoert in die Zelle und nicht in eine eigene Spalte: Er wechselt je
+ * Stunde, eine Spalte dafuer gaebe es nicht. Aufgeteilt wird er hier, damit
+ * beides moeglich wird — das Fach bestimmt den Ton, und der Raum wird leiser
+ * gesetzt.
+ *
+ * Bewusst nur die LETZTE Klammer am Zeilenende: „Religion (cg: Klassenz. 5A ·
+ * ev: Klassenz. 5B)" soll als Ganzes zum Raumteil werden, und ein Fachname mit
+ * Klammer mittendrin bliebe unangetastet.
+ */
+const KLAMMER = /^(.*?)\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)$/
+
+const geteilteZelle = (
+	text: string,
+): { fach: string; raum: string | undefined } => {
+	const treffer = KLAMMER.exec(text)
+	if (!treffer || treffer[1].trim() === '') return { fach: text, raum: undefined }
+	return { fach: treffer[1].trim(), raum: treffer[2].trim() }
+}
+
 const istStundenplan = (kopfzeile: Knoten | undefined): boolean => {
 	const zellen = kopfzeile?.children ?? []
 	if (zellen.length < 3) return false
@@ -177,7 +199,7 @@ export const remarkStundenplanTabelle =
 
 				klassen(erste, 'stundenplan-zeit')
 				for (const zelle of rest) {
-					const fach = textVon(zelle).trim()
+					const { fach, raum } = geteilteZelle(textVon(zelle).trim())
 					const bereich = BEREICH_JE_FACH[fach]
 					if (istFrei(fach)) {
 						klassen(zelle, 'fach', 'fach-frei')
@@ -185,6 +207,23 @@ export const remarkStundenplanTabelle =
 						klassen(zelle, 'fach', `fach-${bereich}`)
 					} else {
 						klassen(zelle, 'fach')
+					}
+
+					// Den Raum leiser setzen. Dafuer muss er ein eigenes Element werden
+					// — CSS kann keinen Teil eines Textknotens ansprechen. Der Inhalt
+					// bleibt derselbe, nur die Auszeichnung kommt dazu.
+					if (raum !== undefined) {
+						zelle.children = [
+							{ type: 'text', value: fach },
+							{
+								type: 'stundenplanRaum',
+								data: {
+									hName: 'span',
+									hProperties: { className: ['stundenplan-raum'] },
+								},
+								children: [{ type: 'text', value: raum }],
+							},
+						]
 					}
 				}
 			}

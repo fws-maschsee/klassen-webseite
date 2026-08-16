@@ -104,6 +104,48 @@ describe('Bereiche', () => {
 	})
 })
 
+describe('Raeume in der Zelle', () => {
+	const MIT_RAUM = `
+| Zeit | Montag | Dienstag |
+| --- | --- | --- |
+| 8:15 – 9:05 | Englisch (Klassenzimmer 5A) | Sport (Sporthalle klein) |
+| 10:20 – 11:05 | Religion (cg: Klassenz. 5A · ev: Klassenz. 5B) | – |
+`
+
+	test('der Raum wird ein eigenes, leiseres Element', async () => {
+		// CSS kann keinen Teil eines Textknotens ansprechen. Damit der Raum leiser
+		// gesetzt werden kann, muss er hier ein eigenes Element werden.
+		const ergebnis = await html(MIT_RAUM)
+		expect(ergebnis).toContain(
+			'Englisch<span class="stundenplan-raum">Klassenzimmer 5A</span>',
+		)
+	})
+
+	test('der Ton richtet sich nach dem Fach, nicht nach der ganzen Zelle', async () => {
+		// Ohne das Abtrennen des Raums fände die Zuordnung „Englisch (Klassenzimmer
+		// 5A)" in keiner Bereichsliste — und KEINE Zelle eines Plans mit Raeumen
+		// waere eingefaerbt.
+		const ergebnis = await html(MIT_RAUM)
+		expect(ergebnis).toContain('class="fach fach-sprache"')
+		expect(ergebnis).toContain('class="fach fach-bewegung"')
+	})
+
+	test('eine Klammer mit Doppelpunkten und Punkten bleibt beisammen', async () => {
+		// Die Religionsgruppen der 5A stehen so in der Zelle. Der Raumteil ist hier
+		// laenger als der Fachname — das ist erlaubt.
+		const ergebnis = await html(MIT_RAUM)
+		expect(ergebnis).toContain(
+			'Religion<span class="stundenplan-raum">cg: Klassenz. 5A · ev: Klassenz. 5B</span>',
+		)
+	})
+
+	test('eine Zelle ohne Klammer bleibt unveraendert', async () => {
+		const ergebnis = await html(PLAN)
+		expect(ergebnis).not.toContain('stundenplan-raum')
+		expect(ergebnis).toContain('class="fach fach-haupt">Hauptunterricht<')
+	})
+})
+
 describe('Pausen', () => {
 	test('eine Zeile mit leeren Tagen wird ein Band ueber die ganze Breite', async () => {
 		const ergebnis = await html(PLAN)

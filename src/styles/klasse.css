@@ -168,6 +168,20 @@
 		background-color: var(--fws-fach-bewegung);
 	}
 
+	/*
+	 * Der Raum, in dem die Stunde stattfindet — `Fach (Raum)` in der
+	 * Markdown-Zelle. Eigene Zeile unter dem Fach und leiser: Er wird gebraucht,
+	 * wenn man vor der Tuer steht, und stoert, wenn man den Wochenrhythmus sucht.
+	 */
+	table.stundenplan .stundenplan-raum {
+		@apply mt-0.5 block text-xs;
+		color: color-mix(
+			in oklab,
+			var(--color-base-content) 55%,
+			var(--color-base-100)
+		);
+	}
+
 	/* Freie Stunde: der Strich soll da sein, aber nicht rufen. */
 	table.stundenplan .fach-frei {
 		color: color-mix(

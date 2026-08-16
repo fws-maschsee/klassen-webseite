@@ -131,6 +131,7 @@ describe('erzeugtes Stylesheet', () => {
 			'.fach-frei',
 			'.stundenplan-hinweis',
 			'.stundenplan-hinweis-label',
+			'.stundenplan-raum',
 		]) {
 			expect(stylesheet).toContain(klasse)
 		}
