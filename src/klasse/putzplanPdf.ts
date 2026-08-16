@@ -256,7 +256,6 @@ export const PUTZPLAN_VORLAGE = String.raw`
   Wochenende ist niemand in der Schule, der euch aufschließen kann.
 
   Wer an seinem Termin nicht kann, tauscht am besten direkt mit einer anderen
-  Familie und sagt danach in der Klassenverwaltung Bescheid (#kontakt). Der
-  Tausch steht danach sofort auf der Seite und in diesem PDF.
+  Familie und sagt danach in der Klassenverwaltung Bescheid (#kontakt).
 ]
 `

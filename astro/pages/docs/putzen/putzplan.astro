@@ -149,18 +149,13 @@ const editUrl = bearbeitenUrl(klasse, 'src/content/docs/putzen/putzplan.md')
       */}
       <p>
         <a href="/docs/putzen/putzplan.pdf">Diesen Plan als PDF herunterladen</a>
-        — zum Ausdrucken und Aufhängen. Er wird beim Herunterladen aus denselben
-        Daten erzeugt wie die Tabelle oben, kann also nicht veralten.
+        — zum Ausdrucken und Aufhängen.
       </p>
 
       <p>
         Wer an seinem Termin nicht kann, tauscht am besten direkt mit einer
         anderen Familie und sagt danach in der Klassenverwaltung Bescheid
-        (<a href={`mailto:${klasse.contactMail}`}>{klasse.contactName || klasse.contactMail}</a>)
-        — der Tausch ist dort in einem Satz eingetragen und steht sofort hier.
-        Diese Tabelle wird aus der Einteilung erzeugt; es gibt sie bewusst nur
-        einmal, damit nicht zwei Fassungen nebeneinander stehen und eine davon
-        veraltet.
+        (<a href={`mailto:${klasse.contactMail}`}>{klasse.contactName || klasse.contactMail}</a>).
       </p>
     </>
   )}
