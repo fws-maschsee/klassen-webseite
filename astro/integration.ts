@@ -14,6 +14,7 @@ import {
 } from '../src/klasse/config.ts'
 import { GETEILTE_ROUTEN } from '../src/klasse/routes.ts'
 import { remarkAdmonitionLabels } from '../src/remark/admonitionLabels.ts'
+import { remarkStundenplanTabelle } from '../src/remark/stundenplanTabelle.ts'
 import type { NavigationTree } from './types/shipyard-base.js'
 
 /**
@@ -141,7 +142,15 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 					// redirect_uri abgesichert.
 					security: { checkOrigin: false },
 					markdown: {
-						// NUR die Label-Normalisierung. Den Direktiven-Parser und
+						// Genau ZWEI eigene Plugins, und beide tun etwas, das shipyard
+						// nicht tut: `remarkAdmonitionLabels` normalisiert den
+						// Admonition-Titel, `remarkStundenplanTabelle` zeichnet die
+						// Stundenplan-Tabelle aus (Faecher nach Bereichen, Pausen als
+						// Band). Letzteres muss ein Remark-Plugin sein, weil die
+						// Inhaltsseiten `.md` sind und nichts importieren koennen und
+						// CSS nicht auf Zellentext matchen kann.
+						//
+						// Den Direktiven-Parser und
 						// `remarkAdmonitions` setzt shipyard-base seit 0.7 selbst; Astros
 						// `mergeConfig` konkateniert `remarkPlugins`, und unified verwirft
 						// beim `use()` einen Eintrag, den es unter derselben Funktion
@@ -162,7 +171,7 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 						// den Titel in `node.label`, und sonst steht über jeder
 						// Admonition „Warning" statt „WICHTIG". Gemessen und bewacht in
 						// `tests/klasse/markdown.test.ts`.
-						remarkPlugins: [remarkAdmonitionLabels],
+						remarkPlugins: [remarkAdmonitionLabels, remarkStundenplanTabelle],
 					},
 					vite: {
 						plugins: [

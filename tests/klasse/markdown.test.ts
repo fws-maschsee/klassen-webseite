@@ -107,14 +107,20 @@ const remarkNamen = async () => {
 }
 
 describe('Pluginliste', () => {
-	test('diese Integration steuert genau ein Plugin bei', async () => {
+	test('diese Integration steuert genau ihre zwei eigenen Plugins bei', async () => {
+		// Zwei, und beide tun etwas, das shipyard nicht tut: die
+		// Label-Normalisierung und die Auszeichnung der Stundenplan-Tabelle.
+		//
 		// Alles andere pflegt shipyard, und zwar veraenderlich: 0.8.1 hat den
-		// Direktiven-Parser ausgetauscht. Ein zweiter Eintrag von hier waere eine
+		// Direktiven-Parser ausgetauscht. Ein eigener Eintrag DAFUER waere eine
 		// zweite Wahrheit ueber eine Liste, die uns nicht gehoert — und ein
 		// stehengebliebener `remarkDirective` wuerde dessen alte
 		// micromark-Erweiterungen weiter registrieren.
 		const namen = await remarkNamen()
 		expect(namen.filter((n) => n === 'remarkAdmonitionLabels')).toHaveLength(1)
+		expect(namen.filter((n) => n === 'remarkStundenplanTabelle')).toHaveLength(
+			1,
+		)
 		expect(namen.filter((n) => n === 'remarkAdmonitions')).toHaveLength(1)
 		expect(
 			namen.filter((n) => n.toLowerCase().includes('directive')),
