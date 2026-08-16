@@ -6,6 +6,7 @@ import express from 'express'
 import { type KlassenConfig, setKlassenConfig } from '../klasse/config.ts'
 import { openDb } from '../lib/db/index.ts'
 import { assertInstanceMatches, instanceLabel } from '../lib/db/instance.ts'
+import { seedDemoData } from '../lib/db/saatdaten.ts'
 import { runMigrations } from '../migrations.ts'
 import { port, publicBaseUrl } from './config.ts'
 import { mcpAuthMiddleware, mcpRequestHandler } from './mcp/handler.ts'
@@ -77,6 +78,38 @@ export const startServer = async (
 		if (neu.length > 0) {
 			console.log(
 				`[server] ${neu.length} Migration(en) angewendet: ${neu.join(', ')}`,
+			)
+		}
+	}
+
+	// Saatdaten fuer eine Vorschau-Umgebung (PR-Preview). NUR erfundene Namen,
+	// NUR in eine frisch migrierte Datei — die Begruendung und die Sicherung
+	// stehen in `src/lib/db/saatdaten.ts`.
+	//
+	// Der Schalter steht hier und nicht in der Klasse, weil beide Klassen
+	// dieselbe Vorschau bekommen sollen. In der Produktion ist er nicht gesetzt;
+	// waere er es, taete er trotzdem nichts: die Produktionsdatei ist nicht
+	// frisch, und dann schreibt `seedDemoData` keine Zeile.
+	//
+	// Der Aufruf steht VOR `assertInstanceMatches`: Danach stuende in `app_meta`
+	// die Instanz-Identitaet, und die Datei waere per Definition nicht mehr
+	// frisch. Diese Reihenfolge ist also kein Zufall, sondern der Grund, warum
+	// die Saat ueberhaupt je greift.
+	if (process.env.SEED_DEMO_DATA === 'true') {
+		const saat = seedDemoData(db, new Date(), options.migrationsDirs ?? [])
+		if (saat.gesaet) {
+			console.log(
+				`[saat] Vorschau befuellt: ${saat.familien} erfundene Familien, ` +
+					`${saat.mitglieder} Personen, ${saat.termine} Putztermine, ` +
+					`${saat.verteiler} Verteiler`,
+			)
+		} else {
+			console.warn(
+				`[saat] SEED_DEMO_DATA ist gesetzt, aber die Datenbank ist nicht ` +
+					`frisch (Tabelle "${saat.grund?.tabelle}": ${saat.grund?.ist} statt ` +
+					`${saat.grund?.soll} Zeilen) — es wurde NICHTS geschrieben. Genau ` +
+					`so ist die Sicherung gedacht: eine Datenbank mit Inhalt wird nie ` +
+					`besaet.`,
 			)
 		}
 	}

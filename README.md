@@ -958,6 +958,35 @@ YAML-Datei unreferenziert unter `src/content/` liegt und Astro sie ignoriert.
 Deshalb gehören Datei, Markdown-Änderung und Zeiger in einen Commit, und deshalb
 darf der Klassen-PR nicht vor dem hiesigen gemergt werden.
 
+## Vorschau-Umgebungen bekommen erfundene Daten
+
+Zu jedem offenen Pull Request eines Klassen-Repos läuft eine eigene Umgebung
+(`fws-maschsee/server-config`, `runbooks/pr-previews.md`). Sie bekommt **keine
+Kopie der Produktionsdatenbank** — weder über einen geteilten PVC noch über
+einen Kopierschritt noch aus einem Backup. Ihr Datenträger ist ein `emptyDir`:
+bei jedem Podstart leer, nach dem Schließen des PRs weg.
+
+Damit sie trotzdem etwas zeigt, befüllt `src/lib/db/saatdaten.ts` sie beim Start
+mit erfundenen Daten, sobald `SEED_DEMO_DATA=true` gesetzt ist: zehn Familien
+mit Baumnamen (`familie-ahorn` …) auf `example.org`-Adressen, ein Putzplan über
+zwölf Termine und zwei Verteiler. Die Saat liegt hier im geteilten Code und
+nicht in den Klassen-Repos, damit beide Klassen dieselbe Vorschau sehen — eine
+Vorschau soll zeigen, wie der Code sich verhält, nicht welche Klasse man
+erwischt hat.
+
+**Der Schalter tut in der Produktion nichts.** Gesät wird nur in eine Datenbank,
+die genau so aussieht wie eine frisch migrierte — verglichen wird gegen eine im
+Speicher migrierte Vergleichsdatei, Tabelle für Tabelle. Eine einzige Zeile
+mehr, und die Saat bricht mit einer Protokollzeile ab, ohne etwas zu schreiben.
+Die Produktionsdatei fällt schon an `app_meta` durch (dort steht seit dem ersten
+Start die Instanz-Identität). Das ist eine geprüfte Aussage:
+`tests/db/saatdaten.test.ts`.
+
+Warum zehn Familien und nicht acht: Bei acht Familien und zwei je Termin müsste
+jede Familie in jedem Fenster von vier Terminen genau einmal vorkommen — der
+Plan hätte zwangsläufig die Periode vier und verletzte ab dem fünften Termin die
+Regel „jede Paarung nur einmal".
+
 ## Vom YAML-Putzplan in die Datenbank
 
 Der Putzplan stand als `src/content/putzplan.yaml` im Klassen-Repo und ist in
