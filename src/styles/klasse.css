@@ -187,6 +187,30 @@
 	}
 
 	/*
+	 * Hinweiszeilen: was neben dem Stundenraster steht, aber je Tag verschieden
+	 * ist — Unterrichtsschluss, Betreuung danach. Dasselbe ruhige Band wie die
+	 * Pausen, damit man auf einen Blick sieht, dass hier kein Unterricht mehr
+	 * steht; im PDF sehen dieselben Zeilen genauso aus.
+	 */
+	table.stundenplan tr.stundenplan-hinweis > td {
+		background-color: color-mix(
+			in oklab,
+			var(--color-base-200) 55%,
+			var(--color-base-100)
+		);
+		@apply text-xs;
+	}
+
+	table.stundenplan td.stundenplan-hinweis-label {
+		@apply text-left;
+		color: color-mix(
+			in oklab,
+			var(--color-base-content) 60%,
+			var(--color-base-100)
+		);
+	}
+
+	/*
 	 * Die Pause: ein Atemzug, keine laute Zeile.
 	 *
 	 * `td.` und nicht nur `.`: Sonst gewinnt die Regel fuer die erste Spalte

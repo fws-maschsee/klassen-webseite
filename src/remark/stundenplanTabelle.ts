@@ -98,6 +98,13 @@ const klassen = (knoten: Knoten, ...namen: string[]): void => {
 const istLeer = (zelle: Knoten): boolean => textVon(zelle).trim() === ''
 
 /**
+ * Woran eine Unterrichtszeile zu erkennen ist: In der Zeitspalte steht eine
+ * Uhrzeit (`08:15 – 09:10`). Steht dort etwas anderes, ist die Zeile ein
+ * Hinweis und kein Teil des Stundenrasters.
+ */
+const ZEITANGABE = /^\d{1,2}[:.]\d{2}/
+
+/**
  * Freie Stunden: In der Tabelle steht ein Gedankenstrich, damit die Zelle nicht
  * einfach fehlt. Beide Striche gelten, weil beide vorkommen.
  */
@@ -145,6 +152,26 @@ export const remarkStundenplanTabelle =
 					// genau dieselben fuenf leeren Zellen noch einmal — nur ohne
 					// Klasse, und damit ohne Handhabe, sie zu verstecken.
 					for (const leer of rest) klassen(leer, 'stundenplan-leer')
+					continue
+				}
+
+				// Eine Hinweiszeile: In der Zeitspalte steht keine Uhrzeit, sondern
+				// eine Beschriftung — „Unterrichtsschluss", „Betreuung danach". Was
+				// dort steht, ist dann auch kein Fach, sondern eine Angabe je Tag.
+				//
+				// Erkannt an der Zeitspalte und nicht an einer Liste erlaubter
+				// Beschriftungen: Die Spalte heisst „Zeit", also steht in einer
+				// Unterrichtszeile eine Zeit darin. Tut sie das nicht, gehoert die
+				// Zeile nicht zum Stundenraster. Das ist dieselbe Art Regel wie die
+				// Erkennung der Tabelle selbst, und sie kommt ohne Pflegeliste aus.
+				//
+				// Diese Zeilen bekommen KEINEN Fachton. Ein Ton haette hier nichts
+				// einzuordnen, und „Musik" als Betreuungsangabe waere sonst plötzlich
+				// rosé.
+				if (!ZEITANGABE.test(textVon(erste).trim())) {
+					klassen(zeile, 'stundenplan-hinweis')
+					klassen(erste, 'stundenplan-hinweis-label')
+					for (const zelle of rest) klassen(zelle, 'stundenplan-hinweis-wert')
 					continue
 				}
 

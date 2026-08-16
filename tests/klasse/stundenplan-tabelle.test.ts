@@ -136,6 +136,49 @@ describe('Pausen', () => {
 	})
 })
 
+describe('Hinweiszeilen', () => {
+	const MIT_HINWEIS = `
+| Zeit | Montag | Dienstag |
+| --- | --- | --- |
+| 8:15 – 9:10 | Sport | Musik |
+| Unterrichtsschluss | 13:00 Uhr | 11:55 Uhr |
+`
+
+	test('eine Zeile ohne Uhrzeit in der Zeitspalte ist ein Hinweis', async () => {
+		// Erkannt an der Zeitspalte und nicht an einer Liste erlaubter
+		// Beschriftungen: Die Spalte heisst „Zeit", also steht in einer
+		// Unterrichtszeile eine Zeit darin. Eine Pflegeliste („Unterrichtsschluss",
+		// „Betreuung danach", …) waere eine zweite Stelle, an der die naechste
+		// Klasse etwas nachtragen muesste.
+		const ergebnis = await html(MIT_HINWEIS)
+		expect(ergebnis).toContain('<tr class="stundenplan-hinweis">')
+		expect(ergebnis).toContain(
+			'class="stundenplan-hinweis-label">Unterrichtsschluss',
+		)
+		expect(ergebnis).toContain('class="stundenplan-hinweis-wert">13:00 Uhr')
+	})
+
+	test('eine Hinweiszeile bekommt keinen Fachton', async () => {
+		// Sonst waere eine Betreuungsangabe „Musik" ploetzlich rosé eingefaerbt —
+		// die Farbe haette dort nichts einzuordnen.
+		const mitFachwort = `
+| Zeit | Montag | Dienstag |
+| --- | --- | --- |
+| Betreuung danach | Musik | Sport |
+`
+		const ergebnis = await html(mitFachwort)
+		expect(ergebnis).toContain('stundenplan-hinweis')
+		expect(ergebnis).not.toContain('fach-kunst')
+		expect(ergebnis).not.toContain('fach-bewegung')
+	})
+
+	test('eine Unterrichtszeile bleibt eine Unterrichtszeile', async () => {
+		const ergebnis = await html(MIT_HINWEIS)
+		expect(ergebnis).toContain('class="stundenplan-zeit">8:15 – 9:10')
+		expect(ergebnis).toContain('class="fach fach-bewegung">Sport')
+	})
+})
+
 describe('Rahmen', () => {
 	test('die Tabelle steckt in einem Rollbereich, der `not-prose` traegt', async () => {
 		// Zwei Zusicherungen in einer Zeile Markup, und beide sind gemessen:

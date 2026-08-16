@@ -129,6 +129,8 @@ describe('erzeugtes Stylesheet', () => {
 			'.fach-kunst',
 			'.fach-bewegung',
 			'.fach-frei',
+			'.stundenplan-hinweis',
+			'.stundenplan-hinweis-label',
 		]) {
 			expect(stylesheet).toContain(klasse)
 		}
