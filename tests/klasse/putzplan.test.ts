@@ -137,8 +137,11 @@ describe('putzplanSchema', () => {
 	})
 
 	test('lässt einen Termin mit nur EINER Familie zu', () => {
-		// `.min(1)` und nicht `.length(2)`: bei ungerader Familienzahl bleibt der
-		// letzte Termin mit einer übrig. Das ist ein gültiger Plan, kein Fehler.
+		// Das Schema setzt die Untergrenze bewusst NICHT durch: Wie viele
+		// Familien einen Termin besetzen dürfen, ist eine Regel des Plans und
+		// steht im Schreibpfad. Eine Datei mit einem unterbesetzten Termin soll
+		// dort mit einem Satz abgelehnt werden und nicht schon am Parser
+		// scheitern — die Meldung wäre sonst die eines Schema-Fehlers.
 		expect(
 			putzplanSchema.safeParse({
 				...gueltig,

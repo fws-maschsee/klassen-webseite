@@ -64,10 +64,12 @@ export const PUTZPLAN_DATEI = 'src/content/putzplan.yaml'
  * - **`id` steht nicht im Schema.** Der `file()`-Loader zieht sie aus dem Feld
  *   `id` jedes Eintrags und verwaltet sie selbst; sie kommt als
  *   `entry.id` heraus, nicht als `entry.data.id`.
- * - **`familien` ist `.min(1)` und nicht `.length(2)`.** Zwei Familien pro
- *   Termin ist die Regel, aber keine Eigenschaft der Daten: bei einer ungeraden
- *   Zahl von Familien bleibt der letzte Termin mit einer übrig, und ein Tausch
- *   soll kein Schema-Fehler sein.
+ * - **`familien` ist `.min(1)` und ohne Obergrenze.** Wie viele Familien einen
+ *   Termin besetzen dürfen, ist eine Regel des Plans und keine Eigenschaft der
+ *   Datei: Sie steht im Schreibpfad (`src/lib/db/putzplan.ts`) und wird dort
+ *   bei jedem Schreibvorgang geprüft. Das Schema hier sagt nur, was sich
+ *   überhaupt LESEN lässt — eine Datei mit einem unterbesetzten Termin soll an
+ *   der Regel scheitern und einen Satz dazu bekommen, nicht am Parser.
  */
 export const putzplanSchema = z.object({
 	datum: z.coerce.date(),
@@ -157,6 +159,24 @@ export const nachDatum = <T extends { data: { datum: Date } }>(
 	[...eintraege].sort((a, b) => a.data.datum.getTime() - b.data.datum.getTime())
 
 /**
+ * Eine Aufzählung, wie man sie spricht: `A`, `A und B`, `A, B und C`.
+ *
+ * Steht HIER und nicht dreimal im Code. Dieselbe Aufzählung entsteht in der
+ * Tabellenspalte „Familie", im Betreff der Erinnerungsmail und in den
+ * Quittungen der MCP-Werkzeuge; drei Fassungen derselben Regel heißt, dass
+ * zwei davon veralten, sobald jemand die erste anfasst.
+ *
+ * Ein simples `join(' und ')` scheidet aus: Bei drei Familien käme
+ * `A und B und C` heraus, und das liest sich wie eine Aufzählung, die jemand
+ * vergessen hat zu Ende zu schreiben.
+ */
+export const undVerbunden = (teile: readonly string[]): string => {
+	const letzter = teile.at(-1)
+	if (teile.length <= 1 || letzter === undefined) return teile.join('')
+	return `${teile.slice(0, -1).join(', ')} und ${letzter}`
+}
+
+/**
  * Die Spalte „Familie": `Familie Aumüller/Huhn und Familie Bauer`.
  *
  * Das `Familie `-Präfix steht an JEDEM Namen, so wie es in der alten
@@ -164,22 +184,12 @@ export const nachDatum = <T extends { data: { datum: Date } }>(
  *
  * Ein Schrägstrich im Namen gehört zu EINER Familie, in der die Eltern
  * verschiedene Nachnamen tragen (`Schmidt/Weber`) — er trennt keine zwei
- * Familien. Zwei Familien sind zwei Einträge und werden mit „und" verbunden.
- * Wer hier mit `/` verbindet, macht die gewachsene Notation unlesbar: aus zwei
+ * Familien. Mehrere Familien sind mehrere Einträge und werden aufgezählt. Wer
+ * hier mit `/` verbindet, macht die gewachsene Notation unlesbar: aus zwei
  * Familien würde eine mit Doppelnamen.
- *
- * Bei drei oder mehr Familien trennt ein Komma und nur das letzte Glied ein
- * „und". Heute kommt das nicht vor; die Regel steht hier, damit der Fall nicht
- * als `A und B und C` herauskommt, wenn er eintritt.
  */
-export const familienSpalte = (
-	familien: readonly { name: string }[],
-): string => {
-	const namen = familien.map(({ name }) => `Familie ${name}`)
-	const letzte = namen.at(-1)
-	if (namen.length <= 1 || letzte === undefined) return namen.join('')
-	return `${namen.slice(0, -1).join(', ')} und ${letzte}`
-}
+export const familienSpalte = (familien: readonly { name: string }[]): string =>
+	undVerbunden(familien.map(({ name }) => `Familie ${name}`))
 
 /**
  * Die Spalte „Datum": `TT.MM.JJJJ`, wie die Eltern es gewohnt sind.

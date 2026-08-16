@@ -18,7 +18,7 @@ import {
 	pruefeKonten,
 } from '../lib/versand/kontopruefung.ts'
 import { klassenConfig } from './config.ts'
-import { datumIso } from './putzplan.ts'
+import { datumIso, undVerbunden } from './putzplan.ts'
 
 /**
  * Die Erinnerung an den Putzdienst: Sonntags um 17 Uhr erfahren die Familien,
@@ -185,20 +185,6 @@ const wochentagName = (datum: Date): string =>
 	WOCHENTAGE[kalendertag(datum).wochentag] ?? ''
 
 /**
- * `A und B`, bei dreien `A, B und C`.
- *
- * Dieselbe Regel wie in `familienSpalte` der Putzplan-Seite, und aus demselben
- * Grund: Ein Schraegstrich gehoert zu EINER Familie mit zwei Nachnamen
- * (`Dziallas/Kretschmer`) und trennt keine zwei Familien. Wer hier mit `/`
- * verbindet, macht aus zwei Familien eine.
- */
-const undVerbunden = (namen: readonly string[]): string => {
-	const letzter = namen.at(-1)
-	if (namen.length <= 1 || letzter === undefined) return namen.join('')
-	return `${namen.slice(0, -1).join(', ')} und ${letzter}`
-}
-
-/**
  * Der Anzeigename einer Familie: das Label ihrer Gruppe.
  *
  * Das `Familie `-Praefix setzt die Mail selbst, deshalb wird ein bereits im
@@ -275,8 +261,8 @@ export const baueErinnerungstext = (
  * Die versendbare Erinnerung an EINE Adresse.
  *
  * Eine Mail je Adresse und nicht eine an alle: Ein gemeinsames `To` verteilt
- * die Adressen beider Familien an beide Familien, und das ist nicht unsere
- * Entscheidung.
+ * die Adressen der eingeteilten Familien untereinander, und das ist nicht
+ * unsere Entscheidung.
  *
  * `Auto-Submitted: auto-generated` gehoert dazu (RFC 3834). Ohne den Header
  * antwortet die erste Abwesenheitsnotiz auf die Erinnerung, und die Antwort
@@ -311,8 +297,8 @@ export const baueErinnerungsMail = (
  * Empfaengerliste ist im Versand nicht von „alles erledigt" zu unterscheiden.
  * Ohne diese Meldung glaubt die Familie, sie sei nicht dran, der Betrieb
  * glaubt, die Erinnerung sei raus, und am Freitag steht niemand da. Die
- * Erinnerung an die ANDERE Familie geht trotzdem raus: Eine fehlende Adresse
- * ist kein Grund, auch noch die Familie im Dunkeln zu lassen, die man
+ * Erinnerung an die UEBRIGEN Familien des Termins geht trotzdem raus: Eine
+ * fehlende Adresse ist kein Grund, auch noch die im Dunkeln zu lassen, die man
  * erreichen kann.
  */
 export const baueMeldung = (

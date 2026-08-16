@@ -151,7 +151,7 @@ describe('set_putztermin', () => {
 			arguments: { date: '2026-08-28', groups: ['familie-winter'] },
 		})
 		expect((result as { isError?: boolean }).isError).toBe(true)
-		expect(textOf(result)).toContain('genau 2')
+		expect(textOf(result)).toContain('mindestens 2')
 		expect(textOf(result)).not.toContain('constraint')
 		await client.close()
 	})
@@ -310,7 +310,7 @@ describe('import_putzplan', () => {
 			arguments: { path: 'tests/fixtures/putzplan.yaml', replace: true },
 		})
 		expect((result as { isError?: boolean }).isError).toBe(true)
-		expect(textOf(result)).toContain('genau 2')
+		expect(textOf(result)).toContain('mindestens 2')
 
 		const plan = JSON.parse(
 			textOf(await client.callTool({ name: 'get_putzplan', arguments: {} })),

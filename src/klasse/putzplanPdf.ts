@@ -251,11 +251,11 @@ export const PUTZPLAN_VORLAGE = String.raw`
 #block(width: 100%, inset: 0pt)[
   #set text(size: 9pt)
 
-  Geputzt wird am Wochenende, frühestens am Freitag. Sprecht euch bitte mit der
-  anderen Familie ab, wer wann kommt — ihr seid zu zweit eingeteilt, und das
-  Wochenende ist lang genug für zwei Termine. Denkt an den Schlüssel: Den holt
-  ihr am besten schon am Freitag ab, am Wochenende ist niemand in der Schule,
-  der euch aufschließen kann.
+  Geputzt wird am Wochenende, frühestens am Freitag. Wer mit euch eingeteilt
+  ist, steht in der Tabelle — sprecht euch bitte ab, wer wann kommt. Das
+  Wochenende ist lang genug, dass nicht alle zur selben Zeit da sein müssen.
+  Denkt an den Schlüssel: Den holt ihr am besten schon am Freitag ab, am
+  Wochenende ist niemand in der Schule, der euch aufschließen kann.
 
   Wer an seinem Termin nicht kann, tauscht am besten direkt mit einer anderen
   Familie und sagt danach in der Klassenverwaltung Bescheid (#kontakt). Der

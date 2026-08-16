@@ -4,10 +4,13 @@ import {
 	FAMILIEN_PRAEFIX,
 	familienGruppenKey,
 	putzplanAusDatei,
+	undVerbunden,
 } from '../../../klasse/putzplan.ts'
 import { upsertGroup } from '../../../lib/db/groups.ts'
 import {
 	ersetzePlan,
+	GRUPPEN_JE_TERMIN_MAX,
+	GRUPPEN_JE_TERMIN_MIN,
 	MINDESTABSTAND,
 	PutzplanVerstoss,
 	planLesen,
@@ -98,7 +101,7 @@ export const registerPutzplanTools = (
 		{
 			title: 'Putzplan ansehen',
 			description:
-				'Die ganze Putz-Einteilung, aufsteigend nach Datum. Je Termin: `date` (JJJJ-MM-TT), `note` (Freitext der Spalte "Anmerkungen", gehoert zum Datum und nicht zu den Familien) und `groups` mit `key` und `label` der beiden eingeteilten Familien. Familien sind Gruppen nach der Konvention `familie-<slug>`; wer in einer Familie ist, zeigt list_group_members.',
+				'Die ganze Putz-Einteilung, aufsteigend nach Datum. Je Termin: `date` (JJJJ-MM-TT), `note` (Freitext der Spalte "Anmerkungen", gehoert zum Datum und nicht zu den Familien) und `groups` mit `key` und `label` der eingeteilten Familien. Familien sind Gruppen nach der Konvention `familie-<slug>`; wer in einer Familie ist, zeigt list_group_members.',
 			inputSchema: {},
 		},
 		() => ({
@@ -112,13 +115,13 @@ export const registerPutzplanTools = (
 		'set_putztermin',
 		{
 			title: 'Termin umbesetzen oder anlegen',
-			description: `Setzt fest, welche zwei Familien an EINEM Termin putzen. Gibt es den Termin noch nicht, wird er angelegt. Vier Regeln werden dabei geprueft und ein Verstoss abgelehnt: genau zwei Familien je Termin, keine Familie zweimal am selben Termin, mindestens ${MINDESTABSTAND} Termine Abstand zwischen zwei Einsaetzen derselben Familie, und keine Paarung zweimal im ganzen Plan. Geprueft wird der GESAMTE Plan danach, nicht nur dieser Termin — eine Umbesetzung kann den Abstand des naechsten Termins kaputtmachen. Wer nur zwei Familien tauschen will, nimmt swap_putztermine: das ist ein Aufruf statt zweier und kann zwischendurch nicht ungueltig werden. \`note\` weglassen laesst eine vorhandene Anmerkung stehen, \`null\` loescht sie.`,
+			description: `Setzt fest, welche Familien an EINEM Termin putzen. Gibt es den Termin noch nicht, wird er angelegt. Vier Regeln werden dabei geprueft und ein Verstoss abgelehnt: mindestens ${GRUPPEN_JE_TERMIN_MIN} und hoechstens ${GRUPPEN_JE_TERMIN_MAX} Familien je Termin, keine Familie zweimal am selben Termin, mindestens ${MINDESTABSTAND} Termine Abstand zwischen zwei Einsaetzen derselben Familie, und keine Paarung zweimal im ganzen Plan. Eine Paarung sind ZWEI Familien, die zusammen eingeteilt sind; ein Termin zu dritt enthaelt drei davon und verbraucht sie alle. Geprueft wird der GESAMTE Plan danach, nicht nur dieser Termin — eine Umbesetzung kann den Abstand des naechsten Termins kaputtmachen. Wer nur zwei Termine tauschen will, nimmt swap_putztermine: das ist ein Aufruf statt zweier und kann zwischendurch nicht ungueltig werden. \`note\` weglassen laesst eine vorhandene Anmerkung stehen, \`null\` loescht sie.`,
 			inputSchema: {
 				date: DatumSchema,
 				groups: z
 					.array(GroupKeySchema)
 					.describe(
-						'Die Group-Keys der beiden Familien, z.B. ["familie-morzynski", "familie-bauer"].',
+						`Die Group-Keys der eingeteilten Familien, ${GRUPPEN_JE_TERMIN_MIN} bis ${GRUPPEN_JE_TERMIN_MAX} Stueck, z.B. ["familie-morzynski", "familie-bauer"].`,
 					),
 				note: z
 					.string()
@@ -134,7 +137,7 @@ export const registerPutzplanTools = (
 				() => setzeTermin({ date, groups, note }),
 				(plan) => {
 					const termin = plan.find((t) => t.date === date)
-					return `Am ${date} putzen jetzt: ${termin?.groups.join(' und ')}. Der Plan hat ${plan.length} Termine.`
+					return `Am ${date} putzen jetzt: ${undVerbunden(termin?.groups ?? [])}. Der Plan hat ${plan.length} Termine.`
 				},
 			),
 	)
@@ -155,7 +158,7 @@ export const registerPutzplanTools = (
 				(plan) => {
 					const a = plan.find((t) => t.date === date_a)
 					const b = plan.find((t) => t.date === date_b)
-					return `Getauscht. Am ${date_a}: ${a?.groups.join(' und ')}. Am ${date_b}: ${b?.groups.join(' und ')}.`
+					return `Getauscht. Am ${date_a}: ${undVerbunden(a?.groups ?? [])}. Am ${date_b}: ${undVerbunden(b?.groups ?? [])}.`
 				},
 			),
 	)

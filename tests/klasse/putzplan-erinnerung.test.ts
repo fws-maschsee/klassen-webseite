@@ -209,7 +209,7 @@ describe('Fälligkeit', () => {
 })
 
 describe('Versand', () => {
-	test('sonntags nach 17 Uhr an alle Mitglieder beider Familien', async () => {
+	test('sonntags nach 17 Uhr an alle Mitglieder der eingeteilten Familien', async () => {
 		const ergebnis = await nachsehen(SONNTAG_17_UHR)
 
 		expect(ergebnis).toMatchObject({
@@ -229,8 +229,8 @@ describe('Versand', () => {
 		expect(mail.subject).toBe(
 			'Putzen am Freitag, 21.08. — Probst/Vogel und Sonnenschein',
 		)
-		// Beide Familien stehen in JEDER Mail: Wer liest, soll sehen, mit wem er
-		// zusammen dran ist.
+		// ALLE eingeteilten Familien stehen in JEDER Mail: Wer liest, soll sehen,
+		// mit wem er zusammen dran ist.
 		expect(mail.text).toContain('    Familie Probst/Vogel')
 		expect(mail.text).toContain('    Familie Sonnenschein')
 		expect(mail.text).toContain('am kommenden Freitag, dem 21. August')
@@ -487,10 +487,18 @@ describe('Wortlaut', () => {
 	})
 
 	test('drei Familien werden mit Komma und „und" verbunden', () => {
+		// Seit ein Termin zu dritt besetzt sein darf, ist das kein Randfall mehr,
+		// sondern eine Besetzung, die wirklich vorkommt.
+		//
 		// Ein Schrägstrich gehört zu EINER Familie mit zwei Nachnamen und trennt
 		// keine zwei — wer hier mit „/" verbindet, macht aus dreien eine.
-		const { subject } = baueErinnerungstext(FREITAG, ['A', 'B/C', 'D'])
+		const { subject, text } = baueErinnerungstext(FREITAG, ['A', 'B/C', 'D'])
 		expect(subject).toContain('A, B/C und D')
+		expect(subject).not.toContain('A und B/C und D')
+		// Im Rumpf steht jede Familie auf einer eigenen Zeile, auch die dritte.
+		for (const name of ['A', 'B/C', 'D']) {
+			expect(text).toContain(`    Familie ${name}`)
+		}
 	})
 
 	test('trägt Auto-Submitted, damit keine Abwesenheitsnotiz antwortet', async () => {

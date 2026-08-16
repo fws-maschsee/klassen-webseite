@@ -52,7 +52,7 @@ BEGIN
   UPDATE cleaning_dates SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE date = NEW.date;
 END;
 
--- Wer an einem Termin putzt. Eine Zeile je Familie, also zwei je Termin.
+-- Wer an einem Termin putzt. Eine Zeile je eingeteilter Familie.
 --
 -- `group_key` zeigt auf die Whitelist `groups` — dieselbe Tabelle, aus der
 -- Verteiler und Mailinglisten ihre Empfaenger holen. Damit ist die Verbindung
@@ -61,8 +61,8 @@ END;
 --
 -- ON DELETE RESTRICT und nicht CASCADE: Wird eine Familiengruppe geloescht,
 -- waehrend sie noch im Plan steht, soll das SCHEITERN. Mit CASCADE bliebe der
--- Termin mit einer Familie zurueck — ein Plan, der vollstaendig aussieht und
--- an dem eine Familie fehlt, ist genau der Ausfall, den niemand bemerkt.
+-- Termin unterbesetzt zurueck — ein Plan, der vollstaendig aussieht und an dem
+-- eine Familie fehlt, ist genau der Ausfall, den niemand bemerkt.
 --
 -- Der Primaerschluessel (date, group_key) ist zugleich die zweite der vier
 -- Planregeln: Dieselbe Familie kann an einem Termin nicht zweimal stehen. Die

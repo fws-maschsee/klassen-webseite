@@ -31,8 +31,23 @@ import { openDb } from './index.ts'
  * der Seite.
  */
 
-/** Genau zwei Familien putzen zusammen. Regel 1. */
-export const GRUPPEN_JE_TERMIN = 2
+/**
+ * Wie viele Familien zusammen putzen: mindestens zwei, hoechstens drei.
+ * Regel 1.
+ *
+ * Die Untergrenze ist die eigentliche Regel und aelter als die Obergrenze:
+ * Eine Familie allein soll nicht putzen muessen. Die Obergrenze kam dazu,
+ * damit ein Termin nicht als Sammelbecken fuer alle endet, die woanders nicht
+ * konnten — zu dritt teilt man die Arbeit noch, zu sechst raeumt man
+ * uebereinander.
+ *
+ * Ein Bereich und keine feste Zahl, weil eine ungerade Familienzahl sonst
+ * keinen vollen Plan zulaesst: Bei 25 Familien bleibt bei lauter Zweiern eine
+ * uebrig, und die stand bisher allein da — was Regel 1 gerade verbietet. Ein
+ * Dreier loest genau das.
+ */
+export const GRUPPEN_JE_TERMIN_MIN = 2
+export const GRUPPEN_JE_TERMIN_MAX = 3
 
 /**
  * Wie viele Termine mindestens zwischen zwei Einsaetzen DERSELBEN Familie
@@ -47,7 +62,10 @@ export const GRUPPEN_JE_TERMIN = 2
  */
 export const MINDESTABSTAND = 4
 
-/** Ein Termin, wie der Plan ihn kennt: Datum, Anmerkung, zwei Gruppen-Keys. */
+/**
+ * Ein Termin, wie der Plan ihn kennt: Datum, Anmerkung, die Gruppen-Keys der
+ * eingeteilten Familien.
+ */
 export type Termin = {
 	/** `JJJJ-MM-TT`. Zugleich der Schluessel des Termins. */
 	date: string
@@ -120,11 +138,14 @@ export const planVerstoesse = (plan: readonly Termin[]): Verstoss[] => {
 
 	// Regel 1 und 2: Eigenschaften eines einzelnen Termins.
 	for (const termin of sortiert) {
-		if (termin.groups.length !== GRUPPEN_JE_TERMIN) {
+		if (
+			termin.groups.length < GRUPPEN_JE_TERMIN_MIN ||
+			termin.groups.length > GRUPPEN_JE_TERMIN_MAX
+		) {
 			verstoesse.push({
 				rule: 'group_count',
 				date: termin.date,
-				text: `Am ${termin.date} sind ${termin.groups.length} Familien eingeteilt, es muessen genau ${GRUPPEN_JE_TERMIN} sein${
+				text: `Am ${termin.date} sind ${termin.groups.length} Familien eingeteilt, es muessen mindestens ${GRUPPEN_JE_TERMIN_MIN} und hoechstens ${GRUPPEN_JE_TERMIN_MAX} sein${
 					termin.groups.length > 0 ? ` (${termin.groups.join(', ')})` : ''
 				}.`,
 			})
@@ -160,20 +181,44 @@ export const planVerstoesse = (plan: readonly Termin[]): Verstoss[] => {
 	// Regel 4: Jede Paarung hoechstens einmal im ganzen Plan. Wer schon einmal
 	// zusammen geputzt hat, soll beim naechsten Mal jemand anderen kennenlernen
 	// — das ist der Zweck der Einteilung und nicht bloss Buchhaltung.
+	//
+	// Seit ein Termin auch zu dritt besetzt sein darf, muss dastehen, was
+	// "Paarung" dann heisst. Zwei Lesarten waeren moeglich:
+	//
+	// (a) Die BELEGUNG des Termins als Ganzes — `A + B + C` waere ein eigener
+	//     Schluessel, der mit `A + B` nichts zu tun haette.
+	// (b) Jedes PAAR, das sich an dem Termin begegnet — ein Dreier enthaelt
+	//     drei davon: `A + B`, `A + C`, `B + C`.
+	//
+	// Es gilt (b), und zwar aus dem Zweck der Regel: Sie soll dafuer sorgen,
+	// dass Familien einander kennenlernen. Ob A und B zu zweit oder zu dritt
+	// zusammen geputzt haben, aendert nichts daran, DASS sie sich begegnet
+	// sind. Nach (a) waere die Regel ausserdem still wirkungslos, sobald ein
+	// Dreier im Plan steht: `A + B + C` und `A + B` kollidierten nie, und A und
+	// B duerften beliebig oft wieder zusammen — eine Regel, die nicht mehr
+	// ablehnt, ohne dass jemand sie abgeschafft haette.
+	//
+	// Der Preis ist ehrlich zu nennen: Ein Dreier verbraucht drei Paarungen
+	// statt einer und schraenkt den restlichen Plan entsprechend staerker ein.
+	// Das ist die richtige Seite, auf der man irrt — sie lehnt zu viel ab und
+	// nicht zu wenig, und ein abgelehnter Termin sagt, warum.
 	const paare = new Map<string, string>()
 	for (const termin of sortiert) {
 		const beteiligte = [...new Set(termin.groups)].sort()
-		if (beteiligte.length < 2) continue
-		const paar = beteiligte.join(' + ')
-		const frueher = paare.get(paar)
-		if (frueher !== undefined) {
-			verstoesse.push({
-				rule: 'repeated_pair',
-				date: termin.date,
-				text: `${paar} sind am ${termin.date} eingeteilt und waren es schon am ${frueher} — jede Paarung kommt im Plan nur einmal vor.`,
-			})
-		} else {
-			paare.set(paar, termin.date)
+		for (let i = 0; i < beteiligte.length; i++) {
+			for (let j = i + 1; j < beteiligte.length; j++) {
+				const paar = `${beteiligte[i]} + ${beteiligte[j]}`
+				const frueher = paare.get(paar)
+				if (frueher !== undefined) {
+					verstoesse.push({
+						rule: 'repeated_pair',
+						date: termin.date,
+						text: `${paar} sind am ${termin.date} eingeteilt und waren es schon am ${frueher} — jede Paarung kommt im Plan nur einmal vor.`,
+					})
+				} else {
+					paare.set(paar, termin.date)
+				}
+			}
 		}
 	}
 
