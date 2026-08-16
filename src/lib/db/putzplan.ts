@@ -34,6 +34,7 @@ import { openDb } from './index.ts'
  * Was ein Mensch liest, ist deutsch: die Meldungen unten und die Tabelle auf
  * der Seite.
  */
+
 /**
  * Ein Termin, wie der Plan ihn kennt: Datum, Anmerkung, die Gruppen-Keys der
  * eingeteilten Familien.
