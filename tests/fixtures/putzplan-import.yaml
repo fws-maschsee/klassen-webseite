@@ -1,19 +1,10 @@
 # Steht fuer die `src/content/putzplan.yaml` einer Klasse, wie sie AM TAG DES
-# IMPORTS aussieht: gueltig nach allen vier Planregeln, damit
-# `import_putzplan` sie annimmt.
+# IMPORTS aussieht.
 #
-# Getrennt von `putzplan.yaml` in diesem Verzeichnis, und zwar aus einem
-# konkreten Grund: Jene Datei enthaelt absichtlich einen Termin mit nur EINER
-# Familie — sie belegt, dass das Schema `.min(1)` ist und die Untergrenze nicht
-# selbst durchsetzt. Die Datenbank verlangt mindestens zwei; beide Aussagen sind
-# richtig und gehoeren deshalb in zwei Dateien. Wer sie in eine legte, muesste
-# eine davon aufgeben.
-#
-# Zehn Familien, zehn Termine, jede Familie zweimal. Zehn ist die kleinste
-# Zahl, bei der jede Familie ein zweites Mal drankommen kann, ohne die
-# Abstandsregel (mindestens vier Termine) oder die Paarungsregel (jede Paarung
-# nur einmal) zu verletzen — mit acht Familien bliebe fuer den fuenften Termin
-# nur die Wiederholung der ersten Paarung.
+# Getrennt von `putzplan.yaml` in diesem Verzeichnis: Jene Datei ist die
+# kleine, an der die Umrechnung geprueft wird, diese die vollstaendige, an der
+# der Import als Ganzes haengt. Zehn Familien, zehn Termine, jede Familie
+# zweimal — eine gewoehnliche Einteilung, wie eine Klasse sie eintraegt.
 #
 # ABSICHTLICH nicht chronologisch: der Import sortiert selbst, und ein
 # nachgetragener Termin landet in der echten Datei dort, wo gerade Platz war.

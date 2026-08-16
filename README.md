@@ -48,7 +48,7 @@ dreimal.
 | `db/migrations/**` — das Datenbankschema | `deploy/**`, `Dockerfile`, `.env`, Sealed Secrets |
 | `astro/content.config.ts` — das Schema der Inhalte, nicht die Inhalte | (nichts mehr: der Worker je Klasse ist entfallen, es gibt einen Dispatcher für die ganze Zone) |
 | die Astro-Integration mit dem ganzen Stack (Adapter, shipyard, Markdown-Plugins) | Playwright-/E2E-Tests, die eine laufende Instanz brauchen |
-| `src/klasse/putzplan.ts`, `src/lib/db/putzplan.ts` — Regeln und Darstellung des Putzplans | die Putz-Einteilung selbst — jetzt in der **Datenbank** der Klasse, bis zum Import noch als `src/content/putzplan.yaml` |
+| `src/klasse/putzplan.ts`, `src/lib/db/putzplan.ts` — Daten und Darstellung des Putzplans | die Putz-Einteilung selbst — jetzt in der **Datenbank** der Klasse, bis zum Import noch als `src/content/putzplan.yaml` |
 | die Unit-Tests des geteilten Codes | |
 
 **Die Inhalte bleiben in den Klassen-Repos, und zwar aus einem Grund, der sich
@@ -770,7 +770,7 @@ Es gibt keine `exports`-Karte mehr, die Namen auf Dateien abbildet — der Pfad
 | `#geteilt/klasse/kalender.ts` | `./kalender` | `pruefeKalender(projektWurzel, config)`, `webcalUrl(config)` |
 | `#geteilt/klasse/putzplan.ts` | — | `naechsterPutztermin()`, `familienEmpfaenger()` — die Schnittstelle des Erinnerungsdienstes; dazu `planAlsEintraege()`, `putzplanZeilen()` für die Seite und `putzplanSchema`, `optionaleDatei()`, `putzplanAusDatei()`, `PUTZPLAN_DATEI` für den einmaligen Import. Siehe [Vom YAML-Putzplan in die Datenbank](#vom-yaml-putzplan-in-die-datenbank) |
 | `#geteilt/klasse/putzplanPdf.ts` | — | der Plan als PDF: `putzplanAlsPdf()`, `putzplanPdfDaten()`, `PUTZPLAN_VORLAGE`. Siehe [Der Putzplan als PDF](#der-putzplan-als-pdf) |
-| `#geteilt/lib/db/putzplan.ts` | — | der Plan selbst: `planLesen()`, `setzeTermin()`, `tauscheTermine()`, `ersetzePlan()` und die vier Planregeln im Schreibpfad |
+| `#geteilt/lib/db/putzplan.ts` | — | der Plan selbst: `planLesen()`, `setzeTermin()`, `tauscheTermine()`, `ersetzePlan()` |
 | `geteilt/src/styles/klasse.css` | `./styles/global.css` | der Tailwind-Einstieg; per `@import` aus `src/styles/app.css` der Klasse, nicht per Subpath-Import |
 | `#geteilt/lib/…`, `#geteilt/server/…`, `#geteilt/remark/…` | `./lib/*`, … | der geteilte Code, einzeln |
 | `#geteilt/klasse/…` | `./klasse/*` | Interna der Integration (`config`, `routes`, `locals`) |
@@ -921,10 +921,9 @@ lassen:
   `id` jedes Eintrags. In der YAML gehört sie **in Anführungszeichen**
   (`id: "2026-08-21"`), weil ein nacktes `2026-08-21` als Datum geparst würde
   und der Loader einen String braucht.
-- **Mengen als `.min(1)`, nicht als feste Zahl.** Wie viele Familien einen
-  Termin besetzen dürfen, ist eine Regel des Plans und keine Eigenschaft der
-  Datei — sie steht im Schreibpfad und lehnt dort mit einem Satz ab, statt am
-  Parser zu scheitern.
+- **Mengen als `.min(1)`, nicht als feste Zahl.** Über die Anzahl der Familien
+  je Termin sagt niemand etwas. `.min(1)` steht nur da, weil ein Termin ganz
+  ohne `familien` ein Tippfehler ist und kein Eintrag.
 
 **Eine Klasse ohne die Datei muss weiter bauen.** Astros `file()` schreibt für
 eine fehlende Datei `File not found` als **Fehler** ins Build-Log — bei jedem
@@ -982,44 +981,42 @@ Was sich dadurch ändert:
 | die Daten | `src/content/putzplan.yaml` (Klassen-Repo) | `cleaning_dates`, `cleaning_assignments` |
 | eine Familie | ein Name plus `slug` in der YAML | eine **Gruppe** `familie-<slug>` in `groups` |
 | ändern | Commit, PR, Deploy | ein Satz an den MCP-Client |
-| die vier Planregeln | ein Test über der Datei | der **Schreibpfad**, `src/lib/db/putzplan.ts` |
+| die vier Planregeln | ein Test über der Datei | **abgeschafft** — siehe unten |
 
 Eine Familie ist eine Gruppe im bestehenden Modell und **kein neues
 Personenmodell**: Die Auflösung Gruppe → Personen → Adressen gibt es, sie löst
 Untergruppen rekursiv mit auf, und sie ist getestet.
 
-### Die vier Regeln stehen im Schreibpfad, nicht in einem Test
+### Es gibt keine Planregeln mehr
 
-Solange die YAML die einzige Quelle war, hat ein Test über ihr genügt: Wer sie
-änderte, machte einen Commit, und die CI der Klasse sagte nein. Über MCP gibt es
-keinen Commit mehr, gegen den eine CI laufen könnte. Deshalb prüft
-`src/lib/db/putzplan.ts` bei **jedem** Schreibvorgang, in einer Transaktion, und
-lehnt mit einem lesbaren Satz ab:
+Eine Zeit lang prüfte `src/lib/db/putzplan.ts` bei jedem Schreibvorgang vier
+Regeln: wie viele Familien ein Termin haben muss, wie viel Abstand zwischen zwei
+Einsätzen derselben Familie liegt, welche Paarung schon vergeben ist, und dass
+keine Familie zweimal am selben Termin steht. Sie sind **abgeschafft**.
 
-1. mindestens **zwei** und höchstens **drei** Familien je Termin,
-2. keine Familie zweimal am selben Termin,
-3. mindestens **vier Termine** Abstand zwischen zwei Einsätzen derselben Familie
-   (gezählt in Positionen des Plans, nicht in Wochen — Ferien unterbrechen den
-   Plan, nicht die Reihenfolge),
-4. keine Paarung zweimal im ganzen Plan.
+Der Grund ist nicht, dass sie falsch gerechnet hätten. Sie haben die falsche
+Frage beantwortet. Der Putzplan ist ein Dokument, das ein Mensch einmal im Jahr
+einträgt und danach hin und wieder anfasst. Was eine sinnvolle Einteilung ist,
+weiß die Klasse — sie kennt die Familie mit dem Neugeborenen, den Vater im
+Schichtdienst und die beiden, die ohnehin immer zusammen kommen. Code, der ihr
+das ausredet, kennt nichts davon und lehnt trotzdem ab. Jede dieser Regeln war
+irgendwann der Grund, warum ein völlig vernünftiger Tausch nicht ging.
 
-Zu Regel 1: Die **Untergrenze** ist die eigentliche Regel — eine Familie soll
-nicht allein putzen müssen. Die **Obergrenze** hält den Termin beisammen, der
-sonst zum Sammelbecken für alle würde, die woanders nicht konnten. Ein Dreier
-ist außerdem die Antwort auf eine ungerade Familienzahl, bei der lauter Zweier
-zwangsläufig einen Einzelnen übrig ließen.
+**Was bleibt, ist Integrität und keine Regel.** Der Unterschied ist der Test:
+Eine Regel sagt, wie der Plan aussehen *soll*; Integrität sagt, wann der
+Datensatz *kaputt* wäre. Geblieben sind zwei Dinge, und beide stehen im
+**Schema**, nicht in einer Prüfung:
 
-Zu Regel 4: Eine **Paarung** sind zwei Familien, die zusammen eingeteilt sind.
-Ein Termin zu dritt enthält davon **drei** (`A+B`, `A+C`, `B+C`) und verbraucht
-sie alle — denn ob zwei Familien sich zu zweit oder zu dritt begegnet sind,
-ändert nichts daran, *dass* sie sich begegnet sind. Die Alternative, die ganze
-Belegung als Schlüssel zu nehmen, hätte die Regel still wirkungslos gemacht:
-`A+B+C` kollidierte dann nie mit `A+B`. Der Preis ist, dass ein Dreier den
-restlichen Plan stärker einschränkt als ein Zweier.
+- Ein `group_key` muss zu einer existierenden Gruppe gehören — Fremdschlüssel
+  auf `groups`. `pruefeGruppen` macht daraus nur einen lesbaren Satz statt
+  `FOREIGN KEY constraint failed`.
+- Dieselbe Familie kann an einem Termin nicht zweimal stehen — Primärschlüssel
+  `(date, group_key)`. Das fällt strukturell weg und braucht keine eigene
+  Prüfung.
 
-Geprüft wird immer der **gesamte** Plan danach, nicht nur der geänderte Termin:
-Drei der vier Regeln sind gar keine Eigenschaft eines einzelnen Termins, und eine
-Umbesetzung kann den Abstand ihres Nachfolgers kaputtmachen.
+Wer hier wieder eine Plausibilität einbauen will, sollte vorher wissen, welchen
+konkreten Schaden sie verhindert — und ob die Klasse ihn nicht lieber selbst
+verhindert.
 
 ### Die Reihenfolge des Umzugs, je Klasse
 
@@ -1036,10 +1033,8 @@ sie richtig hat, weiß man erst, wenn jemand nachgesehen hat.
    jede Familie der Datei die Gruppe `familie-<slug>` an (Label = ihr Name) und
    schreibt den ganzen Plan. Idempotent; steht schon ein Plan da, bricht es ab
    und verlangt `replace: true`.
-   *Verstößt die Datei gegen eine der vier Regeln, wird sie abgelehnt und nichts
-   geschrieben.* Der häufigste Fall ist ein Termin mit nur **einer** Familie —
-   im YAML-Schema erlaubt (`.min(1)`), in der Datenbank nicht. Solche Termine
-   sind vor dem Import in der Datei zu berichtigen.
+   Die Einteilung wird übernommen, wie sie in der Datei steht. Abgelehnt wird
+   nur, was sich nicht anlegen lässt — etwa eine Familie ohne `slug`.
 3. **`get_putzplan` gegen die YAML halten.** Stimmen Termine, Anmerkungen und
    Familien? Das ist die Prüfung, für die die Datei noch da ist.
 4. **Personen zuordnen**: je Familie `set_group_members` bzw. `add_to_group`.

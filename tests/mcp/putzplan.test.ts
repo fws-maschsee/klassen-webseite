@@ -10,13 +10,12 @@ import { runMigrations } from '../../src/migrations.ts'
 /**
  * Der Putzplan ueber MCP.
  *
- * Zwei Fragen stehen hier, und nur die beiden: Kommt ein Verstoss gegen die
- * Planregeln als LESBARE Ablehnung beim Aufrufer an — und haengt das Lesen
- * wirklich an `admin`?
+ * Zwei Fragen stehen hier, und nur die beiden: Kommt eine Ablehnung LESBAR beim
+ * Aufrufer an — und haengt das Lesen wirklich an `admin`?
  *
- * Die Regeln selbst sind in `tests/klasse/putzplan-db.test.ts` geprueft, am
- * Schreibpfad. Sie hier ein zweites Mal durchzuspielen hiesse, dieselbe Aussage
- * zweimal zu pflegen — und die zweite Fassung waere irgendwann die falsche.
+ * Die Einteilung selbst wird nirgends geprueft. Es gibt keine Planregeln mehr:
+ * Was eine sinnvolle Einteilung ist, entscheidet die Klasse. Abgelehnt wird nur
+ * noch, was die Daten kaputt machte — eine Gruppe, die es nicht gibt.
  *
  * Der Plan nennt Familiennamen und sagt, wer wann wo ist. Deshalb ist auch das
  * LESEN `admin` und nicht `mitglied`: Die Seite `/docs/putzen/putzplan` ist die
@@ -142,16 +141,30 @@ describe('set_putztermin', () => {
 		await client.close()
 	})
 
-	it('lehnt einen Regelverstoss mit einem lesbaren Satz ab', async () => {
-		// Kein Stacktrace und kein "UNIQUE constraint failed": Der Mensch vor dem
-		// Client soll lesen koennen, WAS nicht geht, und es anders versuchen.
+	it('nimmt eine Einteilung an, ohne sie zu beurteilen', async () => {
+		// Eine einzelne Familie an einem Termin: frueher ein Verstoss, heute eine
+		// Einteilung wie jede andere. Die Klasse entscheidet, nicht der Code.
 		const client = await connect(['admin'])
 		const result = await client.callTool({
 			name: 'set_putztermin',
 			arguments: { date: '2026-08-28', groups: ['familie-winter'] },
 		})
+		expect((result as { isError?: boolean }).isError).toBeFalsy()
+		expect(textOf(result)).toContain('familie-winter')
+		await client.close()
+	})
+
+	it('lehnt eine unbekannte Gruppe mit einem lesbaren Satz ab', async () => {
+		// Kein Stacktrace und kein "FOREIGN KEY constraint failed": Der Mensch vor
+		// dem Client soll lesen koennen, WAS nicht geht. Das ist Integritaet und
+		// keine Regel — diesen Group-Key gibt es schlicht nicht.
+		const client = await connect(['admin'])
+		const result = await client.callTool({
+			name: 'set_putztermin',
+			arguments: { date: '2026-08-28', groups: ['familie-gibtesnicht'] },
+		})
 		expect((result as { isError?: boolean }).isError).toBe(true)
-		expect(textOf(result)).toContain('mindestens 2')
+		expect(textOf(result)).toContain('familie-gibtesnicht')
 		expect(textOf(result)).not.toContain('constraint')
 		await client.close()
 	})
@@ -297,25 +310,6 @@ describe('import_putzplan', () => {
 		})
 		expect((result as { isError?: boolean }).isError).toBe(true)
 		expect(textOf(result)).toContain('gibtesnicht.yaml')
-		await client.close()
-	})
-
-	it('lehnt eine Datei ab, die gegen die Planregeln verstoesst', async () => {
-		// `putzplan.yaml` hat einen Termin mit nur EINER Familie: im Schema
-		// erlaubt, in der Datenbank nicht. Der Import muss das sagen und darf
-		// nicht die Haelfte schreiben.
-		const client = await connect(['admin'])
-		const result = await client.callTool({
-			name: 'import_putzplan',
-			arguments: { path: 'tests/fixtures/putzplan.yaml', replace: true },
-		})
-		expect((result as { isError?: boolean }).isError).toBe(true)
-		expect(textOf(result)).toContain('mindestens 2')
-
-		const plan = JSON.parse(
-			textOf(await client.callTool({ name: 'get_putzplan', arguments: {} })),
-		) as { dates: unknown[] }
-		expect(plan.dates).toHaveLength(1)
 		await client.close()
 	})
 })

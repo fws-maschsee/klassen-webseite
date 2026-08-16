@@ -9,10 +9,6 @@ import {
 import { upsertGroup } from '../../../lib/db/groups.ts'
 import {
 	ersetzePlan,
-	GRUPPEN_JE_TERMIN_MAX,
-	GRUPPEN_JE_TERMIN_MIN,
-	MINDESTABSTAND,
-	PutzplanVerstoss,
 	planLesen,
 	planMitNamen,
 	setzeTermin,
@@ -35,10 +31,10 @@ import { registerPersonalDataTool, registerWriteTool } from '../guard.ts'
  * die Auskunft an die Eltern und geht durch die Middleware, nicht hier
  * hindurch.
  *
- * Die vier Planregeln stehen NICHT hier, sondern in `src/lib/db/putzplan.ts`
- * im Schreibpfad. Ein Werkzeug, das sie selbst prueft, waere eine zweite
- * Fassung derselben Regel — und die naechste Schreibstelle (der Import, ein
- * Skript, der Erinnerungsdienst) haette wieder keine.
+ * Diese Werkzeuge pruefen die Einteilung NICHT. Es gibt nichts zu pruefen: Was
+ * eine sinnvolle Einteilung ist, entscheidet die Klasse und nicht der Code.
+ * Wer hier eine Plausibilitaet einbaut, baut sie an genau einer von mehreren
+ * Schreibstellen ein — und lehnt der Klasse etwas ab, das sie so gewollt hat.
  */
 
 const toJson = (value: unknown): string => JSON.stringify(value, null, 2)
@@ -59,10 +55,10 @@ const GroupKeySchema = z
 	)
 
 /**
- * Ein Verstoss gegen die Planregeln ist ein FEHLER DES AUFRUFERS und kein
- * Absturz: Er bekommt die Saetze, die sagen, was nicht geht, und kann es
- * anders versuchen. Alles andere fliegt weiter — ein stiller `catch` um jeden
- * Fehler machte aus einem kaputten Schema eine freundliche Meldung.
+ * Ein abgelehnter Schreibvorgang ist ein FEHLER DES AUFRUFERS und kein Absturz:
+ * Er bekommt den Satz, der sagt, was nicht geht, und kann es anders versuchen.
+ * Was ueberhaupt noch ablehnt, ist die Integritaet der Daten — eine unbekannte
+ * Gruppe, ein Datum, das es nicht gibt.
  */
 const mitFehlermeldung = <T>(
 	tun: () => T,
@@ -71,9 +67,9 @@ const mitFehlermeldung = <T>(
 	try {
 		return { content: [{ type: 'text' as const, text: erfolg(tun()) }] }
 	} catch (fehler) {
-		if (fehler instanceof PutzplanVerstoss || fehler instanceof Error) {
+		if (fehler instanceof Error) {
 			return {
-				content: [{ type: 'text' as const, text: (fehler as Error).message }],
+				content: [{ type: 'text' as const, text: fehler.message }],
 				isError: true,
 			}
 		}
@@ -115,13 +111,14 @@ export const registerPutzplanTools = (
 		'set_putztermin',
 		{
 			title: 'Termin umbesetzen oder anlegen',
-			description: `Setzt fest, welche Familien an EINEM Termin putzen. Gibt es den Termin noch nicht, wird er angelegt. Vier Regeln werden dabei geprueft und ein Verstoss abgelehnt: mindestens ${GRUPPEN_JE_TERMIN_MIN} und hoechstens ${GRUPPEN_JE_TERMIN_MAX} Familien je Termin, keine Familie zweimal am selben Termin, mindestens ${MINDESTABSTAND} Termine Abstand zwischen zwei Einsaetzen derselben Familie, und keine Paarung zweimal im ganzen Plan. Eine Paarung sind ZWEI Familien, die zusammen eingeteilt sind; ein Termin zu dritt enthaelt drei davon und verbraucht sie alle. Geprueft wird der GESAMTE Plan danach, nicht nur dieser Termin — eine Umbesetzung kann den Abstand des naechsten Termins kaputtmachen. Wer nur zwei Termine tauschen will, nimmt swap_putztermine: das ist ein Aufruf statt zweier und kann zwischendurch nicht ungueltig werden. \`note\` weglassen laesst eine vorhandene Anmerkung stehen, \`null\` loescht sie.`,
+			description:
+				'Setzt fest, welche Familien an EINEM Termin putzen. Gibt es den Termin noch nicht, wird er angelegt. Die Einteilung wird uebernommen, wie sie kommt — wer wann mit wem putzt, entscheidet die Klasse. Abgelehnt wird nur, was die Daten kaputt machte: ein Group-Key, zu dem es keine Gruppe gibt, und dieselbe Familie zweimal am selben Termin. Wer die Besetzung zweier Termine vertauschen will, nimmt swap_putztermine — das ist ein Aufruf statt zweier. `note` weglassen laesst eine vorhandene Anmerkung stehen, `null` loescht sie.',
 			inputSchema: {
 				date: DatumSchema,
 				groups: z
 					.array(GroupKeySchema)
 					.describe(
-						`Die Group-Keys der eingeteilten Familien, ${GRUPPEN_JE_TERMIN_MIN} bis ${GRUPPEN_JE_TERMIN_MAX} Stueck, z.B. ["familie-morzynski", "familie-bauer"].`,
+						'Die Group-Keys der eingeteilten Familien, z.B. ["familie-morzynski", "familie-bauer"].',
 					),
 				note: z
 					.string()
@@ -149,7 +146,7 @@ export const registerPutzplanTools = (
 		{
 			title: 'Zwei Termine tauschen',
 			description:
-				'Tauscht die Einteilung zweier Termine — der Fall, um den es beim Putzplan meistens geht: Zwei Familien koennen nicht und machen es untereinander aus. Die ANMERKUNG bleibt jeweils beim Datum und wandert nicht mit, denn sie sagt etwas ueber den Tag ("(Do, da Fr Feiertag)") und nicht ueber die Familien. Die Planregeln werden trotzdem geprueft: Ein Tausch aendert keine Paarung, aber sehr wohl die Abstaende, und daran scheitert der gut gemeinte Tausch, der eine Familie zweimal in drei Wochen einteilt.',
+				'Tauscht die Einteilung zweier Termine — der Fall, um den es beim Putzplan meistens geht: Zwei Familien koennen nicht und machen es untereinander aus. Die ANMERKUNG bleibt jeweils beim Datum und wandert nicht mit, denn sie sagt etwas ueber den Tag ("(Do, da Fr Feiertag)") und nicht ueber die Familien.',
 			inputSchema: { date_a: DatumSchema, date_b: DatumSchema },
 		},
 		({ date_a, date_b }) =>
@@ -194,7 +191,7 @@ export const registerPutzplanTools = (
 		'import_putzplan',
 		{
 			title: 'Putzplan aus der YAML-Datei uebernehmen',
-			description: `EINMALIG: Uebernimmt die Einteilung aus src/content/putzplan.yaml des Klassen-Repos in die Datenbank, damit die Termine nicht von Hand nachgetragen werden muessen. Legt dabei fuer jede Familie der Datei die Gruppe "${FAMILIEN_PRAEFIX}<slug>" an (Label = ihr Name) und ersetzt den GESAMTEN Plan durch den Inhalt der Datei. Idempotent — derselbe Inhalt zweimal eingespielt ergibt denselben Zustand. Steht schon ein Plan in der Datenbank, bricht der Import ab, ausser mit \`replace: true\`: Sonst wuerde ein zweiter Lauf spaeter jeden inzwischen ueber MCP gemachten Tausch stillschweigend zuruecknehmen. Die vier Planregeln gelten auch hier; eine Datei mit einem Termin, an dem nur EINE Familie steht, wird abgelehnt und muss vorher berichtigt werden. Die YAML-Datei bleibt nach dem Import stehen und wird erst geloescht, wenn jemand geprueft hat, dass die Datenbank stimmt.`,
+			description: `EINMALIG: Uebernimmt die Einteilung aus src/content/putzplan.yaml des Klassen-Repos in die Datenbank, damit die Termine nicht von Hand nachgetragen werden muessen. Legt dabei fuer jede Familie der Datei die Gruppe "${FAMILIEN_PRAEFIX}<slug>" an (Label = ihr Name) und ersetzt den GESAMTEN Plan durch den Inhalt der Datei. Idempotent — derselbe Inhalt zweimal eingespielt ergibt denselben Zustand. Steht schon ein Plan in der Datenbank, bricht der Import ab, ausser mit \`replace: true\`: Sonst wuerde ein zweiter Lauf spaeter jeden inzwischen ueber MCP gemachten Tausch stillschweigend zuruecknehmen. Die Einteilung der Datei wird uebernommen, wie sie dort steht; abgelehnt wird nur eine Datei, deren Familien sich nicht als Gruppen anlegen lassen. Die YAML-Datei bleibt nach dem Import stehen und wird erst geloescht, wenn jemand geprueft hat, dass die Datenbank stimmt.`,
 			inputSchema: {
 				replace: z
 					.boolean()

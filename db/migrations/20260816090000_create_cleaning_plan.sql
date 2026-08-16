@@ -24,9 +24,8 @@
 -- und es macht den Import aus der YAML von selbst idempotent: Ein zweiter Lauf
 -- trifft dieselben Zeilen. Der Preis ist, dass es keine zwei Termine am selben
 -- Tag geben kann — bei einer woechentlichen Einteilung ist das keine
--- Einschraenkung, sondern die Zusicherung, die die Abstandsregel weiter unten
--- ueberhaupt erst eindeutig macht: "vier Termine Abstand" setzt eine
--- Reihenfolge voraus, und zwei Termine am selben Tag haetten keine.
+-- Einschraenkung, sondern die Zusicherung, dass der Plan eine eindeutige
+-- Reihenfolge hat.
 --
 -- `date` ist TEXT im Format `JJJJ-MM-TT`, nicht als Zeitstempel. Ein Putztermin
 -- ist ein reines Datum ohne Uhrzeit; als Zeitstempel gespeichert laege er in
@@ -64,10 +63,10 @@ END;
 -- Termin unterbesetzt zurueck — ein Plan, der vollstaendig aussieht und an dem
 -- eine Familie fehlt, ist genau der Ausfall, den niemand bemerkt.
 --
--- Der Primaerschluessel (date, group_key) ist zugleich die zweite der vier
--- Planregeln: Dieselbe Familie kann an einem Termin nicht zweimal stehen. Die
--- uebrigen drei Regeln lassen sich in SQLite nicht als Constraint ausdruecken
--- und stehen deshalb im Schreibpfad, siehe `src/lib/db/putzplan.ts`.
+-- Der Primaerschluessel (date, group_key) sorgt dafuer, dass dieselbe Familie
+-- an einem Termin nicht zweimal stehen kann. Das ist Integritaet und keine
+-- Regel ueber die Einteilung: Wie der Plan aussehen soll, entscheidet die
+-- Klasse, und es gibt keinen Code, der ihr das ausredet.
 CREATE TABLE cleaning_assignments (
   date       TEXT NOT NULL REFERENCES cleaning_dates (date) ON DELETE CASCADE ON UPDATE CASCADE,
   group_key  TEXT NOT NULL REFERENCES groups (key) ON DELETE RESTRICT ON UPDATE CASCADE,

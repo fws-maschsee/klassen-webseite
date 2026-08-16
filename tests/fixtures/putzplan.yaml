@@ -45,8 +45,8 @@
     - name: Fruehling
       slug: fruehling
 
-# Ein Termin mit nur EINER Familie — der Grund, warum `familien` im Schema
-# `.min(1)` ist und nicht `.length(2)`.
+# Ein Termin mit nur EINER Familie. Das ist eine Einteilung wie jede andere —
+# es gibt keine Regel ueber die Anzahl, weder hier noch in der Datenbank.
 - id: "2026-10-09"
   datum: 2026-10-09
   familien:
