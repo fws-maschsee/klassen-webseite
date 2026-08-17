@@ -109,6 +109,25 @@ export type KlassenConfigInput = {
 	/** Anzeigename, z.B. `Klasse Wiesen`. Seitentitel, Kopfzeile, Mails. */
 	label: string
 	/**
+	 * Wie Eltern die Klasse untereinander nennen: die Lehrkraft mit Anrede
+	 * (`Frau Wiesen`) und die Klassenbezeichnung der Schule (`5A`).
+	 *
+	 * Nur `label` genuegt dafuer nicht. `label` ist der Name der INSTANZ und
+	 * steht in Titeln und Mails; hier geht es darum, wem jemand gegenuebersteht,
+	 * der auf der falschen Seite gelandet ist. „Kein Zugriff" allein liest sich
+	 * wie ein Fehler der Software — „Das hier ist die Seite von Frau Wiesen, 5A"
+	 * sagt derselben Person, dass die Meldung stimmt und sie den Link einer
+	 * fremden Klasse hat.
+	 *
+	 * Beide Felder sind optional: Fehlen sie, fallen die Texte auf `label`
+	 * zurueck. Eine dritte Klasse ist damit sofort betriebsfaehig und bekommt
+	 * eine etwas blassere Meldung, statt beim Start an einem Pflichtfeld zu
+	 * scheitern.
+	 */
+	teacher?: string
+	/** Klassenbezeichnung der Schule, z.B. `5A`. Siehe `teacher`. */
+	grade?: string
+	/**
 	 * Die Adresse, unter der die Instanz JETZT erreichbar ist — ohne Schema.
 	 *
 	 * Der Wert ist technisch und nicht historisch: aus ihm leitet sich `siteUrl`
@@ -356,6 +375,8 @@ export const defineKlassenConfig = (
 	return {
 		slug: input.slug,
 		label: input.label,
+		teacher: input.teacher ?? '',
+		grade: input.grade ?? '',
 		domain: input.domain,
 		repoUrl: input.repoUrl,
 		contactMail: input.contactMail,
@@ -452,4 +473,22 @@ export const klassenConfig = (): KlassenConfig => {
 export const zustaendigkeit = (): string => {
 	const { contactName, contactMail } = klassenConfig()
 	return contactName ? `${contactName} (${contactMail})` : contactMail
+}
+
+/**
+ * Wem diese Seite gehört, für Menschen: `Frau Wiesen, 5A`.
+ *
+ * Gedacht für den Fall, dass jemand hier gelandet ist, ohne hier hinzugehören.
+ * Wer den Link einer fremden Klasse hat, muss zuerst erfahren, WO er ist —
+ * sonst wirkt eine Absage wie ein Fehler der Software statt wie die richtige
+ * Antwort auf den falschen Link.
+ *
+ * Fällt der Reihe nach zurück: beide Felder, dann das vorhandene, dann `label`.
+ * Ein `undefined` gibt sie nie zurück, damit die aufrufende Seite keinen
+ * Sonderfall kennen muss.
+ */
+export const wemGehoertDieSeite = (): string => {
+	const { teacher, grade, label } = klassenConfig()
+	if (teacher && grade) return `${teacher}, ${grade}`
+	return teacher || grade || label
 }

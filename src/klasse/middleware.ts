@@ -11,6 +11,7 @@ import {
 	klassenConfig,
 	PUBLIC_PATHS,
 	setKlassenConfig,
+	wemGehoertDieSeite,
 } from './config.ts'
 
 /**
@@ -71,12 +72,15 @@ export const createKlassenMiddleware = (
 			return next()
 		}
 
-		const { label, contactMail } = klassenConfig()
+		const { contactMail } = klassenConfig()
 
 		try {
 			const { response, session, setCookie } = await authenticate(
 				context.request,
-				{ className: `die ${label}`, contactMail },
+				// Nicht `label`: Wer hier abgewiesen wird, hat meist den Link einer
+				// fremden Klasse, und dem hilft „Frau Wiesen, 5A" weiter als der
+				// Instanzname.
+				{ siteOwner: wemGehoertDieSeite(), contactMail },
 			)
 
 			if (response) {

@@ -258,7 +258,7 @@ describe('(c) angemeldet, aber nicht in dieser Klasse', () => {
 		expect(seite.status).toBe(403)
 		const text = await seite.text()
 		expect(text).not.toContain(GESCHUETZTER_INHALT)
-		expect(text).toContain('noch nicht freigeschaltet')
+		expect(text).toContain('keinen Zugriff')
 		// Die Seite nennt die Adresse, mit der man drin ist, und die Stelle, die
 		// freischaltet. Ohne beides schreibt die Person an die falsche Adresse
 		// oder nennt das falsche Konto.
@@ -289,7 +289,7 @@ describe('(d) Entzug während einer bestehenden Sitzung', () => {
 		expect(nachher.status).toBe(403)
 		const text = await nachher.text()
 		expect(text).not.toContain(GESCHUETZTER_INHALT)
-		expect(text).toContain('noch nicht freigeschaltet')
+		expect(text).toContain('keinen Zugriff')
 
 		// Das Sitzungs-Cookie ist UNVERÄNDERT. Damit steht fest, woran der
 		// Zugang endete: an der frischen Rollenabfrage bei ZITADEL und nicht

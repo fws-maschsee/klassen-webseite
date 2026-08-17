@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 import {
 	defineKlassenConfig,
 	setKlassenConfig,
+	wemGehoertDieSeite,
 	zustaendigkeit,
 } from '../../src/klasse/config.ts'
 import { notAMemberPage } from '../../src/server/auth/oidc.ts'
@@ -40,6 +41,16 @@ const OHNE_NAME = defineKlassenConfig({
 	contactMail: 'verwaltung@example.org',
 	calendarPath: null,
 })
+
+/** Vorlage fuer Faelle, in denen nur `teacher`/`grade` variieren sollen. */
+const ROHDATEN = {
+	slug: 'klasse-benannt',
+	label: 'Klasse Benannt',
+	domain: 'klasse-benannt.example.org',
+	repoUrl: 'https://github.com/fws-maschsee/klasse-benannt',
+	contactMail: 'ansprechpartner@example.org',
+	calendarPath: null,
+} as const
 
 const MIT_NAME = defineKlassenConfig({
 	slug: 'klasse-benannt',
@@ -110,14 +121,50 @@ describe('notAMemberPage()', () => {
 	test('verweist auf die Kontaktadresse und nirgends sonst', () => {
 		const html = notAMemberPage(
 			'eltern@example.org',
-			'die Klasse Benannt',
+			'Frau Benannt, 3C',
 			'ansprechpartner@example.org',
 		)
-		expect(html).toContain('Bitte schreibe an')
+		expect(html).toContain('schreibe an')
 		expect(html).toContain('mailto:ansprechpartner@example.org')
 		// Kein zweiter Weg daneben: Wer hier zwei Stellen nennt, schickt Eltern
 		// an die, die nicht freischalten kann.
 		expect(html).not.toMatch(/melde Dich bei/i)
+	})
+
+	test('sagt ZUERST, wessen Seite das ist', () => {
+		// Der haeufigste Grund fuer diese Seite ist der Link einer fremden
+		// Klasse, nicht die fehlende Freigabe. Steht die Klasse in der
+		// Ueberschrift, erkennt die Person selbst, dass die Absage richtig ist.
+		const html = notAMemberPage(
+			'eltern@example.org',
+			'Frau Benannt, 3C',
+			'ansprechpartner@example.org',
+		)
+		const ueberschrift = /<h1>([^<]*)<\/h1>/.exec(html)?.[1] ?? ''
+		expect(ueberschrift).toContain('Frau Benannt, 3C')
+		// Und der Hinweis auf den falschen Link fehlt nicht — ohne ihn bleibt die
+		// Person ratlos, obwohl alles richtig funktioniert.
+		expect(html).toMatch(/anderen Klasse/i)
+	})
+})
+
+describe('wemGehoertDieSeite()', () => {
+	test('nennt Lehrkraft und Klasse, wenn beide hinterlegt sind', () => {
+		setKlassenConfig(
+			defineKlassenConfig({
+				...ROHDATEN,
+				teacher: 'Frau Benannt',
+				grade: '3C',
+			}),
+		)
+		expect(wemGehoertDieSeite()).toBe('Frau Benannt, 3C')
+	})
+
+	test('faellt auf den Anzeigenamen zurueck, wenn beides fehlt', () => {
+		// Eine neue Klasse muss ohne diese Felder starten koennen. Die Meldung
+		// wird dann blasser, aber sie bleibt richtig.
+		setKlassenConfig(defineKlassenConfig(ROHDATEN))
+		expect(wemGehoertDieSeite()).toBe(ROHDATEN.label)
 	})
 })
 

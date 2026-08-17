@@ -391,17 +391,32 @@ const page = (title: string, body: string): string => `<!DOCTYPE html>
 <body><main>${body}</main></body>
 </html>`
 
+/**
+ * Die Absage für jemanden, der angemeldet ist, aber hier nichts sehen darf.
+ *
+ * Sie nennt ZUERST, wessen Seite das ist. Der häufigste Grund für diese Seite
+ * ist nicht die fehlende Freigabe, sondern der Link einer fremden Klasse: Die
+ * Klassen sehen gleich aus, und „Kein Zugriff" allein liest sich dann wie ein
+ * Fehler der Software. Steht die Klasse oben, erkennt dieselbe Person in einem
+ * Satz, dass die Meldung richtig ist und sie nur woanders hin muss.
+ *
+ * `siteOwner` ist die menschliche Bezeichnung (`Frau Wiesen, 5A`) aus
+ * `wemGehoertDieSeite()` — nicht der Instanzname, den `label` traegt.
+ */
 export const notAMemberPage = (
 	email: string,
-	className: string,
+	siteOwner: string,
 	contactMail: string,
 ): string =>
 	page(
-		'Keine Berechtigung',
-		`<h1>Du bist angemeldet, aber noch nicht freigeschaltet</h1>
-     <p>Du bist mit der E-Mail-Adresse <code>${escapeHtml(email)}</code> angemeldet,
-        hast für ${escapeHtml(className)} aber noch keine Freigabe.</p>
-     <p>Bitte schreibe an
+		'Kein Zugriff',
+		`<h1>Das hier ist die Seite von ${escapeHtml(siteOwner)}</h1>
+     <p>Du bist mit der E-Mail-Adresse <code>${escapeHtml(email)}</code> angemeldet
+        und hast für diese Klasse keinen Zugriff.</p>
+     <p>Ist Dein Kind in einer anderen Klasse, dann ist diese Meldung richtig:
+        Du hast den Link einer fremden Klasse. Jede Klasse hat ihre eigene Seite
+        unter ihrer eigenen Adresse.</p>
+     <p>Gehört Dein Kind in diese Klasse? Dann schreibe an
         <a href="mailto:${escapeHtml(contactMail)}">${escapeHtml(contactMail)}</a>,
         damit Du freigeschaltet wirst. Gib dabei bitte die oben genannte
         E-Mail-Adresse an.</p>
@@ -876,7 +891,7 @@ export const resolveSession = async (
  */
 export const authenticate = async (
 	request: Request,
-	options: { className: string; contactMail: string },
+	options: { siteOwner: string; contactMail: string },
 ): Promise<AuthOutcome> => {
 	const outcome = await resolveSession(request)
 
@@ -892,7 +907,7 @@ export const authenticate = async (
 		const response = new Response(
 			notAMemberPage(
 				outcome.session?.email ?? '',
-				options.className,
+				options.siteOwner,
 				options.contactMail,
 			),
 			{ status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
