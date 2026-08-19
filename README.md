@@ -149,6 +149,78 @@ Spalte mit Verweis auf ein Konto auftaucht (die eine erlaubte heißt `user_sub`,
 siehe unten), sobald `groups` oder `group_memberships` eine bekommen, und sobald
 der MCP-Server ein Werkzeug anbietet, das einen Abgleich verspricht.
 
+## Das Kontaktbuch liegt woanders
+
+Seit dem Kontodienst gibt es einen **dritten** Bestand über dieselben Menschen,
+und er gehört nicht dieser Anwendung. Die Trennlinie ist dieselbe wie oben —
+„wer schreibt die Zeile":
+
+| | Wo | Beantwortet | Autor jeder Zeile |
+| --- | --- | --- | --- |
+| Anmeldung | ZITADEL | Wer ist das, was darf er? | die Grants, von einem Menschen vergeben |
+| Adressbuch | `mitglieder`, hier | Wer bekommt Post? | ein Mensch in der Klassenverwaltung |
+| **Kontaktbuch** | **`konto.fws-maschsee-test.de`** | **Was hat die Person selbst über sich veröffentlicht?** | **die betroffene Person, und sonst niemand** |
+
+Der Kontodienst ([`fws-maschsee/konto`](https://github.com/fws-maschsee/konto))
+ist eine eigene, schulweite Anwendung. Dort pflegt jeder Mensch **seine
+eigenen** Angaben — Anschrift, Telefonnummer, Kontaktadresse, die Vornamen
+seiner Kinder — und gibt sie **je Klasse** frei. Wer nichts einträgt, steht
+nirgends; wer die Klasse verlässt, verschwindet sofort, weil die Sichtbarkeit
+dort bei jedem Aufruf frisch gegen die ZITADEL-Grants geprüft wird.
+
+**Diese Anwendung bekommt diese Daten nicht.** Kein Sync, keine Kopie in die
+Klassen-Datenbank, kein OAuth zwischen den Apps, keine Tabelle, keine
+Migration. Sie tut genau eine Sache: Sie setzt einen Navigationseintrag
+**Kontaktbuch (konto)** auf `https://konto.fws-maschsee-test.de/klasse/<slug>`.
+Weil hinter beiden Anwendungen dasselbe ZITADEL steht, ist der Sprung für
+angemeldete Eltern nahtlos — sie melden sich nicht ein zweites Mal an.
+
+Zusammengesetzt wird die Adresse von `kontaktbuchUrl()` in
+[`src/klasse/config.ts`](src/klasse/config.ts). Die Basis ist dort eine
+**Konstante** und bewusst kein Feld der `KlassenConfig` — dieselbe Begründung
+wie beim Betreiber im Footer: Der Wert ist für alle Klassen derselbe, und eine
+Klasse, die ihn vergisst oder überschreibt, hätte einen toten Link. Aus der
+Konfiguration kommt nur der `slug`.
+
+### Warum das so bleiben muss
+
+Der naheliegende nächste Schritt ist eine Verbesserung: „Die Kontaktdaten sind
+doch da — warum sie nicht gleich hier anzeigen, dann muss niemand die Seite
+wechseln." Wer das baut, holt die Anschriften in die Klassen-Datenbank und legt
+damit **genau die Gabelung an, die dieses Repository sonst überall auflöst.**
+
+Der Grund ist gemessen und nicht theoretisch. Dieses Repository existiert, weil
+dieselbe Angabe an zwei Orten dreimal auseinandergelaufen ist — die
+Verteiler-Adresse, der Kalenderpfad, das Admonition-Plugin (siehe
+[Warum es das gibt](#warum-es-das-gibt)). Und `sync_mitglieder` ist genau
+deshalb abgeschafft: Ein Automatismus, der ungefragt fremde Daten anlegt, irrt
+sich an den Rändern, an denen die Bestände auseinandergehen. Anschriften und
+Telefonnummern sind der schlechteste denkbare Datensatz, um diese Wette zu
+wiederholen — eine veraltete Kopie ist hier nicht ein Schönheitsfehler, sondern
+eine falsche Adresse, die aussieht wie eine richtige.
+
+Dazu kommt, was eine Kopie **kaputt macht**: Die Zusage des Kontodienstes ist,
+dass die Sichtbarkeit ein Join zur Lesezeit ist. Wer die Klasse verlässt, ist
+im selben Moment weg. Eine Kopie in der Klassen-Datenbank hätte diese
+Eigenschaft nicht — sie stünde dort weiter, bis jemand daran denkt. Das ist
+derselbe Zustand, aus dem „Ein entzogener Grant nimmt niemandem die Post"
+entstanden ist, nur mit Wohnanschriften statt mit Mailadressen.
+
+Sollte eine Klassen-App die Daten je **serverseitig** brauchen (Serienbrief),
+dann über `client_credentials` mit einem Client, der fest an **einen** `slug`
+gebunden ist, und **ohne zu speichern**. Heute gibt es das nicht, und der
+Unterschied ist nicht Wortklauberei: Abrufen und wegwerfen ist etwas anderes
+als abrufen und behalten.
+
+Bewacht wird das von
+[`tests/klasse/kontaktbuch.test.ts`](tests/klasse/kontaktbuch.test.ts). Er wird
+rot, wenn der Link fehlt, relativ wird oder den Slug verliert, wenn eine Klasse
+den Navigationseintrag überschreiben kann, wenn die Adresse des Kontodienstes
+an einer zweiten Stelle im Code auftaucht, wenn ein Modul sie mit einem
+HTTP-Client in die Hand nimmt, und wenn im Schema der Klasse eine Tabelle für
+Kontaktdaten entsteht. Wer die Kopie trotzdem will, muss diesen Test löschen —
+und hat sie damit entschieden statt sich eingeschlichen.
+
 ## „Ohne Konto, keine E-Mail": die Prüfung vor dem Versand
 
 Vor **jedem** Versand — Verteiler, Rundmail, Putz-Erinnerung — vergleicht
@@ -1543,6 +1615,15 @@ lässt weg, wer keinen Grant mehr hat, statt seinen Eintrag anzufassen. Der
 Unterschied ist nicht Wortklauberei — er entscheidet, was passiert, wenn die
 Prüfung sich irrt: Eine Mail kommt später oder gar nicht; ein Eintrag, der
 gelöscht wurde, ist weg.
+
+### Das Kontaktbuch wird verlinkt und nicht geholt
+
+Die Entscheidung und ihre Begründung stehen weiter oben, weil sie zu der
+darüber gehört:
+[Das Kontaktbuch liegt woanders](#das-kontaktbuch-liegt-woanders).
+Kurzfassung: Ein Navigationseintrag, eine Konstante, ein `slug` — und keine
+Zeile Kontaktdaten in dieser Datenbank. Wer das ändert, baut die dritte Kopie
+derselben Angabe, gegen die es dieses Repository gibt.
 
 ### Der Adapter steht in der Integration
 
