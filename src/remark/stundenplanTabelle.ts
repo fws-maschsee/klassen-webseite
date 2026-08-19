@@ -129,7 +129,8 @@ const geteilteZelle = (
 	text: string,
 ): { fach: string; raum: string | undefined } => {
 	const treffer = KLAMMER.exec(text)
-	if (!treffer || treffer[1].trim() === '') return { fach: text, raum: undefined }
+	if (!treffer || treffer[1].trim() === '')
+		return { fach: text, raum: undefined }
 	return { fach: treffer[1].trim(), raum: treffer[2].trim() }
 }
 
