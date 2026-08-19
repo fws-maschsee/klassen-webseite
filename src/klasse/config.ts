@@ -419,6 +419,50 @@ export const bearbeitenUrl = (
 	pfadImRepo: string,
 ): string => `${config.repoUrl}/edit/main/${pfadImRepo}`
 
+/**
+ * Basisadresse des schulweiten Kontodienstes (`fws-maschsee/konto`).
+ *
+ * Dort pflegt jeder Mensch SEINE EIGENEN Angaben — Anschrift, Telefonnummer,
+ * Kontaktadresse, die Vornamen seiner Kinder — und entscheidet je Klasse, wer
+ * sie sehen darf. Daraus entsteht das Kontaktbuch einer Klasse. Diese Anwendung
+ * bekommt davon NICHTS: Sie verlinkt, sie holt nicht ab. Die Begründung steht
+ * in der README unter „Das Kontaktbuch liegt woanders" und ist dieselbe, aus
+ * der es `sync_mitglieder` nicht mehr gibt.
+ *
+ * Eine Konstante im geteilten Code und KEIN Feld der `KlassenConfig` —
+ * dieselbe Begründung wie bei `BETREIBER` in `astro/integration.ts`: Der Wert
+ * ist für alle Klassen derselbe, und eine Klasse, die ihn vergisst oder
+ * überschreibt, hätte einen toten Navigationseintrag. Ein toter Link fällt
+ * niemandem auf, der ihn nicht anklickt; wer ihn anklickt, hält den
+ * Kontodienst für kaputt und nicht die Konfiguration seiner Klasse. Zieht der
+ * Dienst um, ändert sich die Adresse hier einmal statt in n Repositories.
+ */
+const KONTO_BASIS = 'https://konto.fws-maschsee-test.de'
+
+/**
+ * Adresse des Kontaktbuchs DIESER Klasse im Kontodienst.
+ *
+ * Aus der Konfiguration kommt genau ein Teil: der `slug`. Der Pfad
+ * `/klasse/<slug>` ist der, den `fws-maschsee/konto` in seiner README zusagt,
+ * und der `slug` ist dort derselbe Schlüssel wie hier: Der Kontodienst führt
+ * seine Freigaben unter `klasse_slug` und hält daneben eine EXPLIZITE Tabelle,
+ * welches ZITADEL-Projekt zu welchem Slug gehört. Eine Klasse, deren
+ * `zitadelProject` vom `slug` abweicht, ist dort also ein gepflegter Eintrag
+ * und kein Sonderfall dieser Funktion.
+ *
+ * Eine Funktion und kein zusammengesetztes Literal an der Aufrufstelle: So
+ * existiert die Zusammensetzung einmal und ein Test kann sie prüfen. Ein Link,
+ * der den Slug vergisst oder relativ bleibt, sieht im Quelltext richtig aus und
+ * landet im Browser auf der Klassendomain — genau die Sorte Fehler, die kein
+ * Build meldet. Bewacht in `tests/klasse/kontaktbuch.test.ts`.
+ *
+ * Nimmt die Konfiguration als Argument, statt sie aus dem Register zu lesen —
+ * wie `bearbeitenUrl` und aus demselben Grund: Die Integration ruft sie auf,
+ * bevor `setKlassenConfig` gelaufen ist.
+ */
+export const kontaktbuchUrl = (config: KlassenConfig): string =>
+	`${KONTO_BASIS}/klasse/${config.slug}`
+
 let angemeldet: KlassenConfig | null = null
 
 /**

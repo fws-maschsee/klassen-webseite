@@ -11,6 +11,7 @@ import {
 	defineKlassenConfig,
 	type KlassenConfig,
 	type KlassenConfigInput,
+	kontaktbuchUrl,
 } from '../src/klasse/config.ts'
 import { GETEILTE_ROUTEN } from '../src/klasse/routes.ts'
 import { remarkAdmonitionLabels } from '../src/remark/admonitionLabels.ts'
@@ -52,8 +53,14 @@ export type FwsKlasseOptions = {
 	css: string
 	/**
 	 * Zusätzliche Einträge in der Hauptnavigation, zwischen „Berichte" und
-	 * „Mailverteiler". Für Klassen mit einer eigenen Seite; die Regelklasse
+	 * „Kontaktbuch". Für Klassen mit einer eigenen Seite; die Regelklasse
 	 * braucht das nicht.
+	 *
+	 * Die geteilten Einträge stehen bewusst DANACH und gewinnen deshalb bei
+	 * gleichem Schlüssel. Eine Klasse ergänzt die Navigation, sie ersetzt
+	 * darin nichts — sonst wäre „Kontaktbuch" in einer Klasse ein anderer Link
+	 * als in allen übrigen, und genau solche Abweichungen löst dieses
+	 * Repository auf.
 	 *
 	 * Ein Eintrag darf ein `subEntry` tragen und wird dann als Aufklappmenü
 	 * gerendert — der Typ kommt aus `astro/types/shipyard-base.d.ts`.
@@ -245,6 +252,41 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 				unterlagen: { label: 'Unterlagen', href: '/docs' },
 				berichte: { label: 'Berichte', href: '/blog' },
 				...(options.navigation ?? {}),
+				// DAS KONTAKTBUCH LIEGT NICHT HIER. Es ist der schulweite
+				// Kontodienst `konto.fws-maschsee-test.de`
+				// (`fws-maschsee/konto`), in dem jeder Mensch seine eigenen
+				// Kontaktdaten pflegt und je Klasse freigibt. Diese Anwendung
+				// verlinkt ihn und bekommt seine Daten nicht — kein Sync, keine
+				// Kopie, keine Tabelle. Ausformuliert in der README unter „Das
+				// Kontaktbuch liegt woanders".
+				//
+				// Der Eintrag steht in der OBERSTEN Reihe und nicht unter
+				// „Verwaltung": Das Kontaktbuch ist für Eltern da und nicht für
+				// die, die die Seite betreiben. Und nicht unter „Mailverteiler":
+				// dort geht es darum, wer Post BEKOMMT — hier darum, wie Eltern
+				// einander erreichen. Anderer Gegenstand, anderer Autor jeder
+				// Zeile (dort ein Mensch in der Klassenverwaltung, hier die
+				// betroffene Person selbst).
+				//
+				// Er steht NACH `options.navigation`, damit eine Klasse ihn nicht
+				// durch einen eigenen Schlüssel `kontaktbuch` ersetzen kann. Das
+				// ist dieselbe Absicht wie bei der festen Basisadresse: Wer hier
+				// abweicht, schickt seine Eltern woandershin, und niemand merkt
+				// es.
+				//
+				// „(konto)" im Label ist kein Schmuck. shipyard rendert einen
+				// Navigationseintrag als schlichtes `<a href>` — ohne `target`,
+				// ohne Kennzeichnung (`GlobalDesktopNavigation.astro`). Ein
+				// Eintrag, der wortlos den Host wechselt, sieht aus wie eine
+				// Unterseite dieser Klasse; wer dort seine Anschrift einträgt,
+				// soll wissen, dass er das nicht auf der Klassenseite tut.
+				// Dasselbe Mittel wie bei „Quelltext (GitHub)" weiter unten, und
+				// aus demselben Grund: Das Label ist die einzige Stelle, an der
+				// sich der Sprung überhaupt ansagen lässt.
+				kontaktbuch: {
+					label: 'Kontaktbuch (konto)',
+					href: kontaktbuchUrl(config),
+				},
 				verteiler: {
 					label: 'Mailverteiler',
 					subEntry: {
