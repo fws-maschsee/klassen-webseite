@@ -21,14 +21,22 @@ export const konfigurationDurchlaufen = async (
 	start: Record<string, any> = {},
 ) => {
 	const wurzel = new URL(`file://${process.cwd()}/`)
-	// `cacheDir` und `image.endpoint` stehen hier, weil der Node-Adapter sie
-	// ungefragt liest — er richtet den Sitzungsspeicher und den Bild-Endpunkt aus
-	// ihnen ein und wirft ohne sie.
+	// `cacheDir`, `image.endpoint`, `build` und `server` stehen hier, weil der
+	// Node-Adapter sie ungefragt liest — er richtet Sitzungsspeicher,
+	// Bild-Endpunkt und seinen Vite-Plugin daraus ein und wirft ohne sie. `build`
+	// und `server` kamen mit Adapter 10 (Astro 6) dazu: Er reicht
+	// `build.client`, `build.server`, `server.host` und `server.port` an
+	// `createConfigPlugin` weiter.
 	// biome-ignore lint/suspicious/noExplicitAny: Attrappe eines AstroConfig
 	let config: Record<string, any> = {
 		root: wurzel,
 		cacheDir: new URL('node_modules/.astro/', wurzel),
 		image: { endpoint: {} },
+		build: {
+			client: new URL('dist/client/', wurzel),
+			server: new URL('dist/server/', wurzel),
+		},
+		server: { host: false, port: 4321 },
 		...start,
 	}
 	const routen: unknown[] = []
