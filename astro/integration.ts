@@ -365,7 +365,15 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 			],
 		}),
 		shipyardDocs({
-			editUrl: bearbeitenUrl(config, 'src/content/docs'),
+			// OHNE den Ordner der Sammlung, und das ist kein Versehen:
+			// shipyard-docs haengt an diese Basis den VOLLSTAENDIGEN Dateipfad
+			// an (`entry.filePath`, also `src/content/docs/…`). Stand der Ordner
+			// hier mit drin, kam
+			// `…/edit/main/src/content/docs/src/content/docs/klassenkasse.md`
+			// heraus — ein Link auf eine Datei, die es nicht gibt. Beim Blog
+			// unten ist es umgekehrt richtig: dort haengt shipyard-blog nur
+			// `entry.id` plus `.md` an, die Basis muss den Ordner also nennen.
+			editUrl: bearbeitenUrl(config, ''),
 		}),
 		shipyardBlog({
 			blogTitle: 'Berichte',
