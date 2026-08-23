@@ -31,7 +31,16 @@ type Knoten = {
 	type: string
 	value?: string
 	data?: {
-		directiveLabel?: boolean
+		// `| null` ist keine Kosmetik: `mdast-util-directive` augmentiert
+		// `ParagraphData.directiveLabel` als `boolean | null | undefined`. Steht
+		// hier nur `boolean`, passt dieses Plugin strukturell nicht mehr auf
+		// Astros `RemarkPlugin`, und `astro check` bricht in den KLASSEN-Repos
+		// mit ts(2322) ab — hier nicht, weil `tsconfig.base.json` die
+		// shipyard-Pakete auf eigene Stubs abbildet und die Augmentierung
+		// deshalb nie in den Typgraphen kommt. Die Prüfung dieses Repos ist an
+		// dieser Stelle also schwächer als die der Klassen; wer den Typ wieder
+		// enger fasst, merkt es erst dort.
+		directiveLabel?: boolean | null
 		hProperties?: { className?: unknown }
 	}
 	children?: Knoten[]
