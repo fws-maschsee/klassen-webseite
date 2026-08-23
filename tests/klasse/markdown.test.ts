@@ -6,18 +6,20 @@ import { konfigurationDurchlaufen } from '../helpers/astro.ts'
 import { TESTKLASSE } from '../setup.ts'
 
 /**
- * Die Admonition-Kette entsteht aus ZWEI Quellen: shipyard setzt seit 0.7 selbst
- * `markdown.remarkPlugins`, diese Integration steuert `remarkAdmonitionLabels`
- * bei, und Astros `mergeConfig` konkateniert das Feld. Was am Ende läuft, steht
- * damit in keiner Datei — es entsteht erst beim Zusammenführen. Deshalb hier
+ * Die Admonition-Kette entsteht aus DREI Quellen: `fwsKlasse()` setzt seit
+ * Astro 7 `markdown.processor` auf ein `unified()`, shipyard liest diesen
+ * Prozessor aus und hängt seine eigenen Plugins dahinter, und die letzte
+ * Integration der Liste hängt `remarkAdmonitionLabels` ganz ans Ende. Was am
+ * Ende läuft, steht damit in keiner Datei — es entsteht erst beim
+ * Zusammenführen. Deshalb hier
  * eine echte Admonition durch die echte, zusammengeführte Liste.
  *
  * Zwei Eigenschaften sind die Bedingung, und beide sind gemessen (siehe die
  * Kommentare an den Tests):
  *
  *  1. Der Titel muss aus dem Markdown kommen und nicht aus shipyards Vorgabe.
- *     Das hängt allein an der REIHENFOLGE: läuft `remarkAdmonitionLabels` erst
- *     nach shipyards `remarkAdmonitions`, steht über jeder Admonition „Warning"
+ *     Das hängt allein an der REIHENFOLGE: läuft `remarkAdmonitionLabels` vor
+ *     shipyards `remarkAdmonitions`, steht über jeder Admonition „Warning"
  *     statt „WICHTIG" — und nichts anderes fällt aus.
  *  2. Die Struktur muss einstufig bleiben.
  *
@@ -27,11 +29,23 @@ import { TESTKLASSE } from '../setup.ts'
  * Aussage für ein Vielfaches an Laufzeit treffen.
  */
 
+/**
+ * Die Pluginliste aus der zusammengefuehrten Konfiguration ziehen.
+ *
+ * Sie steht seit Astro 7 nicht mehr in `markdown.remarkPlugins`, sondern in den
+ * Optionen des `unified()`-Prozessors unter `markdown.processor` —
+ * `remarkPlugins` ist veraltet und landet ausserdem HINTER shipyards Kette.
+ */
+const remarkPluginsAus = (
+	// biome-ignore lint/suspicious/noExplicitAny: Attrappe eines AstroConfig
+	config: Record<string, any>,
+): never[] => config.markdown.processor.options.remarkPlugins as never[]
+
 const admonitionsBaum = async (markdown: string) => {
 	const { config } = await konfigurationDurchlaufen(
 		fwsKlasse({ config: TESTKLASSE, css: '/src/styles/app.css' }),
 	)
-	const plugins = config.markdown.remarkPlugins as never[]
+	const plugins = remarkPluginsAus(config)
 	const prozessor = unified().use(remarkParse).use(plugins)
 	return await prozessor.run(prozessor.parse(markdown))
 }
@@ -79,12 +93,14 @@ describe('Admonitions', () => {
 
 	test('der deutsche Titel aus dem Markdown steht in der Ueberschrift', async () => {
 		// Der scharfe Test der ganzen Datei, und der einzige, der die Reihenfolge
-		// wirklich abfaengt. Gemessen: mit `[labels, directive, admonitions]`
-		// steht hier „WICHTIG", mit `[directive, admonitions, labels]` und ohne
+		// wirklich abfaengt. Gemessen: mit `[directive, admonitions, labels]`
+		// steht hier „WICHTIG", mit `[labels, directive, admonitions]` und ohne
 		// `labels` beide Male „Warning" — und sonst ist nichts anders zu sehen.
 		//
-		// Der Grund: shipyards `remarkAdmonitions` liest den Titel aus
-		// `node.label`, und dieses Feld setzt im ganzen Paket niemand.
+		// Der Grund: shipyards `remarkAdmonitions` schreibt seit 0.9 IMMER seinen
+		// Vorgabetitel in die Ueberschrift; den geschriebenen Titel traegt
+		// `remarkAdmonitionLabels` danach nach. Bis 0.8.5 las shipyard `node.label`
+		// und die Reihenfolge war genau umgekehrt richtig.
 		const baum = await admonitionsBaum(MIT_TITEL)
 		const [ueberschrift] = knotenMitKlasse(baum, 'admonition-heading')
 		expect(ueberschrift.children[0].value).toBe('WICHTIG')
@@ -101,7 +117,7 @@ const remarkNamen = async () => {
 	const { config } = await konfigurationDurchlaufen(
 		fwsKlasse({ config: TESTKLASSE, css: '/src/styles/app.css' }),
 	)
-	return (config.markdown.remarkPlugins as { name?: string }[]).map(
+	return (remarkPluginsAus(config) as { name?: string }[]).map(
 		(p) => p?.name ?? '(anonym)',
 	)
 }
@@ -112,7 +128,8 @@ describe('Pluginliste', () => {
 		// Label-Normalisierung und die Auszeichnung der Stundenplan-Tabelle.
 		//
 		// Alles andere pflegt shipyard, und zwar veraenderlich: 0.8.1 hat den
-		// Direktiven-Parser ausgetauscht. Ein eigener Eintrag DAFUER waere eine
+		// Direktiven-Parser ausgetauscht, 0.9 den Weg (Prozessor statt
+		// `remarkPlugins`). Ein eigener Eintrag DAFUER waere eine
 		// zweite Wahrheit ueber eine Liste, die uns nicht gehoert — und ein
 		// stehengebliebener `remarkDirective` wuerde dessen alte
 		// micromark-Erweiterungen weiter registrieren.
@@ -127,15 +144,15 @@ describe('Pluginliste', () => {
 		).toHaveLength(1)
 	})
 
-	test('die Normalisierung steht vor shipyards Kette', async () => {
-		// Dass sie das tut, haengt allein daran, dass `fwsKlasse()` seine
-		// Kern-Integration als ERSTE der Liste zurueckgibt: Astro faehrt
-		// `astro:config:setup` in Listenreihenfolge und haengt die Beitraege
-		// hintereinander.
+	test('der Titelnachtrag steht hinter shipyards Kette', async () => {
+		// Dass er das tut, haengt allein daran, dass `fwsKlasse()` die Integration
+		// `fws-klasse-admonition-titel` als LETZTE der Liste zurueckgibt: Astro
+		// faehrt `astro:config:setup` in Listenreihenfolge, jede Integration
+		// haengt an den Prozessor an, den sie vorfindet.
 		const namen = await remarkNamen()
-		expect(namen.indexOf('remarkAdmonitionLabels')).toBeLessThan(
-			namen.indexOf('remarkAdmonitions'),
+		expect(namen.indexOf('remarkAdmonitions')).toBeLessThan(
+			namen.indexOf('remarkAdmonitionLabels'),
 		)
-		expect(namen[0]).toBe('remarkAdmonitionLabels')
+		expect(namen.at(-1)).toBe('remarkAdmonitionLabels')
 	})
 })

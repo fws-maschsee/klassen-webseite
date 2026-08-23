@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isUnifiedProcessor, unified } from '@astrojs/markdown-remark'
 import node from '@astrojs/node'
 import shipyard from '@levino/shipyard-base'
 import shipyardBlog from '@levino/shipyard-blog'
@@ -149,21 +150,32 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 					// redirect_uri abgesichert.
 					security: { checkOrigin: false },
 					markdown: {
-						// Genau ZWEI eigene Plugins, und beide tun etwas, das shipyard
-						// nicht tut: `remarkAdmonitionLabels` normalisiert den
-						// Admonition-Titel, `remarkStundenplanTabelle` zeichnet die
-						// Stundenplan-Tabelle aus (Faecher nach Bereichen, Pausen als
-						// Band). Letzteres muss ein Remark-Plugin sein, weil die
-						// Inhaltsseiten `.md` sind und nichts importieren koennen und
-						// CSS nicht auf Zellentext matchen kann.
+						// `markdown.processor` statt `markdown.remarkPlugins`: Astro 7
+						// rendert Markdown standardmäßig mit Sätteri, das überhaupt keine
+						// unified-Plugins fährt. `remarkPlugins` ist nur noch ein
+						// veralteter Umweg (Astro hängt die Liste hinten an den Prozessor
+						// und warnt dabei); der Prozessor ist der Weg. Er muss hier
+						// gesetzt werden und nicht bloß in shipyard: sonst fände shipyard
+						// Sätteri vor, überschriebe es und meldete das als Warnung bei
+						// jedem Bau.
 						//
-						// Den Direktiven-Parser und
-						// `remarkAdmonitions` setzt shipyard-base seit 0.7 selbst; Astros
-						// `mergeConfig` konkateniert `remarkPlugins`, und unified verwirft
-						// beim `use()` einen Eintrag, den es unter derselben Funktion
-						// schon kennt. Ein zweiter Eintrag liefe also nicht doppelt — er
-						// wäre nur eine zweite Wahrheit über eine Liste, die shipyard
-						// pflegt.
+						// `remarkStundenplanTabelle` zeichnet die Stundenplan-Tabelle aus
+						// (Faecher nach Bereichen, Pausen als Band). Das muss ein
+						// Remark-Plugin sein, weil die Inhaltsseiten `.md` sind und
+						// nichts importieren koennen und CSS nicht auf Zellentext matchen
+						// kann. Die Reihenfolge ist ihm gleich — es fasst Tabellen an,
+						// die shipyard nicht anfasst.
+						//
+						// Das zweite eigene Plugin, `remarkAdmonitionLabels`, steht
+						// bewusst NICHT hier, sondern in `titelNachtrag` am Ende der
+						// zurückgegebenen Liste: es muss NACH shipyards
+						// `remarkAdmonitions` laufen. Begründung dort.
+						//
+						// Den Direktiven-Parser und `remarkAdmonitions` setzt
+						// shipyard-base seit 0.7 selbst. Ein zweiter Eintrag liefe nicht
+						// doppelt — unified verwirft beim `use()` einen Eintrag, den es
+						// unter derselben Funktion schon kennt —, er wäre nur eine zweite
+						// Wahrheit über eine Liste, die shipyard pflegt.
 						//
 						// Und die kostet: shipyard hat den Parser in 0.8.1 von
 						// `remarkDirective` auf eine Block-Variante umgestellt, damit der
@@ -171,14 +183,9 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 						// Inline-Direktive zerfällt. Stünde `remarkDirective` hier
 						// weiterhin, blieben dessen micromark-Erweiterungen daneben
 						// registriert und das Fehlerbild käme durch die Hintertür zurück.
-						//
-						// Dass diese Integration als ERSTE der zurückgegebenen Liste
-						// steht, ist die Bedingung dafür, dass `remarkAdmonitionLabels`
-						// vor shipyards `remarkAdmonitions` läuft — nur so findet dieses
-						// den Titel in `node.label`, und sonst steht über jeder
-						// Admonition „Warning" statt „WICHTIG". Gemessen und bewacht in
-						// `tests/klasse/markdown.test.ts`.
-						remarkPlugins: [remarkAdmonitionLabels, remarkStundenplanTabelle],
+						processor: unified({
+							remarkPlugins: [remarkStundenplanTabelle],
+						}),
 					},
 					vite: {
 						plugins: [
@@ -208,6 +215,47 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 					writeFileSync(datei, farbCss)
 					injectScript('page-ssr', `import ${JSON.stringify(datei)}`)
 				}
+			},
+		},
+	}
+
+	/**
+	 * Hängt `remarkAdmonitionLabels` als LETZTES Plugin an den Markdown-Prozessor.
+	 *
+	 * Eine eigene Integration und nicht einfach ein Eintrag oben in `kern`, weil
+	 * die Reihenfolge hier der ganze Punkt ist: shipyard liest in seinem
+	 * `astro:config:setup` den bis dahin gesetzten Prozessor aus und hängt seine
+	 * eigenen Plugins DAHINTER. Alles, was `kern` beisteuert, läuft also vor
+	 * shipyards `remarkAdmonitions` — und dieses Plugin muss danach laufen, weil
+	 * es dessen Ergebnis korrigiert: shipyard 0.9 schreibt in jede
+	 * Admonition-Überschrift seinen Vorgabetitel („Warning") und liest den im
+	 * Markdown geschriebenen Titel nicht mehr aus. Bis 0.8.5 nahm es dafür
+	 * `node.label`, das ein Plugin VOR ihm setzen konnte; dieser Weg ist zu.
+	 *
+	 * Dass diese Integration als LETZTE der zurückgegebenen Liste steht, ist
+	 * damit die Bedingung dafür, dass über einer Admonition „WICHTIG" steht und
+	 * nicht „Warning". Gemessen und bewacht in `tests/klasse/markdown.test.ts`.
+	 */
+	const titelNachtrag: AstroIntegration = {
+		name: 'fws-klasse-admonition-titel',
+		hooks: {
+			'astro:config:setup': ({ updateConfig, config: astroConfig }) => {
+				const prozessor = astroConfig.markdown?.processor
+				const geerbt =
+					prozessor && isUnifiedProcessor(prozessor)
+						? prozessor.options
+						: undefined
+				updateConfig({
+					markdown: {
+						processor: unified({
+							...geerbt,
+							remarkPlugins: [
+								...(geerbt?.remarkPlugins ?? []),
+								remarkAdmonitionLabels,
+							],
+						}),
+					},
+				})
 			},
 		},
 	}
@@ -326,6 +374,7 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 			postsPerPage: 20,
 			editUrl: `${config.repoUrl}/edit/main/src/content/blog`,
 		}),
+		titelNachtrag,
 	]
 }
 

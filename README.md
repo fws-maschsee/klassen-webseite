@@ -625,6 +625,9 @@ Damit heißt `@fws-maschsee/klassen-webseite/server/auth/roles` künftig
 `tsx` braucht es dafür nicht mehr. Node ab 22.6 löscht die Typen selbst; ab
 22.18 ist das nicht mehr hinter einem Flag, das Flag bleibt aber harmlos.
 
+Das `engines`-Feld verlangt trotzdem **22.12**, und nicht 22.6: so weit reicht
+das Typenlöschen zwar schon, Astro 7 aber nicht — es setzt `node >=22.12.0`.
+
 ### Was dabei alles wegfällt
 
 Es gibt **keine Registry mehr**, also auch nichts zu authentifizieren:
@@ -867,9 +870,9 @@ Sie sehen ungleich aus, und das ist gemessen und nicht vergessen:
 
 | Paket | Version | Warum genau die |
 | --- | --- | --- |
-| `@levino/shipyard-base` | `0.7.5` | letzte **stabile** 0.7.x — von 0.7.6 gibt es nur Release-Candidates. Peers: `astro ^5.7`, `tailwindcss ^4`, `daisyui ^5`. 0.8.0 verlangt Astro 6 und ist damit eine eigene Etappe |
-| `@levino/shipyard-blog` | `0.7.5` | hängt an `@levino/shipyard-base@^0.7.5` |
-| `@levino/shipyard-docs` | `0.7.5` | hängt an `@levino/shipyard-base@^0.7.5` |
+| `@levino/shipyard-base` | `0.9.1` | Peers: `astro ^7.2.4`, `tailwindcss ^4`, `daisyui ^5`, `@tailwindcss/typography ^0.5.20`. Jede shipyard-Minor war bisher genau eine Astro-Hauptversion: 0.7.x Astro 5, 0.8.x Astro 6, 0.9.x Astro 7 — der Sprung ist deshalb immer beides zugleich oder gar nicht |
+| `@levino/shipyard-blog` | `0.9.1` | hängt an `@levino/shipyard-base@^0.9.1` |
+| `@levino/shipyard-docs` | `0.9.1` | hängt an `@levino/shipyard-base@^0.9.1` |
 
 Alle drei auf **dieselbe** Version festgenagelt und nicht auf `^`: Ab wann welches
 Paket welches `base` verlangt, war schon einmal die Ursache für zwei
