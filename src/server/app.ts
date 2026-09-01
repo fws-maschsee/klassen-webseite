@@ -13,6 +13,7 @@ import { mcpAuthMiddleware, mcpRequestHandler } from './mcp/handler.ts'
 import { mcpOAuthProvider } from './oauth/provider.ts'
 import { startErinnerungsdienst } from './putzplan-worker.ts'
 import { startQueueWorker } from './queue-worker.ts'
+import { nurAngemeldet } from './statisch.ts'
 
 /**
  * Produktions-Entrypoint. Express umschliesst den Astro-SSR-Handler, weil zwei
@@ -53,6 +54,13 @@ export type StartServerOptions = {
 	 * Klassen-App.
 	 */
 	astroEntry?: string
+	/**
+	 * Verzeichnis der gebauten statischen Dateien. Vorgabe `dist/client` —
+	 * dorthin spiegelt Astro `public/` der Klasse. Als Option da, damit der
+	 * Test dieses Verzeichnis bestuecken kann, ohne einen Astro-Build zu
+	 * brauchen.
+	 */
+	staticDir?: string
 }
 
 /**
@@ -160,7 +168,14 @@ export const startServer = async (
 		})
 	}
 
-	app.use(express.static('dist/client'))
+	// Statische Dateien liegen hinter derselben Anmeldung wie die Seiten. Warum
+	// das eine eigene Datei mit langem Kommentar wert ist, steht in
+	// `statisch.ts`: Ohne diese Zeile war jede Datei aus `public/` der Klasse —
+	// Stundenplan, Elternbriefe, Fotos — fuer jeden abrufbar, der die Adresse
+	// kannte, waehrend die Seite daneben 401 antwortete.
+	const staticDir = options.staticDir ?? 'dist/client'
+	app.use(nurAngemeldet(staticDir))
+	app.use(express.static(staticDir))
 
 	// Der Astro-SSR-Entry entsteht erst beim Build, der Pfad liegt deshalb in
 	// einer Variable — sonst wollte die Typpruefung ein Modul aufloesen, das im
