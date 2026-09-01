@@ -14,7 +14,7 @@ import {
 	type KlassenConfigInput,
 	kontaktbuchUrl,
 } from '../src/klasse/config.ts'
-import { GETEILTE_ROUTEN } from '../src/klasse/routes.ts'
+import { GETEILTE_ROUTEN, geteilt } from '../src/klasse/routes.ts'
 import { remarkAdmonitionLabels } from '../src/remark/admonitionLabels.ts'
 import { remarkStundenplanTabelle } from '../src/remark/stundenplanTabelle.ts'
 import type { NavigationTree } from './types/shipyard-base.js'
@@ -127,6 +127,22 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 				injectScript,
 				config: astroConfig,
 			}) => {
+				// Die Blätter der Klasse: je Eintrag eine Route, alle auf denselben
+				// Entrypoint. Welches Blatt gemeint ist, sucht die Route über den
+				// angefragten Pfad aus der Konfiguration heraus.
+				//
+				// Sie liegen bewusst NICHT unter `public/`: Dort wird ohne Anmeldung
+				// ausgeliefert. Als Route gehen sie durch dieselbe Prüfung wie jede
+				// Seite — und das PDF entsteht beim Abruf aus der `.typ`, statt als
+				// zweite, alternde Quelle im Repository zu liegen.
+				for (const blatt of config.blaetter) {
+					injectRoute({
+						pattern: blatt.pfad,
+						entrypoint: geteilt('src/routes/blattPdf.ts'),
+						prerender: false,
+					})
+				}
+
 				for (const route of GETEILTE_ROUTEN) {
 					// `prerender: false` zentral statt in jeder Datei: die Anwendung
 					// läuft ausschließlich als SSR, und eine vorgerenderte Seite
