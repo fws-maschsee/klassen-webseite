@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url'
  */
 const wurzel = new URL('../../', import.meta.url)
 
-const geteilt = (relativ: string): string =>
+export const geteilt = (relativ: string): string =>
 	fileURLToPath(new URL(relativ, wurzel))
 
 export type GeteilteRoute = {

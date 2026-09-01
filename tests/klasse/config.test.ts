@@ -184,3 +184,47 @@ describe('PUBLIC_PATHS', () => {
 		expect([...PUBLIC_PATHS]).toEqual(['/public/', '/api/lists/'])
 	})
 })
+
+describe('blaetter', () => {
+	/**
+	 * Ein Blatt unter `/public/` wäre ohne Anmeldung abrufbar — und genau das
+	 * soll dieser Weg verhindern. Die Prüfung gehört ins Bauen und nicht in eine
+	 * Anleitung: Der Fehler macht nichts kaputt, was auffiele. Die Seite
+	 * funktioniert, das Blatt liegt nur offen.
+	 */
+	test('ein Blatt unter einem oeffentlichen Pfad wird abgelehnt', () => {
+		expect(() =>
+			defineKlassenConfig({
+				...gueltig,
+				blaetter: [
+					{
+						pfad: '/public/stundenplan.pdf',
+						quelle: 'src/blaetter/stundenplan.typ',
+						dateiname: 'stundenplan.pdf',
+					},
+				],
+			}),
+		).toThrow(/oeffentlichen Pfad/)
+	})
+
+	test('eine Quelle ausserhalb von src/ wird abgelehnt', () => {
+		// Nur `src/` kommt ins Laufzeit-Image. Eine Quelle daneben fehlt im
+		// Container, und der Fehler zeigt sich erst beim ersten Abruf.
+		expect(() =>
+			defineKlassenConfig({
+				...gueltig,
+				blaetter: [
+					{
+						pfad: '/blaetter/stundenplan.pdf',
+						quelle: 'dokumente/stundenplan.typ',
+						dateiname: 'stundenplan.pdf',
+					},
+				],
+			}),
+		).toThrow(/unter src\//)
+	})
+
+	test('ohne Angabe ist die Liste leer', () => {
+		expect(defineKlassenConfig(gueltig).blaetter).toEqual([])
+	})
+})

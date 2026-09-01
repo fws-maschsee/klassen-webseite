@@ -96,6 +96,19 @@ export type KlassenFarben = {
 }
 
 /** Was eine Klassen-App mindestens angeben muss. */
+/**
+ * Ein Blatt zum Ausdrucken: eine Typst-Quelle der Klasse und die Adresse, unter
+ * der das gesetzte PDF abrufbar ist.
+ */
+export type Blatt = {
+	/** Adresse des PDFs, z.B. `/blaetter/stundenplan.pdf`. Muss mit `/` beginnen und auf `.pdf` enden. */
+	pfad: string
+	/** Typst-Quelle, relativ zur Wurzel der Klasse — z.B. `src/blaetter/stundenplan.typ`. */
+	quelle: string
+	/** Dateiname, den der Browser beim Speichern vorschlägt. */
+	dateiname: string
+}
+
 export type KlassenConfigInput = {
 	/**
 	 * Technischer Name der Klasse, z.B. `klasse-wiesen`. Trägt gleichzeitig
@@ -172,6 +185,27 @@ export type KlassenConfigInput = {
 	 * es zu dokumentieren.
 	 */
 	calendarPath: string | null
+
+	/**
+	 * Blätter zum Ausdrucken, die aus einer Typst-Quelle der Klasse gesetzt
+	 * werden — Stundenplan, Listen, Aushänge.
+	 *
+	 * Das PDF steht NICHT im Repository und liegt NICHT unter `public/`. Es
+	 * entsteht beim Abruf aus der Quelle und geht durch dieselbe Anmeldung wie
+	 * jede Seite. Beides hat einen Grund:
+	 *
+	 * - `public/` wird ohne Anmeldung ausgeliefert. Dorthin gehört genau eine
+	 *   Sache, nämlich der Kalender, den eine Kalender-App ohne Cookie abholen
+	 *   muss. Alles andere wäre für jeden abrufbar, der die Adresse kennt — und
+	 *   Adressen werden weitergegeben.
+	 * - Ein eingechecktes PDF ist eine zweite Quelle. Es veraltet gegenüber der
+	 *   `.typ`, ohne dass man es ihm ansieht, und niemand merkt es, bis jemand
+	 *   den falschen Zettel an der Wand hat.
+	 *
+	 * `quelle` ist ein Pfad relativ zur Wurzel der Klasse und muss unter `src/`
+	 * liegen: Nur dieses Verzeichnis kommt ins Laufzeit-Image.
+	 */
+	blaetter?: readonly Blatt[]
 
 	/**
 	 * Eine frühere Adresse des Kalenders, die dauerhaft auf `calendarPath`
@@ -307,6 +341,28 @@ export const defineKlassenConfig = (
 		)
 	}
 
+	for (const blatt of input.blaetter ?? []) {
+		if (!blatt.pfad.startsWith('/') || !blatt.pfad.endsWith('.pdf')) {
+			fehler.push(
+				`blaetter: pfad "${blatt.pfad}" muss mit "/" beginnen und auf ".pdf" enden`,
+			)
+		}
+		// Unter `public/` waere das Blatt ohne Anmeldung abrufbar — und genau das
+		// soll dieser Weg verhindern. Die Pruefung steht hier und nicht in einer
+		// Anleitung, weil ein solcher Fehler nichts kaputt macht, was auffiele:
+		// Die Seite funktioniert, das Blatt liegt nur offen.
+		if (PUBLIC_PATHS.some((prefix) => blatt.pfad.startsWith(prefix))) {
+			fehler.push(
+				`blaetter: pfad "${blatt.pfad}" liegt unter einem oeffentlichen Pfad (${PUBLIC_PATHS.join(', ')}) — das Blatt waere ohne Anmeldung abrufbar`,
+			)
+		}
+		if (!blatt.quelle.startsWith('src/') || !blatt.quelle.endsWith('.typ')) {
+			fehler.push(
+				`blaetter: quelle "${blatt.quelle}" muss eine .typ-Datei unter src/ sein — nur dieses Verzeichnis kommt ins Laufzeit-Image`,
+			)
+		}
+	}
+
 	const calendarLegacyPath = input.calendarLegacyPath ?? null
 	if (calendarLegacyPath !== null) {
 		// Eine Umleitung braucht ein Ziel. Ohne `calendarPath` zeigte sie ins
@@ -382,6 +438,7 @@ export const defineKlassenConfig = (
 		contactMail: input.contactMail,
 		contactName: input.contactName ?? '',
 		calendarPath: input.calendarPath,
+		blaetter: input.blaetter ?? [],
 		calendarLegacyPath,
 		siteUrl: input.siteUrl ?? `https://${input.domain}`,
 		analyticsDomain: input.analyticsDomain ?? input.domain,
