@@ -40,7 +40,7 @@ const grillfest = () =>
 			title: 'Grillfest 2026',
 			event_date: '2026-09-12',
 			description: 'Ab 15 Uhr auf der Wiese',
-			categories: ['Salat', 'Grillgut', 'Getraenke'],
+			categories: ['Salat', 'Grillgut', 'Getränke'],
 			created_by: 'admin-sub',
 		},
 		db,
@@ -48,12 +48,12 @@ const grillfest = () =>
 	)
 
 describe('Listen', () => {
-	test('anlegen: nicht erratbarer Schluessel, Vorgabe-Aufbewahrung, Loeschzeit ab Datum', () => {
+	test('anlegen: nicht erratbarer Schlüssel, Vorgabe-Aufbewahrung, Loeschzeit ab Datum', () => {
 		const liste = grillfest()
 		expect(liste.id).toMatch(/^[A-Za-z0-9_-]{16}$/)
 		expect(liste.status).toBe('open')
 		expect(liste.retention_days).toBe(VORGABE_AUFBEWAHRUNG_TAGE)
-		expect(liste.categories).toEqual(['Salat', 'Grillgut', 'Getraenke'])
+		expect(liste.categories).toEqual(['Salat', 'Grillgut', 'Getränke'])
 		expect(liste.delete_at).toBe(
 			berechneLoeschzeit('2026-09-12', VORGABE_AUFBEWAHRUNG_TAGE, JETZT),
 		)
@@ -82,7 +82,7 @@ describe('Listen', () => {
 		)
 	})
 
-	test('aendern: Aufbewahrung einstellbar, neues Datum verschiebt die Loeschzeit, schliessen sperrt', () => {
+	test('ändern: Aufbewahrung einstellbar, neues Datum verschiebt die Loeschzeit, schliessen sperrt', () => {
 		const liste = grillfest()
 		const neu = aendereListe(
 			liste.id,
@@ -109,7 +109,7 @@ describe('Listen', () => {
 		).toBe('Brot')
 	})
 
-	test('faellige Listen sind sofort unsichtbar und werden mit Eintraegen abgeraeumt', () => {
+	test('faellige Listen sind sofort unsichtbar und werden mit Einträgen abgeraeumt', () => {
 		const liste = legeListeAn(
 			{ title: 'Alt', event_date: '2026-01-10', retention_days: 5 },
 			db,
@@ -132,7 +132,7 @@ describe('Listen', () => {
 		expect(loescheFaellige(db, JETZT)).toBe(0)
 	})
 
-	test('loeschen nimmt die Eintraege mit', () => {
+	test('löschen nimmt die Einträge mit', () => {
 		const liste = grillfest()
 		trageEin(
 			liste.id,
@@ -148,7 +148,7 @@ describe('Listen', () => {
 	})
 })
 
-describe('Eintraege', () => {
+describe('Einträge', () => {
 	test('eintragen: Zaehler steigt, Stand zaehlt je Kategorie — auch die Luecke', () => {
 		const liste = grillfest()
 		const e = trageEin(
@@ -157,7 +157,7 @@ describe('Eintraege', () => {
 				name: 'Familie Muster',
 				item: 'Nudelsalat',
 				category: 'Salat',
-				amount: 'fuer 10',
+				amount: 'für 10',
 			},
 			{},
 			db,
@@ -170,7 +170,7 @@ describe('Eintraege', () => {
 		expect(stand?.counts).toEqual([
 			{ category: 'Salat', count: 1 },
 			{ category: 'Grillgut', count: 0 },
-			{ category: 'Getraenke', count: 0 },
+			{ category: 'Getränke', count: 0 },
 		])
 		// weder owner_sub noch edit_token gehen an die Seite
 		expect(Object.keys(stand?.entries[0] ?? {})).not.toContain('owner_sub')
@@ -193,7 +193,7 @@ describe('Eintraege', () => {
 		).toThrow(/gibt es nicht/)
 	})
 
-	test('wer aendern darf: Ersteller per Konto, Gast per Schluessel, admin immer — sonst niemand', () => {
+	test('wer ändern darf: Ersteller per Konto, Gast per Schlüssel, admin immer — sonst niemand', () => {
 		const liste = grillfest()
 		const gast = trageEin(
 			liste.id,
@@ -226,7 +226,7 @@ describe('Eintraege', () => {
 				db,
 				JETZT,
 			),
-		).toThrow(/nicht aendern/)
+		).toThrow(/nicht ändern/)
 		expect(
 			aendereEintrag(
 				gast.id,
@@ -237,7 +237,7 @@ describe('Eintraege', () => {
 			).item,
 		).toBe('Baguette')
 		expect(() => loescheEintrag(konto.id, { sub: 'sub-b' }, db, JETZT)).toThrow(
-			/nicht loeschen/,
+			/nicht löschen/,
 		)
 		expect(loescheEintrag(konto.id, { admin: true }, db, JETZT)).toBe(true)
 		expect(eintraegeLesen(liste.id, db)).toHaveLength(1)

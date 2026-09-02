@@ -11,7 +11,7 @@ import { dbTimestamp, openDb } from './index.ts'
  *
  * - Wer einen Eintrag AENDERN darf: die Person, die ihn gemacht hat (ueber
  *   `owner_sub` bei Konto, ueber `edit_token` ohne), und ein admin. Das
- *   entscheidet `darfEintragAendern`; Seite und MCP fragen dieselbe Funktion.
+ *   entscheidet `darfEintragÄndern`; Seite und MCP fragen dieselbe Funktion.
  * - Wann eine Liste WEG ist: `delete_at`, aus Datum und Aufbewahrung
  *   berechnet. `loescheFaellige` raeumt ab, `listeLesen` liefert eine
  *   faellige Liste schon vorher nicht mehr aus.
@@ -112,7 +112,7 @@ const pruefeKategorien = (categories: readonly string[]): string[] => {
 		...new Set(categories.map((c) => c.trim()).filter(Boolean)),
 	]
 	if (bereinigt.length > 30)
-		throw new Error('Hoechstens 30 Kategorien je Liste.')
+		throw new Error('Höchstens 30 Kategorien je Liste.')
 	return bereinigt
 }
 
@@ -347,7 +347,7 @@ const pruefeEintrag = (
 	if (!name) throw new Error('Bitte einen Namen angeben.')
 	if (!item) throw new Error('Bitte angeben, was mitgebracht wird.')
 	if (name.length > 80 || item.length > 200 || (e.amount ?? '').length > 80)
-		throw new Error('Das ist zu lang fuer einen Eintrag.')
+		throw new Error('Das ist zu lang für einen Eintrag.')
 	const category = e.category?.trim() || null
 	if (
 		liste.categories.length > 0 &&
@@ -355,7 +355,7 @@ const pruefeEintrag = (
 		!liste.categories.includes(category)
 	)
 		throw new Error(
-			`Unbekannte Kategorie „${category}“. Moeglich: ${liste.categories.join(', ')}.`,
+			`Unbekannte Kategorie „${category}“. Möglich: ${liste.categories.join(', ')}.`,
 		)
 	return { name, item, category, amount: e.amount?.trim() || null }
 }
@@ -442,7 +442,7 @@ export const aendereEintrag = (
 	const liste = listeLesen(e.list_id, db, jetzt)
 	if (!liste) throw new Error('Diese Liste gibt es nicht.')
 	if (!darfEintragAendern(e, handelnde))
-		throw new Error('Diesen Eintrag darfst du nicht aendern.')
+		throw new Error('Diesen Eintrag darfst du nicht ändern.')
 	if (liste.status === 'closed' && !handelnde.admin)
 		throw new Error('Diese Liste ist geschlossen.')
 	const werte = pruefeEintrag(liste, {
@@ -479,7 +479,7 @@ export const loescheEintrag = (
 	const e = eintragLesenIntern(id, db)
 	if (!e) return false
 	if (!darfEintragAendern(e, handelnde))
-		throw new Error('Diesen Eintrag darfst du nicht loeschen.')
+		throw new Error('Diesen Eintrag darfst du nicht löschen.')
 	const liste = listeLesen(e.list_id, db, jetzt)
 	if (liste && liste.status === 'closed' && !handelnde.admin)
 		throw new Error('Diese Liste ist geschlossen.')

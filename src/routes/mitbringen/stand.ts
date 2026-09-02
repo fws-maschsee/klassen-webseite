@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro'
-import { standLesen } from '../../lib/db/mitbringen.ts'
+import { eintraegeLesen, standLesen } from '../../lib/db/mitbringen.ts'
+import { besucherLesen } from './gemeinsam.ts'
 
 export const prerender = false
 
@@ -13,8 +14,12 @@ export const prerender = false
  * Browser dreissig Mal pro Sekunde die Liste rendert.
  *
  * `?ab=<revision>`: ist der Stand unveraendert, kommt 304 ohne Rumpf.
+ *
+ * Je Eintrag steht `own`, ob er der fragenden Person gehoert (Sitzung), und
+ * oben `admin`, ob sie alles darf. Daran haengen die Knoepfe „Aendern" und
+ * „Loeschen" auf der Seite. `owner_sub` selbst verlaesst den Server nie.
  */
-export const GET: APIRoute = ({ params, url }) => {
+export const GET: APIRoute = async ({ params, url, request }) => {
 	const stand = standLesen(params.id ?? '')
 	if (!stand) return new Response('Diese Liste gibt es nicht.', { status: 404 })
 	const ab = Number(url.searchParams.get('ab'))
@@ -24,7 +29,20 @@ export const GET: APIRoute = ({ params, url }) => {
 			headers: { 'Cache-Control': 'no-store' },
 		})
 	}
-	return new Response(JSON.stringify(stand), {
+	const besucher = await besucherLesen(request)
+	const eigene = new Set(
+		besucher.sub
+			? eintraegeLesen(stand.list.id)
+					.filter((e) => e.owner_sub === besucher.sub)
+					.map((e) => e.id)
+			: [],
+	)
+	const antwort = {
+		...stand,
+		admin: besucher.admin,
+		entries: stand.entries.map((e) => ({ ...e, own: eigene.has(e.id) })),
+	}
+	return new Response(JSON.stringify(antwort), {
 		status: 200,
 		headers: {
 			'Content-Type': 'application/json; charset=utf-8',
