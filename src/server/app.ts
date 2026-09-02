@@ -6,6 +6,7 @@ import express from 'express'
 import { type KlassenConfig, setKlassenConfig } from '../klasse/config.ts'
 import { openDb } from '../lib/db/index.ts'
 import { assertInstanceMatches, instanceLabel } from '../lib/db/instance.ts'
+import { loescheFaellige } from '../lib/db/mitbringen.ts'
 import { seedDemoData } from '../lib/db/saatdaten.ts'
 import { runMigrations } from '../migrations.ts'
 import { port, publicBaseUrl } from './config.ts'
@@ -200,6 +201,22 @@ export const startServer = async (
 			`[server] ${instance.configured} laeuft auf http://localhost:${port()}`,
 		)
 		startQueueWorker()
+		// Mitbringlisten mit abgelaufener Aufbewahrung abraeumen: beim Start und
+		// dann einmal am Tag. Eine Liste nennt Familiennamen und ist nach dem
+		// Fest wertlos — sie liegen zu lassen waere der Fehler, nicht das Loeschen.
+		const abraeumen = () => {
+			try {
+				const n = loescheFaellige(db)
+				if (n > 0)
+					console.log(`[mitbringen] ${n} abgelaufene Liste(n) geloescht`)
+			} catch (fehler) {
+				console.error(
+					`[mitbringen] Abraeumen fehlgeschlagen: ${fehler instanceof Error ? fehler.message : String(fehler)}`,
+				)
+			}
+		}
+		abraeumen()
+		setInterval(abraeumen, 24 * 60 * 60 * 1000).unref()
 		// Die Putz-Erinnerung laeuft neben der Warteschlange im selben Prozess:
 		// Sie braucht dieselbe Datenbank und denselben Mailweg, und beides ist
 		// hier schon eingerichtet. Startet nicht, wenn die Klasse keinen
