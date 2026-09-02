@@ -59,7 +59,7 @@ beforeEach(() => {
 })
 
 describe('create_mitbringliste', () => {
-	it('legt an und gibt den Link fuer die Eltern zurueck', async () => {
+	it('legt an und gibt den Link für die Eltern zurück', async () => {
 		const client = await connect(['admin'])
 		const res = await client.callTool({
 			name: 'create_mitbringliste',
@@ -117,8 +117,8 @@ describe('create_mitbringliste', () => {
 	})
 })
 
-describe('lesen, aendern, loeschen', () => {
-	it('zeigt Eintraege mit Namen, schliesst, loescht Eintrag und Liste', async () => {
+describe('lesen, ändern, löschen', () => {
+	it('zeigt Einträge mit Namen, schliesst, loescht Eintrag und Liste', async () => {
 		const client = await connect(['admin'])
 		const created = JSON.parse(
 			textOf(
@@ -168,7 +168,7 @@ describe('lesen, aendern, loeschen', () => {
 					arguments: { id: liste.entries[0]?.id ?? '' },
 				}),
 			),
-		).toMatch(/geloescht/)
+		).toMatch(/gelöscht/)
 		expect(
 			textOf(
 				await client.callTool({
@@ -176,7 +176,7 @@ describe('lesen, aendern, loeschen', () => {
 					arguments: { id: created.id },
 				}),
 			),
-		).toMatch(/geloescht/)
+		).toMatch(/gelöscht/)
 		expect(
 			isError(
 				await client.callTool({

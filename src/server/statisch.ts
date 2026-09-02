@@ -80,6 +80,15 @@ export const nurAngemeldet = (staticDir: string): RequestHandler => {
 			next()
 			return
 		}
+		// Gebaute Stylesheets, Skripte und Schriften unter /_astro/ sind kein
+		// Inhalt der Klasse, sondern das Aussehen der Seite — und die Seiten
+		// unter /public/ (Abmelden, Adresse bestaetigen, Mitbringlisten) brauchen
+		// sie OHNE Sitzung. Ohne diese Ausnahme kamen sie dort nackt an.
+		// Bilder und Dokumente bleiben hinter der Anmeldung, auch unter /_astro/.
+		if (pfad.startsWith('/_astro/') && /\.(css|js|mjs|woff2?)$/.test(pfad)) {
+			next()
+			return
+		}
 		if (!istDatei(wurzel, pfad)) {
 			next()
 			return

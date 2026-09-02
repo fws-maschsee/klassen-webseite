@@ -1,7 +1,8 @@
 ---
-import Layout from '../../../layouts/Schlicht.astro'
+import Page from '@levino/shipyard-base/layouts/Page.astro'
+import Schlicht from '../../../layouts/Schlicht.astro'
 import { klassenConfig } from '../../../../src/klasse/config.ts'
-import { standLesen } from '../../../../src/lib/db/mitbringen.ts'
+import { eintraegeLesen, standLesen } from '../../../../src/lib/db/mitbringen.ts'
 import { besucherLesen } from '../../../../src/routes/mitbringen/gemeinsam.ts'
 
 export const prerender = false
@@ -11,15 +12,15 @@ export const prerender = false
  *
  * Liegt unter `/public/`, weil viele Eltern die Seite nicht mit Konto nutzen
  * und trotzdem eintragen sollen. Der Schutz ist der Link: Die `id` ist ein
- * zufaelliger Schluessel, und die Seite steht auf `noindex` (Layout). Wer
+ * zufaelliger Schlüssel, und die Seite steht auf `noindex` (Layout). Wer
  * angemeldet ist, bekommt seinen Namen vorausgefuellt; wer nicht, tippt ihn.
  *
  * Die Seite funktioniert OHNE JavaScript vollstaendig (Formular, Umleitung
- * zurueck). MIT JavaScript fragt sie alle vier Sekunden den Stand ab und
- * zeichnet die Eintraege neu, wenn sich etwas getan hat — die anderen sehen
+ * zurück). MIT JavaScript fragt sie alle vier Sekunden den Stand ab und
+ * zeichnet die Einträge neu, wenn sich etwas getan hat — die anderen sehen
  * also, was gerade eingetragen wird, ohne neu zu laden. Der Bearbeitungs-
- * schluessel eines eigenen Eintrags bleibt im Browser (localStorage), damit
- * auch ein Gast seinen Eintrag spaeter noch aendern kann.
+ * schlüssel eines eigenen Eintrags bleibt im Browser (localStorage), damit
+ * auch ein Gast seinen Eintrag später noch ändern kann.
  */
 
 const id = Astro.params.id ?? ''
@@ -30,9 +31,32 @@ if (!stand) {
 
 const { label: klasse } = klassenConfig()
 const besucher = await besucherLesen(Astro.request)
+/**
+ * Angemeldete bekommen die normale Seite mit Navigation; Gaeste die schlichte
+ * ohne Menue — jede Tuer dort fuehrte sie nur zur Anmeldemaske. Stattdessen
+ * ein Anmelde-Knopf mit dem Hinweis, dass es angemeldet bequemer ist.
+ */
+const Layout = besucher.sub ? Page : Schlicht
+const anmeldeLink = `/auth/login?rd=${encodeURIComponent(`/public/mitbringen/${id}`)}`
 const fehler = new URL(Astro.request.url).searchParams.get('fehler')
-const { list, entries, counts } = stand
+const { list, counts } = stand
 const offen = list.status === 'open'
+/**
+ * Die Zeilen kommen FERTIG vom Server, samt der Knöpfe „Ändern/Löschen" dort,
+ * wo die Person es darf (eigener Eintrag per Konto, oder admin). Das Skript
+ * zeichnet die Tabelle nur neu, wenn sich der Stand geändert hat — nichts
+ * springt beim Laden. Nur Gäste, deren Bearbeitungsschlüssel im Browser
+ * liegt, bekommen ihre Knöpfe nachträglich in die (schon vorhandene) Zelle.
+ */
+const zeilen = eintraegeLesen(list.id).map((e) => ({
+  id: e.id,
+  name: e.name,
+  category: e.category,
+  item: e.item,
+  amount: e.amount,
+  own: Boolean(besucher.sub && e.owner_sub === besucher.sub),
+}))
+const darfServer = (e: { own: boolean }) => offen && (besucher.admin || e.own)
 const datum = list.event_date
   ? new Date(`${list.event_date}T12:00:00Z`).toLocaleDateString('de-DE', {
       weekday: 'long',
@@ -43,12 +67,21 @@ const datum = list.event_date
   : null
 ---
 
-<Layout title={list.title} untertitel={`Mitbringliste der ${klasse}${datum ? ` · ${datum}` : ''}`}>
+<Layout title={list.title}>
+  <div class={besucher.sub ? 'container mx-auto max-w-2xl px-4 py-8' : ''}>
+  {besucher.sub && <h1 class="text-2xl font-semibold">{list.title}</h1>}
+  <p class="mb-6 text-sm opacity-70">Mitbringliste der {klasse}{datum ? ` · ${datum}` : ''}</p>
+  {!besucher.sub && (
+    <div class="alert mb-6" role="note">
+      <span>Angemeldet ist es besser: dein Name ist dann schon eingetragen, und du kannst deine Einträge später von jedem Gerät aus ändern oder löschen.</span>
+      <a class="btn btn-primary btn-sm" href={anmeldeLink}>Anmelden</a>
+    </div>
+  )}
   {list.description && <p class="mb-6 whitespace-pre-line">{list.description}</p>}
 
   {!offen && (
     <div class="alert alert-info mb-6" role="status">
-      Diese Liste ist geschlossen — eintragen und aendern geht nicht mehr.
+      Diese Liste ist geschlossen — eintragen und ändern geht nicht mehr.
     </div>
   )}
 
@@ -69,7 +102,7 @@ const datum = list.event_date
     </section>
   )}
 
-  <section class="mb-8" id="eintraege">
+  <section class="mb-8" id="einträge">
     <h2 class="mb-2 text-lg font-semibold">Wer bringt was mit</h2>
     <div class="overflow-x-auto">
       <table class="table" data-entries>
@@ -83,16 +116,23 @@ const datum = list.event_date
           </tr>
         </thead>
         <tbody>
-          {entries.length === 0 && (
-            <tr data-leer><td colspan="5" class="opacity-60">Noch traegt niemand etwas ein — mach den Anfang.</td></tr>
+          {zeilen.length === 0 && (
+            <tr data-leer><td colspan="5" class="opacity-60">Noch trägt niemand etwas ein — mach den Anfang.</td></tr>
           )}
-          {entries.map((e) => (
+          {zeilen.map((e) => (
             <tr data-entry-id={e.id}>
               <td>{e.name}</td>
               {list.categories.length > 0 && <td>{e.category ?? ''}</td>}
               <td>{e.item}</td>
               <td>{e.amount ?? ''}</td>
-              <td class="text-right" data-actions></td>
+              <td class="text-right whitespace-nowrap" data-actions>
+                {darfServer(e) && (
+                  <>
+                    <button class="btn btn-xs btn-ghost" type="button" data-aendern={e.id}>Ändern</button>
+                    <button class="btn btn-xs btn-ghost text-error" type="button" data-loeschen={e.id}>Löschen</button>
+                  </>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -107,26 +147,34 @@ const datum = list.event_date
         <input type="hidden" name="aktion" value="eintragen" />
         <input type="hidden" name="entry_id" value="" />
         <input type="hidden" name="edit_token" value="" />
-        <label class="form-control">
-          <span class="label-text">Familie / Name</span>
-          <input class="input input-bordered" type="text" name="name" required maxlength="80" value={besucher.name ?? ''} autocomplete="family-name" />
-        </label>
+        {besucher.sub && besucher.name ? (
+          <div class="grid gap-1">
+            <span class="text-sm">Familie / Name</span>
+            <div class="input w-full flex items-center bg-base-100 opacity-80" aria-readonly="true">{besucher.name}</div>
+            <span class="text-xs opacity-60">Aus deinem Konto — du traegst unter diesem Namen ein.</span>
+          </div>
+        ) : (
+          <label class="grid gap-1">
+            <span class="text-sm">Familie / Name</span>
+            <input class="input w-full" type="text" name="name" required maxlength="80" autocomplete="family-name" />
+          </label>
+        )}
         {list.categories.length > 0 && (
-          <label class="form-control">
-            <span class="label-text">Kategorie</span>
-            <select class="select select-bordered" name="category">
-              <option value="">— bitte waehlen —</option>
+          <label class="grid gap-1">
+            <span class="text-sm">Kategorie</span>
+            <select class="select w-full" name="category">
+              <option value="">— bitte wählen —</option>
               {list.categories.map((c) => <option value={c}>{c}</option>)}
             </select>
           </label>
         )}
-        <label class="form-control">
-          <span class="label-text">Was</span>
-          <input class="input input-bordered" type="text" name="item" required maxlength="200" placeholder="z.B. Nudelsalat" />
+        <label class="grid gap-1">
+          <span class="text-sm">Was</span>
+          <input class="input w-full" type="text" name="item" required maxlength="200" placeholder="z.B. Nudelsalat" />
         </label>
-        <label class="form-control">
-          <span class="label-text">Menge (optional)</span>
-          <input class="input input-bordered" type="text" name="amount" maxlength="80" placeholder="z.B. fuer 10 Personen" />
+        <label class="grid gap-1">
+          <span class="text-sm">Menge (optional)</span>
+          <input class="input w-full" type="text" name="amount" maxlength="80" placeholder="z.B. für 10 Personen" />
         </label>
         <div class="card-actions justify-end">
           <button class="btn btn-ghost" type="button" data-abbrechen hidden>Abbrechen</button>
@@ -137,21 +185,29 @@ const datum = list.event_date
   )}
 
   <p class="mt-8 text-xs opacity-60">
-    Diese Liste ist nur ueber ihren Link erreichbar und wird nach dem Anlass automatisch geloescht.
+    Diese Liste ist nur über ihren Link erreichbar und wird nach dem Anlass automatisch gelöscht.
   </p>
+  </div>
 
-  <script is:inline define:vars={{ listId: list.id, revision: list.revision, categories: list.categories, offen, besucher: { sub: besucher.sub, admin: besucher.admin } }}>
+  <script is:inline define:vars={{ listId: list.id, revision: list.revision, categories: list.categories, offen, besucher: { sub: besucher.sub, admin: besucher.admin }, zeilen }}>
     (() => {
       const speicherKey = `mitbringen:${listId}`
       const lade = () => { try { return JSON.parse(localStorage.getItem(speicherKey) || '{}') } catch { return {} } }
       const speichere = (m) => { try { localStorage.setItem(speicherKey, JSON.stringify(m)) } catch {} }
-      let meine = lade() // entry_id -> edit_token (Eintraege dieses Browsers)
+      let meine = lade() // entry_id -> edit_token (Einträge dieses Browsers)
       let stand = revision
       const table = document.querySelector('[data-entries] tbody')
       const form = document.querySelector('[data-form]')
       const hatKategorien = categories.length > 0
 
-      const darf = (e) => besucher.admin || (besucher.sub && e.owner_sub === besucher.sub) || Boolean(meine[e.id])
+      let admin = besucher.admin
+      const byId = new Map(zeilen.map((e) => [e.id, e]))
+      const darf = (e) => offen && (admin || e.own || Boolean(meine[e.id]))
+      const knoepfe = (e) => {
+        const b1 = document.createElement('button'); b1.className = 'btn btn-xs btn-ghost'; b1.type = 'button'; b1.dataset.aendern = e.id; b1.textContent = 'Ändern'
+        const b2 = document.createElement('button'); b2.className = 'btn btn-xs btn-ghost text-error'; b2.type = 'button'; b2.dataset.loeschen = e.id; b2.textContent = 'Löschen'
+        return [b1, b2]
+      }
 
       const zeichne = (data) => {
         if (!table) return
@@ -159,7 +215,7 @@ const datum = list.event_date
         table.innerHTML = ''
         if (rows.length === 0) {
           const tr = document.createElement('tr')
-          tr.innerHTML = '<td colspan="5" class="opacity-60">Noch traegt niemand etwas ein — mach den Anfang.</td>'
+          tr.innerHTML = '<td colspan="5" class="opacity-60">Noch trägt niemand etwas ein — mach den Anfang.</td>'
           table.appendChild(tr)
         }
         for (const e of rows) {
@@ -172,13 +228,8 @@ const datum = list.event_date
           tr.appendChild(td(e.amount))
           const actions = document.createElement('td')
           actions.className = 'text-right whitespace-nowrap'
-          if (offen && darf(e)) {
-            const b1 = document.createElement('button'); b1.className = 'btn btn-xs btn-ghost'; b1.textContent = 'Aendern'
-            b1.onclick = () => bearbeite(e)
-            const b2 = document.createElement('button'); b2.className = 'btn btn-xs btn-ghost text-error'; b2.textContent = 'Loeschen'
-            b2.onclick = () => loesche(e)
-            actions.append(b1, b2)
-          }
+          byId.set(e.id, e)
+          if (darf(e)) actions.append(...knoepfe(e))
           tr.appendChild(actions)
           table.appendChild(tr)
         }
@@ -197,6 +248,7 @@ const datum = list.event_date
           if (!r.ok) return
           const data = await r.json()
           stand = data.list.revision
+          admin = Boolean(data.admin)
           zeichne(data)
         } catch {}
       }
@@ -213,10 +265,10 @@ const datum = list.event_date
 
       const bearbeite = (e) => {
         if (!form) return
-        form.elements.aktion.value = 'aendern'
+        form.elements.aktion.value = 'ändern'
         form.elements.entry_id.value = e.id
         form.elements.edit_token.value = meine[e.id] || ''
-        form.elements.name.value = e.name
+        if (form.elements.name) form.elements.name.value = e.name
         if (form.elements.category) form.elements.category.value = e.category || ''
         form.elements.item.value = e.item
         form.elements.amount.value = e.amount || ''
@@ -224,11 +276,12 @@ const datum = list.event_date
         form.querySelector('[data-abbrechen]').hidden = false
         form.scrollIntoView({ behavior: 'smooth' })
       }
-      const zuruecksetzen = () => {
+      const zurücksetzen = () => {
         if (!form) return
         form.elements.aktion.value = 'eintragen'
         form.elements.entry_id.value = ''
         form.elements.edit_token.value = ''
+        if (form.elements.name && !form.elements.name.readOnly) form.elements.name.value = form.elements.name.defaultValue
         form.elements.item.value = ''
         form.elements.amount.value = ''
         if (form.elements.category) form.elements.category.value = ''
@@ -236,30 +289,44 @@ const datum = list.event_date
         form.querySelector('[data-abbrechen]').hidden = true
       }
       const loesche = async (e) => {
-        if (!confirm(`Eintrag von ${e.name} loeschen?`)) return
-        const res = await sende({ aktion: 'loeschen', entry_id: e.id, edit_token: meine[e.id] || '' })
+        if (!confirm(`Eintrag von ${e.name} löschen?`)) return
+        const res = await sende({ aktion: 'löschen', entry_id: e.id, edit_token: meine[e.id] || '' })
         if (!res.ok) { alert(res.fehler || 'Das hat nicht geklappt.'); return }
         delete meine[e.id]; speichere(meine)
         await holeStand()
       }
 
       if (form) {
-        form.querySelector('[data-abbrechen]').addEventListener('click', zuruecksetzen)
+        form.querySelector('[data-abbrechen]').addEventListener('click', zurücksetzen)
         form.addEventListener('submit', async (ev) => {
           ev.preventDefault()
           const felder = Object.fromEntries(new FormData(form).entries())
           const res = await sende(felder)
           if (!res.ok) { alert(res.fehler || 'Das hat nicht geklappt.'); return }
           if (res.entry && res.entry.edit_token) { meine[res.entry.id] = res.entry.edit_token; speichere(meine) }
-          zuruecksetzen()
-          stand = -1 // beim naechsten Abruf sicher neu zeichnen
+          zurücksetzen()
+          stand = -1 // beim nächsten Abruf sicher neu zeichnen
           await holeStand()
         })
       }
 
-      // Erste Zeichnung mit Aktions-Knoepfen, dann alle vier Sekunden nachsehen.
-      stand = -1
-      holeStand()
+      // Knöpfe per Delegation — die Zeilen kommen vom Server oder aus zeichne().
+      if (table) table.addEventListener('click', (ev) => {
+        const b = ev.target.closest('button[data-aendern],button[data-loeschen]')
+        if (!b) return
+        const e = byId.get(b.dataset.aendern || b.dataset.loeschen)
+        if (!e) return
+        if (b.dataset.aendern) bearbeite(e); else loesche(e)
+      })
+      // Gäste mit gemerktem Schlüssel: Knöpfe in die vorhandene Zelle setzen —
+      // kein Neuzeichnen, kein Springen.
+      for (const e of zeilen) {
+        if (offen && !e.own && !admin && meine[e.id]) {
+          const cell = table?.querySelector(`tr[data-entry-id="${e.id}"] [data-actions]`)
+          if (cell && cell.children.length === 0) cell.append(...knoepfe(e))
+        }
+      }
+      // Alle vier Sekunden nachsehen; neu gezeichnet wird nur bei Änderung.
       setInterval(holeStand, 4000)
       document.addEventListener('visibilitychange', () => { if (!document.hidden) holeStand() })
     })()

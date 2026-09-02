@@ -34,6 +34,31 @@ export const besucherLesen = async (request: Request): Promise<Besucher> => {
 	}
 }
 
+/**
+ * Welcher Name auf einem Eintrag steht.
+ *
+ * Wer angemeldet ist, traegt unter seinem KONTONAMEN ein — das Feld ist auf
+ * der Seite nicht aenderbar, und hier wird es auch nicht aus dem Formular
+ * gelesen, sonst waere die Sperre auf der Seite nur Dekoration. Beim Aendern
+ * gilt das nur fuer den eigenen Eintrag: Ein admin, der den Eintrag einer
+ * anderen Familie korrigiert, ueberschreibt deren Namen nicht mit seinem.
+ * Gaeste tippen ihren Namen selbst.
+ */
+export const nameFuer = (
+	besucher: Besucher,
+	ausFormular: string | null,
+	eintragOwner: string | null | undefined,
+): string | undefined => {
+	const eigener = besucher.sub && besucher.name
+	if (
+		eigener &&
+		(eintragOwner === undefined || eintragOwner === besucher.sub)
+	) {
+		return besucher.name ?? undefined
+	}
+	return ausFormular ?? undefined
+}
+
 export const handelnde = (
 	besucher: Besucher,
 	editToken: string | null,

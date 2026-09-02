@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro'
 import {
 	aendereEintrag,
+	eintragLesen,
 	loescheEintrag,
 	trageEin,
 } from '../../lib/db/mitbringen.ts'
-import { besucherLesen, handelnde } from './gemeinsam.ts'
+import { besucherLesen, handelnde, nameFuer } from './gemeinsam.ts'
 
 export const prerender = false
 
@@ -12,12 +13,12 @@ export const prerender = false
  * `POST /public/mitbringen/<id>/eintrag` — eintragen, aendern, loeschen.
  *
  * Ein Endpunkt fuer alle drei, unterschieden ueber `aktion`
- * (`eintragen` | `aendern` | `loeschen`), weil ein HTML-Formular nur POST kann
+ * (`eintragen` | `ändern` | `löschen`), weil ein HTML-Formular nur POST kann
  * und die Seite auch ohne JavaScript funktionieren soll. Mit JavaScript schickt
  * die Seite dasselbe Formular per `fetch` und bekommt JSON; ohne bekommt sie
  * eine Umleitung zurueck auf die Liste, mit `?fehler=` im schlimmsten Fall.
  *
- * Wer aendern darf, entscheidet `darfEintragAendern` in der Datenbankschicht —
+ * Wer aendern darf, entscheidet `darfEintragÄndern` in der Datenbankschicht —
  * hier wird nur eingesammelt, wer da ist: Sitzung (falls vorhanden) und der
  * Bearbeitungsschluessel aus dem Formular, den der Browser beim Eintragen
  * bekommen und behalten hat.
@@ -57,7 +58,8 @@ export const POST: APIRoute = async ({ params, request }) => {
 				const e = trageEin(
 					listId,
 					{
-						name: feld('name') ?? '',
+						// Angemeldet: der Kontoname, nicht das Formular (nameFuer).
+						name: nameFuer(besucher, feld('name'), undefined) ?? '',
 						item: feld('item') ?? '',
 						category: feld('category'),
 						amount: feld('amount'),
@@ -70,11 +72,12 @@ export const POST: APIRoute = async ({ params, request }) => {
 				// Formulars ohne Skript, nicht ein Fehler.
 				return willJson ? antwort({ ok: true, entry: e }) : zurueck()
 			}
-			case 'aendern': {
+			case 'ändern': {
+				const vorher = eintragLesen(feld('entry_id') ?? '')
 				const e = aendereEintrag(
 					feld('entry_id') ?? '',
 					{
-						name: feld('name') ?? undefined,
+						name: nameFuer(besucher, feld('name'), vorher?.owner_sub ?? null),
 						item: feld('item') ?? undefined,
 						category: feld('category'),
 						amount: feld('amount'),
@@ -83,7 +86,7 @@ export const POST: APIRoute = async ({ params, request }) => {
 				)
 				return willJson ? antwort({ ok: true, entry: e }) : zurueck()
 			}
-			case 'loeschen': {
+			case 'löschen': {
 				loescheEintrag(feld('entry_id') ?? '', wer)
 				return willJson ? antwort({ ok: true }) : zurueck()
 			}

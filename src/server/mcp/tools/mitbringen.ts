@@ -16,7 +16,7 @@ import type { McpAuth } from '../guard.ts'
 import { registerPersonalDataTool, registerWriteTool } from '../guard.ts'
 
 /**
- * Mitbringlisten ueber MCP — "Leg eine Liste fuers Grillfest am 12.9. an".
+ * Mitbringlisten ueber MCP — "Leg eine Liste fürs Grillfest am 12.9. an".
  *
  * Ein admin legt den ANLASS an und bekommt den Link. Eintragen tun die
  * Familien selbst auf der Seite hinter dem Link, mit oder ohne Konto; dafuer
@@ -88,7 +88,7 @@ export const registerMitbringTools = (
 		{
 			title: 'Mitbringliste anlegen',
 			description:
-				'Legt eine Mitbringliste fuer einen Anlass an (Grillfest, Picknick, Klassenfruehstueck) und gibt den LINK zurueck, den man an die Eltern weitergibt. Auf der Seite hinter dem Link traegt jede Familie selbst ein, was sie mitbringt — mit Konto (Name vorausgefuellt) oder ohne. `categories` (z.B. ["Salat","Grillgut","Getraenke","Nachtisch"]) sind optional; mit ihnen zeigt die Seite je Kategorie, wie viel schon da ist, und niemand bringt als Fuenfter einen Nudelsalat. Datensparsamkeit: die Liste wird `retention_days` (Vorgabe 180) nach dem Datum automatisch samt Eintraegen geloescht.',
+				'Legt eine Mitbringliste für einen Anlass an (Grillfest, Picknick, Klassenfrühstück) und gibt den LINK zurück, den man an die Eltern weitergibt. Auf der Seite hinter dem Link trägt jede Familie selbst ein, was sie mitbringt — mit Konto (Name vorausgefuellt) oder ohne. `categories` (z.B. ["Salat","Grillgut","Getränke","Nachtisch"]) sind optional; mit ihnen zeigt die Seite je Kategorie, wie viel schon da ist, und niemand bringt als Fünfter einen Nudelsalat. Datensparsamkeit: die Liste wird `retention_days` (Vorgabe 180) nach dem Datum automatisch samt Einträgen gelöscht.',
 			inputSchema: {
 				title: z.string().min(1).describe('z.B. "Grillfest 2026"'),
 				event_date: DatumSchema.optional().describe(
@@ -105,7 +105,7 @@ export const registerMitbringTools = (
 					.min(1)
 					.optional()
 					.describe(
-						`Tage nach dem Datum, bis die Liste geloescht wird (Vorgabe ${VORGABE_AUFBEWAHRUNG_TAGE})`,
+						`Tage nach dem Datum, bis die Liste gelöscht wird (Vorgabe ${VORGABE_AUFBEWAHRUNG_TAGE})`,
 					),
 			},
 		},
@@ -135,7 +135,7 @@ export const registerMitbringTools = (
 		{
 			title: 'Mitbringlisten ansehen',
 			description:
-				'Alle Mitbringlisten mit Link, Status und Anzahl der Eintraege, neueste zuerst. Wer was mitbringt, zeigt get_mitbringliste.',
+				'Alle Mitbringlisten mit Link, Status und Anzahl der Einträge, neueste zuerst. Wer was mitbringt, zeigt get_mitbringliste.',
 			inputSchema: {},
 		},
 		() => ({
@@ -163,9 +163,9 @@ export const registerMitbringTools = (
 		auth,
 		'get_mitbringliste',
 		{
-			title: 'Mitbringliste mit Eintraegen ansehen',
+			title: 'Mitbringliste mit Einträgen ansehen',
 			description:
-				'Eine Liste samt aller Eintraege: wer bringt was, in welcher Kategorie, wie viel.',
+				'Eine Liste samt aller Einträge: wer bringt was, in welcher Kategorie, wie viel.',
 			inputSchema: { id: z.string().min(1) },
 		},
 		(args) => mitFehlermeldung(() => listeAusgabe(args.id), toJson),
@@ -176,9 +176,9 @@ export const registerMitbringTools = (
 		auth,
 		'update_mitbringliste',
 		{
-			title: 'Mitbringliste aendern',
+			title: 'Mitbringliste ändern',
 			description:
-				'Aendert Titel, Datum, Beschreibung, Kategorien, Aufbewahrung oder Status. `status: "closed"` schliesst die Liste — dann kann niemand mehr eintragen oder aendern, sehen kann man sie weiter. Ein neues Datum oder eine andere Aufbewahrung verschiebt auch den Loeschzeitpunkt.',
+				'Aendert Titel, Datum, Beschreibung, Kategorien, Aufbewahrung oder Status. `status: "closed"` schliesst die Liste — dann kann niemand mehr eintragen oder ändern, sehen kann man sie weiter. Ein neues Datum oder eine andere Aufbewahrung verschiebt auch den Loeschzeitpunkt.',
 			inputSchema: {
 				id: z.string().min(1),
 				title: z.string().min(1).optional(),
@@ -201,16 +201,16 @@ export const registerMitbringTools = (
 		auth,
 		'delete_mitbringliste',
 		{
-			title: 'Mitbringliste loeschen',
+			title: 'Mitbringliste löschen',
 			description:
-				'Loescht eine Liste samt aller Eintraege sofort. Unwiderruflich.',
+				'Loescht eine Liste samt aller Einträge sofort. Unwiderruflich.',
 			inputSchema: { id: z.string().min(1) },
 		},
 		(args) =>
 			mitFehlermeldung(
 				() => loescheListe(args.id),
 				(ok) =>
-					ok ? `Liste ${args.id} geloescht.` : 'Diese Liste gibt es nicht.',
+					ok ? `Liste ${args.id} gelöscht.` : 'Diese Liste gibt es nicht.',
 			),
 	)
 
@@ -219,7 +219,7 @@ export const registerMitbringTools = (
 		auth,
 		'delete_mitbringeintrag',
 		{
-			title: 'Eintrag einer Mitbringliste loeschen',
+			title: 'Eintrag einer Mitbringliste löschen',
 			description:
 				'Entfernt einen einzelnen Eintrag (z.B. einen Scherz oder ein Versehen). Die Eintrags-IDs stehen in get_mitbringliste.',
 			inputSchema: { id: z.string().min(1) },
@@ -228,9 +228,7 @@ export const registerMitbringTools = (
 			mitFehlermeldung(
 				() => loescheEintrag(args.id, { admin: true }),
 				(ok) =>
-					ok
-						? `Eintrag ${args.id} geloescht.`
-						: 'Diesen Eintrag gibt es nicht.',
+					ok ? `Eintrag ${args.id} gelöscht.` : 'Diesen Eintrag gibt es nicht.',
 			),
 	)
 }
