@@ -1174,6 +1174,54 @@ lesen. Die Gruppen müssen deshalb existieren; wer sie im selben Zug anlegen
 will, gibt sie `replace_putzplan` unter `families` mit (`slug` + `label`) oder
 ruft vorher `upsert_putzfamilie`.
 
+## Mitbringlisten: „Wer bringt was zum Grillfest mit?"
+
+Ein Anlass, eine Liste, und die Familien tragen selbst ein — mit Konto oder
+ohne. Der Ablauf:
+
+1. Ein `admin` sagt dem MCP-Client: „Leg eine Mitbringliste fürs Grillfest am
+   12.9. an, Kategorien Salat, Grillgut, Getränke, Nachtisch." →
+   `create_mitbringliste` legt sie an und gibt den **Link** zurück.
+2. Der Link (`/public/mitbringen/<id>`) geht an die Eltern — über den
+   Verteiler, WhatsApp, wie auch immer. Wer ihn hat, sieht die Liste und trägt
+   ein; wer angemeldet ist, hat seinen Namen vorausgefüllt. Angemeldete sehen
+   die offenen Listen zusätzlich auf der Startseite.
+3. Die Seite fragt alle vier Sekunden den Stand ab und zeichnet die Einträge
+   neu, sobald sich der Änderungszähler der Liste bewegt hat. Man sieht also,
+   was die anderen gerade eintragen, ohne neu zu laden — und je Kategorie, wie
+   viel schon da ist (auch die Null).
+
+Was daran Absicht ist:
+
+- **Der Schutz ist der Link, nicht die Anmeldung.** Die `id` ist ein
+  Zufallsschlüssel (96 Bit), die Seite ist `noindex`, und sie liegt unter
+  `/public/`, weil viele Eltern die Seite nicht mit Konto nutzen. Wer den Link
+  weitergibt, gibt die Liste weiter — genau wie bei jedem geteilten Dokument.
+- **Eigene Einträge ändern, fremde nicht.** Mit Konto ist der Eintrag an die
+  Person gebunden; ohne bekommt der Browser einen Bearbeitungsschlüssel
+  (localStorage). Ein `admin` darf alles korrigieren — über die Seite oder
+  `delete_mitbringeintrag`. Die Regel steht an genau einer Stelle:
+  `darfEintragAendern` in `src/lib/db/mitbringen.ts`.
+- **Die Liste verschwindet von selbst.** `retention_days` (Vorgabe **180**,
+  je Liste einstellbar) nach dem Datum des Anlasses wird sie samt Einträgen
+  gelöscht — beim Start und einmal am Tag. Eine fällige Liste ist schon vorher
+  für alle unsichtbar. Eine Mitbringliste nennt Familiennamen und ist nach dem
+  Fest wertlos; sie liegen zu lassen wäre der Fehler.
+- **Lesen über MCP ist `admin`**, wie beim Putzplan: wer was mitbringt, ist
+  eine Auskunft an die Klasse, kein Datensatz für jeden Client.
+
+| | Werkzeug |
+| --- | --- |
+| anlegen (gibt den Link zurück) | `create_mitbringliste` |
+| Übersicht aller Listen | `list_mitbringlisten` |
+| eine Liste mit Einträgen | `get_mitbringliste` |
+| ändern, schließen (`status: closed`), Aufbewahrung | `update_mitbringliste` |
+| Liste löschen | `delete_mitbringliste` |
+| einzelnen Eintrag löschen | `delete_mitbringeintrag` |
+
+Die Seite funktioniert **ohne JavaScript** vollständig (Formular, Umleitung
+zurück) — nur das Nachladen und das Ändern eigener Einträge brauchen es.
+
 ### Die Schnittstelle für den Erinnerungsdienst
 
 Aus `src/klasse/putzplan.ts`, und **nur** von dort:

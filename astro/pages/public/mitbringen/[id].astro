@@ -1,0 +1,267 @@
+---
+import Layout from '../../../layouts/Schlicht.astro'
+import { klassenConfig } from '../../../../src/klasse/config.ts'
+import { standLesen } from '../../../../src/lib/db/mitbringen.ts'
+import { besucherLesen } from '../../../../src/routes/mitbringen/gemeinsam.ts'
+
+export const prerender = false
+
+/**
+ * Die Mitbringliste — "Wer bringt was zum Grillfest mit?"
+ *
+ * Liegt unter `/public/`, weil viele Eltern die Seite nicht mit Konto nutzen
+ * und trotzdem eintragen sollen. Der Schutz ist der Link: Die `id` ist ein
+ * zufaelliger Schluessel, und die Seite steht auf `noindex` (Layout). Wer
+ * angemeldet ist, bekommt seinen Namen vorausgefuellt; wer nicht, tippt ihn.
+ *
+ * Die Seite funktioniert OHNE JavaScript vollstaendig (Formular, Umleitung
+ * zurueck). MIT JavaScript fragt sie alle vier Sekunden den Stand ab und
+ * zeichnet die Eintraege neu, wenn sich etwas getan hat — die anderen sehen
+ * also, was gerade eingetragen wird, ohne neu zu laden. Der Bearbeitungs-
+ * schluessel eines eigenen Eintrags bleibt im Browser (localStorage), damit
+ * auch ein Gast seinen Eintrag spaeter noch aendern kann.
+ */
+
+const id = Astro.params.id ?? ''
+const stand = standLesen(id)
+if (!stand) {
+  return new Response('Diese Liste gibt es nicht.', { status: 404 })
+}
+
+const { label: klasse } = klassenConfig()
+const besucher = await besucherLesen(Astro.request)
+const fehler = new URL(Astro.request.url).searchParams.get('fehler')
+const { list, entries, counts } = stand
+const offen = list.status === 'open'
+const datum = list.event_date
+  ? new Date(`${list.event_date}T12:00:00Z`).toLocaleDateString('de-DE', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+  : null
+---
+
+<Layout title={list.title} untertitel={`Mitbringliste der ${klasse}${datum ? ` · ${datum}` : ''}`}>
+  {list.description && <p class="mb-6 whitespace-pre-line">{list.description}</p>}
+
+  {!offen && (
+    <div class="alert alert-info mb-6" role="status">
+      Diese Liste ist geschlossen — eintragen und aendern geht nicht mehr.
+    </div>
+  )}
+
+  {fehler && (
+    <div class="alert alert-error mb-6" role="alert">{fehler}</div>
+  )}
+
+  {list.categories.length > 0 && (
+    <section class="mb-6" id="kategorien">
+      <h2 class="mb-2 text-lg font-semibold">Was schon da ist</h2>
+      <ul class="flex flex-wrap gap-2" data-counts>
+        {counts.map((c) => (
+          <li class={`badge badge-lg ${c.count === 0 ? 'badge-outline' : 'badge-primary'}`} data-category={c.category}>
+            {c.category}: <span data-count>{c.count}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )}
+
+  <section class="mb-8" id="eintraege">
+    <h2 class="mb-2 text-lg font-semibold">Wer bringt was mit</h2>
+    <div class="overflow-x-auto">
+      <table class="table" data-entries>
+        <thead>
+          <tr>
+            <th>Familie</th>
+            {list.categories.length > 0 && <th>Kategorie</th>}
+            <th>Was</th>
+            <th>Menge</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.length === 0 && (
+            <tr data-leer><td colspan="5" class="opacity-60">Noch traegt niemand etwas ein — mach den Anfang.</td></tr>
+          )}
+          {entries.map((e) => (
+            <tr data-entry-id={e.id}>
+              <td>{e.name}</td>
+              {list.categories.length > 0 && <td>{e.category ?? ''}</td>}
+              <td>{e.item}</td>
+              <td>{e.amount ?? ''}</td>
+              <td class="text-right" data-actions></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {offen && (
+    <section class="card bg-base-200" id="eintragen">
+      <form class="card-body gap-3" method="post" action={`/public/mitbringen/${list.id}/eintrag`} data-form>
+        <h2 class="card-title">Ich bringe mit</h2>
+        <input type="hidden" name="aktion" value="eintragen" />
+        <input type="hidden" name="entry_id" value="" />
+        <input type="hidden" name="edit_token" value="" />
+        <label class="form-control">
+          <span class="label-text">Familie / Name</span>
+          <input class="input input-bordered" type="text" name="name" required maxlength="80" value={besucher.name ?? ''} autocomplete="family-name" />
+        </label>
+        {list.categories.length > 0 && (
+          <label class="form-control">
+            <span class="label-text">Kategorie</span>
+            <select class="select select-bordered" name="category">
+              <option value="">— bitte waehlen —</option>
+              {list.categories.map((c) => <option value={c}>{c}</option>)}
+            </select>
+          </label>
+        )}
+        <label class="form-control">
+          <span class="label-text">Was</span>
+          <input class="input input-bordered" type="text" name="item" required maxlength="200" placeholder="z.B. Nudelsalat" />
+        </label>
+        <label class="form-control">
+          <span class="label-text">Menge (optional)</span>
+          <input class="input input-bordered" type="text" name="amount" maxlength="80" placeholder="z.B. fuer 10 Personen" />
+        </label>
+        <div class="card-actions justify-end">
+          <button class="btn btn-ghost" type="button" data-abbrechen hidden>Abbrechen</button>
+          <button class="btn btn-primary" type="submit" data-submit>Eintragen</button>
+        </div>
+      </form>
+    </section>
+  )}
+
+  <p class="mt-8 text-xs opacity-60">
+    Diese Liste ist nur ueber ihren Link erreichbar und wird nach dem Anlass automatisch geloescht.
+  </p>
+
+  <script is:inline define:vars={{ listId: list.id, revision: list.revision, categories: list.categories, offen, besucher: { sub: besucher.sub, admin: besucher.admin } }}>
+    (() => {
+      const speicherKey = `mitbringen:${listId}`
+      const lade = () => { try { return JSON.parse(localStorage.getItem(speicherKey) || '{}') } catch { return {} } }
+      const speichere = (m) => { try { localStorage.setItem(speicherKey, JSON.stringify(m)) } catch {} }
+      let meine = lade() // entry_id -> edit_token (Eintraege dieses Browsers)
+      let stand = revision
+      const table = document.querySelector('[data-entries] tbody')
+      const form = document.querySelector('[data-form]')
+      const hatKategorien = categories.length > 0
+
+      const darf = (e) => besucher.admin || (besucher.sub && e.owner_sub === besucher.sub) || Boolean(meine[e.id])
+
+      const zeichne = (data) => {
+        if (!table) return
+        const rows = data.entries
+        table.innerHTML = ''
+        if (rows.length === 0) {
+          const tr = document.createElement('tr')
+          tr.innerHTML = '<td colspan="5" class="opacity-60">Noch traegt niemand etwas ein — mach den Anfang.</td>'
+          table.appendChild(tr)
+        }
+        for (const e of rows) {
+          const tr = document.createElement('tr')
+          tr.dataset.entryId = e.id
+          const td = (t) => { const c = document.createElement('td'); c.textContent = t || ''; return c }
+          tr.appendChild(td(e.name))
+          if (hatKategorien) tr.appendChild(td(e.category))
+          tr.appendChild(td(e.item))
+          tr.appendChild(td(e.amount))
+          const actions = document.createElement('td')
+          actions.className = 'text-right whitespace-nowrap'
+          if (offen && darf(e)) {
+            const b1 = document.createElement('button'); b1.className = 'btn btn-xs btn-ghost'; b1.textContent = 'Aendern'
+            b1.onclick = () => bearbeite(e)
+            const b2 = document.createElement('button'); b2.className = 'btn btn-xs btn-ghost text-error'; b2.textContent = 'Loeschen'
+            b2.onclick = () => loesche(e)
+            actions.append(b1, b2)
+          }
+          tr.appendChild(actions)
+          table.appendChild(tr)
+        }
+        for (const li of document.querySelectorAll('[data-counts] [data-category]')) {
+          const c = data.counts.find((x) => x.category === li.dataset.category)
+          const n = c ? c.count : 0
+          li.querySelector('[data-count]').textContent = String(n)
+          li.className = `badge badge-lg ${n === 0 ? 'badge-outline' : 'badge-primary'}`
+        }
+      }
+
+      const holeStand = async () => {
+        try {
+          const r = await fetch(`/public/mitbringen/${listId}/stand?ab=${stand}`, { cache: 'no-store' })
+          if (r.status === 304) return
+          if (!r.ok) return
+          const data = await r.json()
+          stand = data.list.revision
+          zeichne(data)
+        } catch {}
+      }
+
+      const sende = async (felder) => {
+        const body = new URLSearchParams(felder)
+        const r = await fetch(`/public/mitbringen/${listId}/eintrag`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+          body,
+        })
+        return r.json()
+      }
+
+      const bearbeite = (e) => {
+        if (!form) return
+        form.elements.aktion.value = 'aendern'
+        form.elements.entry_id.value = e.id
+        form.elements.edit_token.value = meine[e.id] || ''
+        form.elements.name.value = e.name
+        if (form.elements.category) form.elements.category.value = e.category || ''
+        form.elements.item.value = e.item
+        form.elements.amount.value = e.amount || ''
+        form.querySelector('[data-submit]').textContent = 'Speichern'
+        form.querySelector('[data-abbrechen]').hidden = false
+        form.scrollIntoView({ behavior: 'smooth' })
+      }
+      const zuruecksetzen = () => {
+        if (!form) return
+        form.elements.aktion.value = 'eintragen'
+        form.elements.entry_id.value = ''
+        form.elements.edit_token.value = ''
+        form.elements.item.value = ''
+        form.elements.amount.value = ''
+        if (form.elements.category) form.elements.category.value = ''
+        form.querySelector('[data-submit]').textContent = 'Eintragen'
+        form.querySelector('[data-abbrechen]').hidden = true
+      }
+      const loesche = async (e) => {
+        if (!confirm(`Eintrag von ${e.name} loeschen?`)) return
+        const res = await sende({ aktion: 'loeschen', entry_id: e.id, edit_token: meine[e.id] || '' })
+        if (!res.ok) { alert(res.fehler || 'Das hat nicht geklappt.'); return }
+        delete meine[e.id]; speichere(meine)
+        await holeStand()
+      }
+
+      if (form) {
+        form.querySelector('[data-abbrechen]').addEventListener('click', zuruecksetzen)
+        form.addEventListener('submit', async (ev) => {
+          ev.preventDefault()
+          const felder = Object.fromEntries(new FormData(form).entries())
+          const res = await sende(felder)
+          if (!res.ok) { alert(res.fehler || 'Das hat nicht geklappt.'); return }
+          if (res.entry && res.entry.edit_token) { meine[res.entry.id] = res.entry.edit_token; speichere(meine) }
+          zuruecksetzen()
+          stand = -1 // beim naechsten Abruf sicher neu zeichnen
+          await holeStand()
+        })
+      }
+
+      // Erste Zeichnung mit Aktions-Knoepfen, dann alle vier Sekunden nachsehen.
+      stand = -1
+      holeStand()
+      setInterval(holeStand, 4000)
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) holeStand() })
+    })()
+  </script>
+</Layout>

@@ -121,6 +121,24 @@ export const GETEILTE_ROUTEN: readonly GeteilteRoute[] = [
 			'Bestätigung einer neuen Zustelladresse. Muss OHNE Anmeldung gehen: Der Klick passiert im Mailprogramm und damit oft in einem anderen Browser, in dem keine Sitzung liegt. Der Schlüssel im Link ist der Nachweis.',
 	},
 	{
+		pattern: '/public/mitbringen/[id]',
+		entrypoint: geteilt('astro/pages/public/mitbringen/[id].astro'),
+		grund:
+			'Mitbringliste („Wer bringt was zum Grillfest mit?"). Unter /public/, weil Eltern OHNE Konto eintragen sollen; der Schutz ist der nicht erratbare Schluessel im Pfad, angelegt ueber MCP. Wer angemeldet ist, bekommt seinen Namen vorausgefuellt.',
+	},
+	{
+		pattern: '/public/mitbringen/[id]/stand',
+		entrypoint: geteilt('src/routes/mitbringen/stand.ts'),
+		grund:
+			'Der Stand einer Mitbringliste als JSON mit Aenderungszaehler — die Seite fragt ihn alle paar Sekunden ab und zeichnet nur bei Aenderung neu.',
+	},
+	{
+		pattern: '/public/mitbringen/[id]/eintrag',
+		entrypoint: geteilt('src/routes/mitbringen/eintrag.ts'),
+		grund:
+			'Eintragen, aendern, loeschen auf einer Mitbringliste — ein POST fuer alle drei, damit die Seite auch ohne JavaScript funktioniert.',
+	},
+	{
 		pattern: '/public/health',
 		entrypoint: geteilt('src/routes/health.ts'),
 		grund:

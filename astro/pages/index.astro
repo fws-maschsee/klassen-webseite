@@ -1,6 +1,15 @@
 ---
 import Layout from '@levino/shipyard-base/layouts/Page.astro'
 import { klasse } from 'virtual:fws-klasse/config'
+import { offeneListen } from '../../src/lib/db/mitbringen.ts'
+
+export const prerender = false
+
+/**
+ * Offene Mitbringlisten — nur fuer Angemeldete sichtbar (diese Seite liegt
+ * hinter dem Login). Gaeste bekommen den Link direkt vom admin.
+ */
+const listen = offeneListen()
 ---
 
 <Layout title="Willkommen">
@@ -38,6 +47,22 @@ import { klasse } from 'virtual:fws-klasse/config'
           </div>
         </div>
       </div>
+
+      {listen.length > 0 && (
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <h2 class="card-title">Mitbringlisten</h2>
+            <ul class="list-disc pl-5">
+              {listen.map((l) => (
+                <li>
+                  <a class="link link-primary" href={`/public/mitbringen/${l.id}`}>{l.title}</a>
+                  {l.event_date && <span class="opacity-70"> · {l.event_date}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
 
       <div class="card bg-base-100 shadow-xl">
         <div class="card-body">
