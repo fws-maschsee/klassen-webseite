@@ -13,7 +13,6 @@
 		"isolatedModules": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
-		"baseUrl": ".",
 		// Die Stubs für shipyard, siehe `astro/types/shipyard-base.d.ts`. Sie
 		// stehen im GEMEINSAMEN Teil und nicht mehr nur im Astro-Projekt, weil
 		// `tests/klasse/styling.test.ts` und `markdown.test.ts` die Integration
@@ -21,6 +20,12 @@
 		// Zuordnung liest tsc dort shipyards rohes TypeScript und scheitert an
 		// dessen endungslosen Importen (TS2835) — ein Fehler in shipyard, den
 		// diese Stubs abfangen.
+		//
+		// Ohne `baseUrl`: TypeScript 7 hat die Option entfernt (TS5102). Sie
+		// stand hier nur auf `"."` und diente allein dazu, die Ziele unten
+		// aufzuloesen — ohne sie loest tsc sie relativ zu DIESER Datei auf, und
+		// die liegt im selben Verzeichnis. Die Pfade bleiben deshalb wie sie
+		// sind; wer sie aendert, misst ab hier, nicht ab dem erbenden tsconfig.
 		"paths": {
 			"@levino/shipyard-base": ["./astro/types/shipyard-base.d.ts"],
 			"@levino/shipyard-blog": ["./astro/types/shipyard-blog.d.ts"],
