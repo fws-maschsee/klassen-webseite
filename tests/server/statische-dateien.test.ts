@@ -87,34 +87,30 @@ describe('statische Dateien', () => {
 	// ersten Start die ganze Serverkette neu laedt (Express, MCP-SDK, SQLite)
 	// und die Migrationen mitlaufen — das dauert auf einem kalten Lauf
 	// mehrere Sekunden und hat mit dem, was hier geprueft wird, nichts zu tun.
-	test(
-		'eine Datei unter /dokumente/ bekommt ohne Anmeldung keine 200',
-		{ timeout: 30_000 },
-		async () => {
-			const basis = await starte()
+	test('eine Datei unter /dokumente/ bekommt ohne Anmeldung keine 200', {
+		timeout: 30_000,
+	}, async () => {
+		const basis = await starte()
 
-			const antwort = await fetch(`${basis}/dokumente/geheim.pdf`, {
-				redirect: 'manual',
-			})
+		const antwort = await fetch(`${basis}/dokumente/geheim.pdf`, {
+			redirect: 'manual',
+		})
 
-			// Kein `toBe(401)`: Ob 401 oder eine Umleitung zum Login kommt, haengt
-			// am `Accept`-Kopf. Die Behauptung ist die, auf die es ankommt — der
-			// Inhalt geht nicht heraus.
-			expect(antwort.status).not.toBe(200)
-			expect(await antwort.text()).not.toContain('%PDF')
-		},
-	)
+		// Kein `toBe(401)`: Ob 401 oder eine Umleitung zum Login kommt, haengt
+		// am `Accept`-Kopf. Die Behauptung ist die, auf die es ankommt — der
+		// Inhalt geht nicht heraus.
+		expect(antwort.status).not.toBe(200)
+		expect(await antwort.text()).not.toContain('%PDF')
+	})
 
-	test(
-		'der Kalender unter /public/ bleibt ohne Anmeldung erreichbar',
-		{ timeout: 30_000 },
-		async () => {
-			const basis = await starte()
+	test('der Kalender unter /public/ bleibt ohne Anmeldung erreichbar', {
+		timeout: 30_000,
+	}, async () => {
+		const basis = await starte()
 
-			const antwort = await fetch(`${basis}/public/kalender.ics`)
+		const antwort = await fetch(`${basis}/public/kalender.ics`)
 
-			expect(antwort.status).toBe(200)
-			expect(await antwort.text()).toContain('BEGIN:VCALENDAR')
-		},
-	)
+		expect(antwort.status).toBe(200)
+		expect(await antwort.text()).toContain('BEGIN:VCALENDAR')
+	})
 })
