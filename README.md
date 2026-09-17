@@ -1174,6 +1174,34 @@ lesen. Die Gruppen müssen deshalb existieren; wer sie im selben Zug anlegen
 will, gibt sie `replace_putzplan` unter `families` mit (`slug` + `label`) oder
 ruft vorher `upsert_putzfamilie`.
 
+## Schichtpläne: „Wer übernimmt welche Schicht?"
+
+Dieselbe Mechanik wie die Mitbringliste, aber die andere Frage — und deshalb
+eigene Tabellen (`shift_lists`, `shift_entries`), eigene Seite
+(`/public/schichten/<id>`) und eigene Werkzeuge. Ein Eintrag ist hier eine
+**Schicht mit einem Namen daran**, kein Gegenstand mit Menge. Wer beides in
+eine Liste presst, bekommt genau das, was die Grillschichten der Klasse Wiesen
+zeigten: „Wer bringt was mit — Familie Muster, 17:30 bis 18:30 Uhr, 17:30 bis
+18:30 Uhr".
+
+- `shifts` sind die Schichten; ohne sie kein Plan.
+- `capacity` sind die Plätze **je Schicht**. Ist eine Schicht voll, ist sie im
+  Auswahlfeld gesperrt und der Server weist sie ab — ein `admin` darf trotzdem.
+  Ohne `capacity` passen beliebig viele hinein.
+- Eintragen, ändern und abgeben dürfen dieselben wie bei der Mitbringliste:
+  die Person selbst (Konto oder Bearbeitungsschlüssel im Browser) und ein
+  `admin` (`darfEintragAendern` in `src/lib/db/schichten.ts`).
+- Löschen nach `retention_days` wie dort, aus denselben Gründen.
+
+| | Werkzeug |
+| --- | --- |
+| anlegen (gibt den Link zurück) | `create_schichtplan` |
+| Übersicht aller Pläne | `list_schichtplaene` |
+| ein Plan mit Einteilung | `get_schichtplan` |
+| ändern, schließen, Plätze je Schicht | `update_schichtplan` |
+| Plan löschen | `delete_schichtplan` |
+| einzelnen Eintrag löschen | `delete_schichteintrag` |
+
 ## Mitbringlisten: „Wer bringt was zum Grillfest mit?"
 
 Ein Anlass, eine Liste, und die Familien tragen selbst ein — mit Konto oder

@@ -8,6 +8,7 @@ import { openDb } from '../lib/db/index.ts'
 import { assertInstanceMatches, instanceLabel } from '../lib/db/instance.ts'
 import { loescheFaellige } from '../lib/db/mitbringen.ts'
 import { seedDemoData } from '../lib/db/saatdaten.ts'
+import { loescheFaellige as loescheFaelligeSchichtplaene } from '../lib/db/schichten.ts'
 import { runMigrations } from '../migrations.ts'
 import { port, publicBaseUrl } from './config.ts'
 import { mcpAuthMiddleware, mcpRequestHandler } from './mcp/handler.ts'
@@ -209,6 +210,9 @@ export const startServer = async (
 				const n = loescheFaellige(db)
 				if (n > 0)
 					console.log(`[mitbringen] ${n} abgelaufene Liste(n) geloescht`)
+				const s = loescheFaelligeSchichtplaene(db)
+				if (s > 0)
+					console.log(`[schichten] ${s} abgelaufene(r) Plan/Plaene geloescht`)
 			} catch (fehler) {
 				console.error(
 					`[mitbringen] Abraeumen fehlgeschlagen: ${fehler instanceof Error ? fehler.message : String(fehler)}`,

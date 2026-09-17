@@ -11,6 +11,7 @@ import { registerMitgliederTools } from './tools/members.ts'
 import { registerMitbringTools } from './tools/mitbringen.ts'
 import { registerPutzplanTools } from './tools/putzplan.ts'
 import { registerRecipientSettingsTools } from './tools/recipientSettings.ts'
+import { registerSchichtTools } from './tools/schichten.ts'
 
 /**
  * Baut den MCP-Server. Name und Titel kommen aus `MCP_INSTANCE_NAME` bzw.
@@ -39,6 +40,7 @@ export const buildMcpServer = (auth: McpAuth): McpServer => {
 	registerRecipientSettingsTools(server, auth)
 	registerPutzplanTools(server, auth)
 	registerMitbringTools(server, auth)
+	registerSchichtTools(server, auth)
 	registerAccountTools(server, auth)
 
 	return server

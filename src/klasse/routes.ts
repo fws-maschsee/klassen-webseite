@@ -139,6 +139,24 @@ export const GETEILTE_ROUTEN: readonly GeteilteRoute[] = [
 			'Eintragen, aendern, loeschen auf einer Mitbringliste — ein POST fuer alle drei, damit die Seite auch ohne JavaScript funktioniert.',
 	},
 	{
+		pattern: '/public/schichten/[id]',
+		entrypoint: geteilt('astro/pages/public/schichten/[id].astro'),
+		grund:
+			'Schichtplan („Wer uebernimmt welche Schicht?"). Unter /public/, weil Eltern OHNE Konto eintragen sollen; der Schutz ist der nicht erratbare Schluessel im Pfad, angelegt ueber MCP.',
+	},
+	{
+		pattern: '/public/schichten/[id]/stand',
+		entrypoint: geteilt('src/routes/schichten/stand.ts'),
+		grund:
+			'Der Stand eines Schichtplans als JSON mit Aenderungszaehler — die Seite fragt ihn alle paar Sekunden ab und zeichnet nur bei Aenderung neu.',
+	},
+	{
+		pattern: '/public/schichten/[id]/eintrag',
+		entrypoint: geteilt('src/routes/schichten/eintrag.ts'),
+		grund:
+			'Schicht uebernehmen, aendern, abgeben — ein POST fuer alle drei, damit die Seite auch ohne JavaScript funktioniert.',
+	},
+	{
 		pattern: '/public/health',
 		entrypoint: geteilt('src/routes/health.ts'),
 		grund:

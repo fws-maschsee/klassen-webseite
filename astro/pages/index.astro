@@ -2,6 +2,7 @@
 import Layout from '@levino/shipyard-base/layouts/Page.astro'
 import { klasse } from 'virtual:fws-klasse/config'
 import { offeneListen } from '../../src/lib/db/mitbringen.ts'
+import { offenePlaene } from '../../src/lib/db/schichten.ts'
 
 export const prerender = false
 
@@ -10,6 +11,7 @@ export const prerender = false
  * hinter dem Login). Gaeste bekommen den Link direkt vom admin.
  */
 const listen = offeneListen()
+const plaene = offenePlaene()
 ---
 
 <Layout title="Willkommen">
@@ -57,6 +59,22 @@ const listen = offeneListen()
                 <li>
                   <a class="link link-primary" href={`/public/mitbringen/${l.id}`}>{l.title}</a>
                   {l.event_date && <span class="opacity-70"> · {l.event_date}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {plaene.length > 0 && (
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <h2 class="card-title">Schichtpläne</h2>
+            <ul class="list-disc pl-5">
+              {plaene.map((p) => (
+                <li>
+                  <a class="link link-primary" href={`/public/schichten/${p.id}`}>{p.title}</a>
+                  {p.event_date && <span class="opacity-70"> · {p.event_date}</span>}
                 </li>
               ))}
             </ul>
