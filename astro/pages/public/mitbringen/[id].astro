@@ -3,6 +3,7 @@ import Page from '@levino/shipyard-base/layouts/Page.astro'
 import Schlicht from '../../../layouts/Schlicht.astro'
 import { klassenConfig } from '../../../../src/klasse/config.ts'
 import { eintraegeLesen, standLesen } from '../../../../src/lib/db/mitbringen.ts'
+import { planLesen } from '../../../../src/lib/db/schichten.ts'
 import { besucherLesen } from '../../../../src/routes/mitbringen/gemeinsam.ts'
 
 export const prerender = false
@@ -26,6 +27,9 @@ export const prerender = false
 const id = Astro.params.id ?? ''
 const stand = standLesen(id)
 if (!stand) {
+  // Umgezogen: was hier als Mitbringliste lag, ist jetzt ein Schichtplan.
+  // Die Links stecken in Mails und WhatsApp-Verläufen und muessen weiter tragen.
+  if (planLesen(id)) return Astro.redirect(`/public/schichten/${id}`, 301)
   return new Response('Diese Liste gibt es nicht.', { status: 404 })
 }
 
