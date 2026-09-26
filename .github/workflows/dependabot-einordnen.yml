@@ -1,0 +1,53 @@
+name: Dependabot einordnen
+# Der permissions-Block hebt den sonst schreibgeschützten Token von Dependabot-Läufen an (GitHub-Doku
+# „Troubleshooting Dependabot on GitHub Actions“); Vorschau schreibt so schon länger in PRs.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  einordnen:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Minor und Patch automatisch, Majors für einen Menschen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          GRUPPE: ${{ steps.meta.outputs.dependency-group }}
+          ART: ${{ steps.meta.outputs.update-type }}
+          TITEL: ${{ github.event.pull_request.title }}
+          TEXT: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          # update-type ist bei Gruppen der größte Sprung; die Gruppe security darf Majors enthalten.
+          case "$GRUPPE:$ART" in
+            majors:*) label=major ;;
+            *:version-update:semver-major) label=major ;;
+            *:version-update:semver-minor|*:version-update:semver-patch) label=automerge ;;
+            *)
+              # `|| true`: unter pipefail bräche ein leerer grep-Treffer den Schritt ab.
+              paare=$(printf '%s\n%s\n' "$TITEL" "$TEXT" \
+                | grep -E '^(Bump|Bumps|Updates) ' \
+                | grep -oiE 'from v?[0-9]+(\.[0-9]+)* to v?[0-9]+(\.[0-9]+)*' \
+                | sed -E 's/[Ff]rom v?([0-9.]+) to v?([0-9.]+)/\1 \2/' || true)
+              # Unlesbar heißt im Zweifel major — ein versehentlich automergtes Major wäre ein Incident.
+              if [ -z "$paare" ]; then
+                label=major
+              elif printf '%s\n' "$paare" \
+                   | awk 'NF==2 { split($1,a,"."); split($2,b,"."); if (a[1]+0 != b[1]+0) f=1 } END { exit f?0:1 }'; then
+                label=major
+              else
+                label=automerge
+              fi ;;
+          esac
+          if [ "$label" = automerge ]; then anderes=major; else anderes=automerge; fi
+          echo "PR #$PR ($GRUPPE, $ART) -> $label"
+          gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --add-label "$label" --remove-label "$anderes"

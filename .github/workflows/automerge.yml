@@ -1,72 +1,58 @@
 name: Automerge
-# Zeitplan statt pull_request: Dependabot-PR-Events bekommen nur einen Read-only-Token.
+# Ereignis statt Zeitplan. Kein natives Auto-Merge: private Repos im Free-Plan haben keine Required Checks.
 on:
-  schedule:
-    - cron: '17 * * * *'
-  workflow_dispatch:
+  workflow_run:
+    # Alle Workflows, die auf PRs laufen; fehlt einer, bricht der Lauf unten laut ab.
+    workflows: [Dependabot einordnen, CI, Anmeldung]
+    types: [completed]
 permissions:
   contents: write
   pull-requests: write
-  # permissions setzt alles Ungenannte auf none; ohne diese drei scheitert statusCheckRollup.
   checks: read
   statuses: read
-  actions: read
+  actions: write
 jobs:
-  automerge:
+  mergen:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/') &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: automerge-${{ github.event.workflow_run.head_branch }}
     steps:
-      - name: Unetikettierte Dependabot-PRs einordnen
+      - name: Grünen `automerge`-PR mergen
+        id: mergen
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          offen=$(gh pr list --repo "$GITHUB_REPOSITORY" --author 'app/dependabot' --state open \
-            --json number,labels \
-            --jq '.[] | select([.labels[].name] | any(. == "automerge" or . == "major") | not) | .number')
-          for pr in $offen; do
-            meta=$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json title,body,headRefName,commits \
-              --jq '[.title, .headRefName, .body, (.commits[]?.messageHeadline), (.commits[]?.messageBody)] | join("\n")')
-            if printf '%s\n' "$meta" | grep -qE '^ *dependency-group: *majors *$|^dependabot/.+/majors-[0-9a-f]+$'; then
-              label=major
-            elif printf '%s\n' "$meta" | grep -qE 'update-type: *version-update:semver-major'; then
-              label=major
-            elif printf '%s\n' "$meta" | grep -qE '^ *dependency-group: *minor-and-patch *$|^dependabot/.+/minor-and-patch-[0-9a-f]+$'; then
-              label=automerge
-            elif printf '%s\n' "$meta" | grep -qE 'update-type: *version-update:semver-'; then
-              label=automerge
-            else
-              # Auch die Gruppe security landet hier: sie darf Majors enthalten.
-              paare=$(printf '%s\n' "$meta" \
-                | grep -E '^(Bump|Bumps|Updates) ' \
-                | grep -oiE 'from v?[0-9]+(\.[0-9]+)* to v?[0-9]+(\.[0-9]+)*' \
-                | sed -E 's/[Ff]rom v?([0-9.]+) to v?([0-9.]+)/\1 \2/' || true)
-              # Unlesbar heißt major: lieber ein Mensch schaut drauf als ein versehentlicher Major-Automerge.
-              if [ -z "$paare" ]; then
-                label=major
-              elif printf '%s\n' "$paare" \
-                   | awk 'NF==2 { split($1,a,"."); split($2,b,"."); if (a[1]+0 != b[1]+0) f=1 } END { exit f?0:1 }'; then
-                label=major
-              else
-                label=automerge
-              fi
-            fi
-            echo "PR #$pr -> $label"
-            gh pr edit "$pr" --repo "$GITHUB_REPOSITORY" --add-label "$label" \
-              || echo "PR #$pr konnte nicht etikettiert werden -- naechster Lauf versucht es erneut"
-          done
-      - name: Gruene `automerge`-PRs mergen
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          for pr in $(gh pr list --repo "$GITHUB_REPOSITORY" --author 'app/dependabot' --label automerge --state open --json number --jq '.[].number'); do
-            state=$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json statusCheckRollup,mergeable \
-              --jq '[.statusCheckRollup[]? | select(.name != "Automerge") | (.conclusion // .state)] as $c
-                    | if ($c | length) == 0 then "green"
-                      elif ($c | map(. == "SUCCESS" or . == "NEUTRAL" or . == "SKIPPED") | all) then "green"
-                      elif ($c | map(. == "FAILURE" or . == "ERROR" or . == "CANCELLED" or . == "TIMED_OUT") | any) then "red"
-                      else "pending" end' || echo unreadable)
-            echo "PR #$pr: $state"
-            [ "$state" = green ] || continue
-            gh pr merge "$pr" --repo "$GITHUB_REPOSITORY" --squash --delete-branch || echo "PR #$pr konnte nicht gemergt werden (Konflikt? Schutzregel?)"
-          done
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --author 'app/dependabot' \
+            --json number,headRefOid,labels \
+            --jq ".[] | select(.headRefOid == \"$SHA\") | select([.labels[].name] | index(\"automerge\")) | .number")
+          if [ -z "$pr" ]; then
+            echo "Kein offener automerge-PR mit Stand $SHA auf $BRANCH"; exit 0
+          fi
+          ausloeser=$(gh api -H 'Accept: application/vnd.github.raw' \
+            "repos/$GITHUB_REPOSITORY/contents/.github/workflows/automerge.yml?ref=$GITHUB_SHA" \
+            | yq -o=json '.on.workflow_run.workflows')
+          checks=$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json statusCheckRollup --jq '.statusCheckRollup')
+          fehlend=$(jq -r --argjson a "$ausloeser" \
+            '[.[] | .workflowName // empty | select(. as $w | $a | index($w) | not)] | unique | join(", ")' <<<"$checks")
+          if [ -n "$fehlend" ]; then
+            echo "::error::PR #$pr hat Checks aus Workflows, die Automerge nicht auslösen: $fehlend — in automerge.yml unter workflow_run.workflows ergänzen"
+            exit 1
+          fi
+          stand=$(jq -r '[.[] | (.conclusion // .state // "") | ascii_upcase] as $c
+            | if ($c | map(. == "FAILURE" or . == "ERROR" or . == "CANCELLED" or . == "TIMED_OUT" or . == "ACTION_REQUIRED" or . == "STARTUP_FAILURE") | any) then "rot"
+              elif ($c | map(. == "SUCCESS" or . == "NEUTRAL" or . == "SKIPPED") | all) then "gruen"
+              else "offen" end' <<<"$checks")
+          echo "PR #$pr: $stand"
+          [ "$stand" = gruen ] || exit 0
+          # --match-head-commit: schiebt Dependabot inzwischen nach, wird nichts Ungeprüftes gemergt.
+          gh pr merge "$pr" --repo "$GITHUB_REPOSITORY" --squash --delete-branch --match-head-commit "$SHA"
+          echo "gemergt=true" >> "$GITHUB_OUTPUT"
