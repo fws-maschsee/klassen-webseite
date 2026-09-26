@@ -9,7 +9,7 @@ import type {
 	ZodRawShapeCompat,
 } from '@modelcontextprotocol/sdk/server/zod-compat.js'
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js'
-import { rolesForUser } from '../auth/grants.ts'
+import { rolesForUser, serviceAccessConfigured } from '../auth/grants.ts'
 import {
 	type Capability,
 	deniedMessage,
@@ -20,16 +20,33 @@ import {
 export type McpAuth = {
 	userId: string
 	roles?: string[]
+	consentRoles?: string[]
 }
+
+const stringList = (value: unknown): string[] | undefined =>
+	Array.isArray(value) && value.every((v) => typeof v === 'string')
+		? value
+		: undefined
 
 export const authFromInfo = (info: AuthInfo | undefined): McpAuth => {
-	const extra = (info?.extra ?? {}) as { userId?: unknown }
-	return { userId: typeof extra.userId === 'string' ? extra.userId : '' }
+	const extra = (info?.extra ?? {}) as {
+		userId?: unknown
+		consentRoles?: unknown
+	}
+	const consentRoles = stringList(extra.consentRoles)
+	return {
+		userId: typeof extra.userId === 'string' ? extra.userId : '',
+		...(consentRoles ? { consentRoles } : {}),
+	}
 }
 
-// Bei jedem Aufruf frisch aus ZITADEL: ein selbsttaetig erneuertes Token truege entzogene Rollen sonst weiter.
-export const rolesFor = async (auth: McpAuth): Promise<string[]> =>
-	auth.roles ?? rolesForUser(auth.userId)
+// Frisch aus ZITADEL, wo ein Dienstzugang da ist: ein erneuertes Token truege entzogene Rollen sonst weiter.
+// Ohne ihn (Vorschau) gelten die Rollen der Zustimmung; bei Entzug widerruft /auth/zitadel-events das Token.
+export const rolesFor = async (auth: McpAuth): Promise<string[]> => {
+	if (auth.roles) return auth.roles
+	if (serviceAccessConfigured()) return rolesForUser(auth.userId)
+	return auth.consentRoles ?? []
+}
 
 // Nachgebaut statt `Parameters<registerTool>`: das friert die Generics ein, und die Handler-Argumente werden `any`.
 type GuardedToolConfig<

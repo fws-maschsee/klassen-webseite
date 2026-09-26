@@ -72,13 +72,13 @@ const clientsStore: OAuthRegisteredClientsStore = {
 	},
 }
 
-// Bewusst ohne Rollen, obwohl die Spalte sie fuehrt: entschieden wird frisch in ZITADEL (mcp/guard.ts).
+// Die Rollen der Zustimmung gelten nur ohne Dienstzugang; mit ihm entscheidet mcp/guard.ts frisch in ZITADEL.
 const accessTokenToAuthInfo = (token: AccessToken, raw: string): AuthInfo => ({
 	token: raw,
 	clientId: token.client_id,
 	scopes: token.scopes ?? [],
 	expiresAt: token.expires_at,
-	extra: { userId: token.user_id },
+	extra: { userId: token.user_id, consentRoles: token.roles },
 })
 
 export const mcpOAuthProvider: OAuthServerProvider = {
