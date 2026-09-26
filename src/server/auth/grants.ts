@@ -198,26 +198,36 @@ const PAGE_SIZE = 200
 
 const MAX_PAGES = 50
 
+type AuthorizationPage = {
+	authorizations?: Authorization[]
+	pagination?: { totalResult?: string | number }
+}
+
+const authorizationPage = (
+	projectId: string,
+	offset: number,
+	limit: number,
+): Promise<AuthorizationPage> =>
+	post<AuthorizationPage>(LIST_AUTHORIZATIONS_PATH, {
+		pagination: { offset, limit, asc: true },
+		filters: [{ projectId: { id: projectId } }],
+	})
+
+// ZITADEL prueft Berechtigungen erst nach dem Blaettern: eine Seite kann kurz oder leer sein, obwohl weitere folgen, und totalResult zaehlt ungefiltert.
 const listAuthorizations = async (
 	projectId: string,
-	maxRows = PAGE_SIZE * MAX_PAGES,
 ): Promise<Authorization[]> => {
 	const rows: Authorization[] = []
-	for (let page = 0; page < MAX_PAGES && rows.length < maxRows; page++) {
-		const limit = Math.min(PAGE_SIZE, maxRows - rows.length)
-		const body = await post<{
-			authorizations?: Authorization[]
-			pagination?: { totalResult?: string | number }
-		}>(LIST_AUTHORIZATIONS_PATH, {
-			pagination: { offset: rows.length, limit, asc: true },
-			filters: [{ projectId: { id: projectId } }],
-		})
-		const batch = body.authorizations ?? []
-		rows.push(...batch)
-		const total = Number(body.pagination?.totalResult ?? rows.length)
-		if (batch.length < limit || rows.length >= total) break
+	for (let page = 0; page < MAX_PAGES; page++) {
+		const offset = page * PAGE_SIZE
+		const body = await authorizationPage(projectId, offset, PAGE_SIZE)
+		rows.push(...(body.authorizations ?? []))
+		const total = Number(body.pagination?.totalResult ?? 0)
+		if (offset + PAGE_SIZE >= total) return rows
 	}
-	return rows
+	throw new GrantsUnavailableError(
+		`Projekt ${projectId} hat mehr als ${PAGE_SIZE * MAX_PAGES} Autorisierungen`,
+	)
 }
 
 const loginEmail = (name: string | undefined): string => {
@@ -316,7 +326,7 @@ const runProbe = async (): Promise<ServiceAccessStatus> => {
 		const config = getGrantsConfig()
 		kind = config.credential.kind
 		if (kind === 'key') accessToken = null
-		await listAuthorizations(config.projectId, 1)
+		await authorizationPage(config.projectId, 0, 1)
 		return { status: 'ok', credential: kind, checkedAt: checkedAt, error: null }
 	} catch (error) {
 		const message = (error as Error).message

@@ -97,6 +97,53 @@ describe('Rollen aus ZITADEL (Authorization Service v2)', () => {
 		expect(fetchMock).toHaveBeenCalledTimes(3)
 	})
 
+	it('blaettert nach rohem Offset weiter, auch wenn ZITADEL Zeilen nach dem Blaettern wegfiltert', async () => {
+		const sichtbar = (von: number, bis: number) =>
+			Array.from({ length: bis - von }, (_, i) => ({
+				userId: `u-${von + i}`,
+				roleKeys: ['mitglied'],
+			}))
+		const seiten: Record<number, ReturnType<typeof sichtbar>> = {
+			0: sichtbar(0, 3),
+			200: [],
+			400: sichtbar(400, 402),
+		}
+		const offsets: number[] = []
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (_url: string, init: RequestInit) => {
+				const { pagination } = JSON.parse(String(init.body))
+				offsets.push(pagination.offset)
+				const seite = authorizationsBody(seiten[pagination.offset] ?? [])
+				seite.pagination.totalResult = '430'
+				return Response.json(seite)
+			}),
+		)
+		const konten = await grantedAccounts()
+		expect(offsets).toEqual([0, 200, 400])
+		expect(konten.map((konto) => konto.userId)).toEqual([
+			'u-0',
+			'u-1',
+			'u-2',
+			'u-400',
+			'u-401',
+		])
+	})
+
+	it('scheitert laut, statt eine abgeschnittene Liste zu liefern', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				const seite = authorizationsBody([])
+				seite.pagination.totalResult = '1000000'
+				return Response.json(seite)
+			}),
+		)
+		await expect(grantedAccounts()).rejects.toBeInstanceOf(
+			GrantsUnavailableError,
+		)
+	})
+
 	it('nimmt die Anmeldeadresse als Mail, einen blossen Benutzernamen nicht', async () => {
 		vi.stubGlobal(
 			'fetch',
