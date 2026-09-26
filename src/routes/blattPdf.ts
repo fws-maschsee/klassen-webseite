@@ -35,6 +35,7 @@ export const GET: APIRoute = async ({ url }) => {
 
 const setze = async (blatt: Blatt): Promise<Buffer> => {
 	const vorlage = await readFile(path.resolve(blatt.quelle), 'utf8')
+	// Leeres `daten`, weil `typstPdf` die Datei immer schreibt; die Blätter lesen sie nicht.
 	return typstPdf({ vorlage, daten: {} })
 }
 

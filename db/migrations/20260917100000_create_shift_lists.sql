@@ -33,6 +33,7 @@ CREATE TABLE shift_entries (
 
 CREATE INDEX idx_shift_entries_list ON shift_entries (list_id, created_at);
 
+-- Die eine als Mitbringliste angelegte Schichtliste (Klasse Wiesen) umziehen; in anderen Klassen trifft das nichts.
 INSERT INTO shift_lists (id, title, event_date, description, shifts, capacity, status, retention_days, delete_at, revision, created_by, created_at, updated_at)
   SELECT id, title, event_date, description, categories, NULL, status, retention_days, delete_at, revision, created_by, created_at, updated_at
     FROM bring_lists

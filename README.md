@@ -826,8 +826,29 @@ export const siteConfig = defineKlassenConfig({
 Umgebungsvariablen schlagen die Konfiguration, wo es eine gibt
 (`MCP_INSTANCE_NAME`, `DB_PATH`, `LIST_DOMAIN`, `PUBLIC_BASE_URL`,
 `OIDC_REQUIRED_ROLE`, …). Grund: das Deployment sitzt näher an der Wirklichkeit
-als das Repository — bei einem Umzug ist zuerst die Env richtig. Alle Variablen
-mit Begründung: `.env.example`.
+als das Repository — bei einem Umzug ist zuerst die Env richtig. Die Vorlage
+steht in `.env.example`; ohne Vorgabe sind nur die Zugangsdaten.
+
+| Variable | Bedeutung |
+| --- | --- |
+| `MCP_INSTANCE_NAME`, `MCP_INSTANCE_LABEL` | Instanz-Identität (Vorgabe `slug`/`label`). Muss zu `app_meta.instance` passen, sonst startet der Server nicht |
+| `DB_PATH`, `DATABASE_URL` | dieselbe SQLite-Datei, einmal für die App, einmal für dbmate. Im Container `/data/<klasse>.db` |
+| `PUBLIC_BASE_URL`, `PORT` | exakt die öffentliche Adresse (OAuth-Issuer für `/mcp`), sonst lehnt der MCP-Client die Tokens ab |
+| `SES_SMTP_HOST`, `SES_SMTP_PORT`, `SES_SMTP_USER`, `SES_SMTP_PASSWORD` | Versand über SES-SMTP. Port `2587` bleibt; Zugang sind die SMTP-Credentials, nicht die IAM-Keys |
+| `MAIL_FROM`, `MAIL_FROM_NAME`, `MAIL_REPLY_TO` | Absender (in SES verifiziert), Name, Antwortadresse (Vorgabe `MAIL_FROM`) |
+| `MAIL_HOURLY_CAP`, `MAIL_PARALLEL_BURST` | Drosselung über beide Warteschlangen zusammen |
+| `LIST_DOMAIN` | volle Listen-Domain inklusive Klassen-Label (`<klasse>.lists.…`) |
+| `LIST_ENVELOPE_FROM` | Return-Path weiterverteilter Mails (Vorgabe `MAIL_FROM`) |
+| `LIST_RECIPIENT_ALLOWLIST` | Erprobung: nur diese Adressen (kommagetrennt, `@domain` für ganze Domains) bekommen Post. Leer = Echtbetrieb |
+| `LIST_ACCOUNT_CHECK` | `report` (Vorgabe) oder `enforce`, siehe „Ohne Konto, keine E-Mail" |
+| `LIST_WEBHOOK_SECRET` | HMAC-Geheimnis der alten Worker je Klasse (im Worker per `wrangler secret put`). Fehlt es, wird jede Listenmail ohne `X-List-Key-Id` mit 401 abgewiesen |
+| `MAX_MESSAGE_BYTES` | Größenlimit eingehender Listenmail, Vorgabe 10 MiB |
+| `REMINDER_RECEIPT_TO` | Quittung nach jeder verschickten Putz-Erinnerung; leer schaltet sie ab |
+| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REQUIRED_ROLE` | Anmeldung am ZITADEL-Projekt dieser Klasse |
+| `SESSION_SECRET` | Schlüssel des Sitzungs-Cookies, beliebige Länge |
+| `ZITADEL_ORG_ID`, `ZITADEL_PROJECT_ID`, `ZITADEL_SERVICE_TOKEN` | Management-API; Token eines Maschinen-Benutzers mit Leserecht auf Grants und Benutzer. Ohne sie verweigert die App jede Rechteprüfung |
+| `DISABLE_AUTH` | nur für Tests: schaltet die Anmeldung ab |
+| `SEED_DEMO_DATA` | `true` sät erfundene Daten in eine frisch migrierte DB (Vorschau-Umgebungen) |
 
 ## Einstiegspunkte
 

@@ -35,6 +35,7 @@ const starte = async (): Promise<string> => {
 	vi.stubEnv('PORT', '0')
 	vi.stubEnv('DB_PATH', path.join(tmp, 'klasse-beispiel.db'))
 	vi.stubEnv('MCP_INSTANCE_NAME', undefined)
+	// Nicht abschalten: genau die Anmeldung wird hier geprüft.
 	vi.stubEnv('DISABLE_AUTH', undefined)
 
 	vi.resetModules()
@@ -66,6 +67,7 @@ const starte = async (): Promise<string> => {
 
 describe('statische Dateien', () => {
 	test('eine Datei unter /dokumente/ bekommt ohne Anmeldung keine 200', {
+		// resetModules lädt Express, MCP-SDK und SQLite samt Migrationen kalt neu.
 		timeout: 30_000,
 	}, async () => {
 		const basis = await starte()
@@ -74,6 +76,7 @@ describe('statische Dateien', () => {
 			redirect: 'manual',
 		})
 
+		// Nicht `toBe(401)`: je nach Accept-Kopf kommt 401 oder eine Umleitung zum Login.
 		expect(antwort.status).not.toBe(200)
 		expect(await antwort.text()).not.toContain('%PDF')
 	})

@@ -16,6 +16,7 @@ export type SendInput = {
 	text: string
 	attachments?: SendAttachment[]
 	sender?: string
+	// Ohne expliziten Envelope nimmt nodemailer `from` als Return-Path, und SES scheitert am SPF/DKIM-Alignment.
 	envelope?: { from: string; to: string }
 	headers?: Record<string, string>
 }
@@ -27,6 +28,7 @@ export type EmailTransport = {
 }
 
 export const SES_DEFAULT_HOST = 'email-smtp.eu-central-1.amazonaws.com'
+// 2587 ist Absicht: 25, 465 und 587 waren providerseitig gesperrt; 2587 ist der zusaetzliche STARTTLS-Port von SES.
 export const SES_DEFAULT_PORT = 2587
 
 const requireEnv = (key: string): string => {

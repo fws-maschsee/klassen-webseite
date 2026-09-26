@@ -1,5 +1,6 @@
 import { defineKlassenConfig, setKlassenConfig } from '../src/klasse/config.ts'
 
+// Bewusst keine echte Klasse: grün gegen klasse-wiesen sagt nichts über klasse-christophers.
 export const TESTKLASSE = defineKlassenConfig({
 	slug: 'klasse-beispiel',
 	label: 'Klasse Beispiel',

@@ -28,6 +28,7 @@ export type StartServerOptions = {
 export const startServer = async (
 	options: StartServerOptions,
 ): Promise<Server> => {
+	// Muss zuerst laufen: alles darunter liest `klassenConfig()`.
 	setKlassenConfig(options.config)
 
 	const db = openDb()
@@ -41,6 +42,7 @@ export const startServer = async (
 		}
 	}
 
+	// Vor `assertInstanceMatches`: danach steht die Identitaet in `app_meta`, und die Datei gilt nicht mehr als frisch.
 	if (process.env.SEED_DEMO_DATA === 'true') {
 		const saat = seedDemoData(db, new Date(), options.migrationsDirs ?? [])
 		if (saat.gesaet) {
@@ -64,6 +66,7 @@ export const startServer = async (
 
 	const app = express()
 
+	// Hinter dem Reverse-Proxy: sonst sehen Express und das Rate-Limiting des MCP-SDK nur die Proxy-IP.
 	app.set('trust proxy', 1)
 
 	app.use(
@@ -77,6 +80,8 @@ export const startServer = async (
 
 	app.use('/mcp', express.json(), mcpAuthMiddleware, mcpRequestHandler)
 
+	// Nur die alte Adresse wird umgeleitet (Kalender-Clients folgen 301 schlecht, Apple: -1007);
+	// vor `express.static`, damit sie auch greift, falls dort wieder eine Datei liegt.
 	const { calendarLegacyPath, calendarPath } = options.config
 	if (calendarLegacyPath !== null && calendarPath !== null) {
 		app.get(calendarLegacyPath, (_req, res) => {
@@ -88,6 +93,7 @@ export const startServer = async (
 	app.use(nurAngemeldet(staticDir))
 	app.use(express.static(staticDir))
 
+	// Gegen das Arbeitsverzeichnis der Klasse aufgeloest: ein relativer `import()` gaelte relativ zu diesem Modul in `geteilt/`.
 	const astroEntry = pathToFileURL(
 		path.resolve(options.astroEntry ?? './dist/server/entry.mjs'),
 	).href

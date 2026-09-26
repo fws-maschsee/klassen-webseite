@@ -53,6 +53,7 @@ if (Astro.request.method === 'POST') {
 		const code = createAuthCode({
 			client_id: pending.client_id,
 			user_id: userId,
+			// MCP-Clients haben kein Sitzungs-Cookie; die Rollen müssen über Code und Token mitreisen.
 			roles: auth.user.roles,
 			code_challenge: pending.code_challenge,
 			code_challenge_method: pending.code_challenge_method,

@@ -9,6 +9,7 @@ updates:
       timezone: Europe/Berlin
     labels:
       - dependencies
+    # Bewusst hoch: ist das Limit ausgeschöpft, legt Dependabot auch den Sammel-PR nicht mehr an.
     open-pull-requests-limit: 20
     groups:
       minor-and-patch:
@@ -22,6 +23,7 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+      # Muss nach minor-and-patch stehen: eine Abhängigkeit landet in der ersten passenden Gruppe.
       majors:
         applies-to: version-updates
         patterns:

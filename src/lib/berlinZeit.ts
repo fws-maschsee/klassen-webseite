@@ -8,6 +8,7 @@ const TEILE = new Intl.DateTimeFormat('en-US', {
 	hour: '2-digit',
 	minute: '2-digit',
 	second: '2-digit',
+	// Nicht hour12: false — manche ICU-Stände liefern damit Stunde 24 statt 0.
 	hourCycle: 'h23',
 })
 
@@ -37,6 +38,7 @@ export const berlinTeile = (zeitpunkt: Date): BerlinTeile => {
 
 const versatzMs = (zeitpunkt: Date): number => {
 	const t = berlinTeile(zeitpunkt)
+	// Date.UTC oben kennt keine Millisekunden, also hier auch abschneiden.
 	const volleSekunden = Math.floor(zeitpunkt.getTime() / 1000) * 1000
 	return (
 		Date.UTC(t.jahr, t.monat - 1, t.tag, t.stunde, t.minute, t.sekunde) -
@@ -52,6 +54,7 @@ export const berlinZeitpunkt = (
 	minute = 0,
 ): Date => {
 	const alsWaereEsUtc = Date.UTC(jahr, monat - 1, tag, stunde, minute)
+	// Zweistufig: der Versatz hängt vom gesuchten Zeitpunkt ab, an Umstellungstagen liegt der erste Versuch daneben.
 	const ersterVersuch = alsWaereEsUtc - versatzMs(new Date(alsWaereEsUtc))
 	return new Date(alsWaereEsUtc - versatzMs(new Date(ersterVersuch)))
 }

@@ -1,3 +1,4 @@
+// Nur für astro.config.mjs: zieht shipyard und den Node-Adapter mit, die ins SSR-Bundle nicht gehören.
 export type {
 	KlassenConfig,
 	KlassenConfigInput,

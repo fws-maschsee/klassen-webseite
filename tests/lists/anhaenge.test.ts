@@ -29,6 +29,7 @@ const pdf = (bytes: number): Buffer =>
 const base64Zeilen = (buffer: Buffer): string =>
 	buffer.toString('base64').replace(/(.{76})/g, '$1\r\n')
 
+// Verschachtelt wie Apple Mail: alternative[text, mixed[html, pdf]].
 const mitAnhang = (anhang: Buffer): Buffer =>
 	Buffer.from(
 		[

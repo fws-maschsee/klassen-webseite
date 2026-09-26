@@ -27,6 +27,7 @@ beforeEach(() => {
 
 describe('Schema des Adressbuchs', () => {
 	test('kennt nur Name, E-Mail, Zeitstempel und den Bezug zum Konto', () => {
+		// Bewusst abgeschlossene Liste statt `toContain`: jede neue Spalte im Adressbuch soll auffallen.
 		const columns = db
 			.prepare<[], { name: string }>('PRAGMA table_info(mitglieder)')
 			.all()

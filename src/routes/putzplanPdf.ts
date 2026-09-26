@@ -6,6 +6,7 @@ import {
 	TypstZeitueberschreitung,
 } from '../lib/pdf/typst.ts'
 
+// Zur Bauzeit erzeugt zeigte das PDF den Plan vom letzten Deploy.
 export const prerender = false
 
 export const GET: APIRoute = async () => {
@@ -17,6 +18,7 @@ export const GET: APIRoute = async () => {
 				'Content-Type': 'application/pdf',
 				'Content-Disposition': `attachment; filename="${dateiname}"`,
 				'Content-Length': String(pdf.byteLength),
+				// Der Plan ändert sich per MCP ohne Deploy; ein Zwischenspeicher lieferte den alten Stand.
 				'Cache-Control': 'no-store',
 			},
 		})

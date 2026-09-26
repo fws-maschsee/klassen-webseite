@@ -18,6 +18,7 @@ const tick = async (): Promise<void> => {
 	if (running) return
 	running = true
 	try {
+		// SMTP-Stalls enden nicht von selbst mit Fehler; ohne das blieben Eintraege fuer immer auf `sending`.
 		const stuck =
 			cleanupStuckByTimeout(undefined, STUCK_TIMEOUT_SECONDS) +
 			cleanupStuckListOutbound(undefined, STUCK_TIMEOUT_SECONDS)

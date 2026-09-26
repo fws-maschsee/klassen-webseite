@@ -82,6 +82,7 @@ const pruefe = (
 
 describe('buildSigningInput', () => {
 	test('erzeugt genau die Zeichenkette aus dem Vertrag', () => {
+		// Byte für Byte dieselbe Zeichenkette wie im lists-dispatcher (test/reference.test.ts).
 		expect(
 			buildSigningInput({
 				keyId: 'a1b2c3d4e5f60718',

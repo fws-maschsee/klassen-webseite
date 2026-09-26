@@ -44,6 +44,7 @@ if (Astro.request.method === 'POST') {
 		const gewuenscht = String(formular.get('new_email') ?? '')
 		try {
 			const anforderung = beantrageAdresswechsel(mitglied.id, gewuenscht, db)
+			// Erst die Mail, dann die Erfolgsmeldung: sonst wartet die Person auf eine Mail, die nie kommt.
 			await sendeBestaetigung(anforderung.new_email, anforderung.token, TAGE)
 			angefordert = anforderung.new_email
 		} catch (fehler) {
@@ -69,6 +70,7 @@ if (Astro.request.method === 'POST') {
 		gespeichert = true
 	}
 
+	// Neu lesen: eine Bestätigung in einem anderen Browser kann die Adresse inzwischen geändert haben.
 	mitglied = sub ? (mitgliedFuerKonto(sub, db) ?? null) : mitglied
 }
 

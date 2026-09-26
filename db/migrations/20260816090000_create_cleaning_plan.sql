@@ -2,6 +2,7 @@
 -- migrate:up
 
 CREATE TABLE cleaning_dates (
+  -- Reines Datum als TEXT: ein Zeitstempel läge westlich von UTC lokal einen Tag früher.
   date       TEXT PRIMARY KEY
              CHECK (date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
   note       TEXT,
@@ -18,6 +19,7 @@ END;
 
 CREATE TABLE cleaning_assignments (
   date       TEXT NOT NULL REFERENCES cleaning_dates (date) ON DELETE CASCADE ON UPDATE CASCADE,
+  -- RESTRICT statt CASCADE: sonst bliebe ein Termin still unterbesetzt zurück.
   group_key  TEXT NOT NULL REFERENCES groups (key) ON DELETE RESTRICT ON UPDATE CASCADE,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   PRIMARY KEY (date, group_key)

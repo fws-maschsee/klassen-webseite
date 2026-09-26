@@ -21,6 +21,7 @@ export type PutzplanPdfDaten = {
 
 export const schuljahrAus = (datum: Date): string => {
 	const jahr = datum.getUTCFullYear()
+	// Grenze 1. August (Monat 7, ab 0) statt erster Schultag: der steht nirgends, und im Sommer liegt kein Termin.
 	const beginn = datum.getUTCMonth() >= 7 ? jahr : jahr - 1
 	return `${beginn}/${beginn + 1}`
 }
@@ -62,6 +63,7 @@ export const putzplanDateiname = (
 	config: KlassenConfig,
 	schuljahr: string,
 ): string =>
+	// Nur ASCII ohne „/“: der Name geht in den Content-Disposition-Header.
 	`putzplan-${config.slug}-${schuljahr}.pdf`
 		.toLowerCase()
 		.replaceAll(/[^a-z0-9.]+/g, '-')
@@ -86,6 +88,8 @@ export const putzplanAlsPdf = async (
 	}
 }
 
+// Als String statt .typ-Datei, weil Vite die Route nach dist/ bündelt und ein modulrelativer Pfad dort ins Leere zeigt.
+// Daten nur über daten.json als Werte einsetzen, nie per eval oder in den Quelltext — sonst wird ein Familienname zu Typst-Code.
 // biome-ignore lint/complexity/noUselessStringRaw: `String.raw` steht fuer den naechsten Backslash, nicht fuer einen vorhandenen
 export const PUTZPLAN_VORLAGE = String.raw`
 #let daten = json("daten.json")

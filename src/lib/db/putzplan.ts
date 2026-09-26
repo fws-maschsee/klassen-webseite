@@ -31,6 +31,7 @@ const zeilenZuTerminen = (zeilen: readonly PlanZeile[]): Termin[] => {
 	return [...termine.values()]
 }
 
+// LEFT JOIN, damit ein Termin ohne Einteilung als Lücke sichtbar bleibt.
 export const planLesen = (db: Database = openDb()): Termin[] =>
 	zeilenZuTerminen(
 		db
@@ -104,6 +105,7 @@ const pruefeGruppen = (plan: readonly Termin[], db: Database): void => {
 	}
 }
 
+// Als Diff statt „alles löschen, alles neu“, damit unveränderte Termine ihr updated_at behalten.
 const schreibePlan = (plan: readonly Termin[], db: Database): void => {
 	const behalten = new Set(plan.map((t) => t.date))
 	const vorhanden = db
@@ -135,6 +137,7 @@ const schreibePlan = (plan: readonly Termin[], db: Database): void => {
 	}
 }
 
+// Bewusst keine Planregeln (Abstände, Paarungen): was eine sinnvolle Einteilung ist, weiß die Klasse, nicht der Code.
 const anwenden = (
 	aenderung: (plan: Termin[]) => Termin[],
 	db: Database,
@@ -223,6 +226,7 @@ export const tauscheTermine = (
 			)
 		}
 		return plan.map((t) => {
+			// Nur die Einteilung wandert, die Anmerkung gehört zum Tag.
 			if (t.date === dateA) return { ...t, groups: b?.groups ?? [] }
 			if (t.date === dateB) return { ...t, groups: a?.groups ?? [] }
 			return t
@@ -245,6 +249,7 @@ export type LoeschErgebnis = {
 	missing: string[]
 }
 
+// Nicht über anwenden: die Zahl mitgelöschter Einteilungen steht nur vor dem DELETE fest.
 export const loescheTermine = (
 	auswahl: LoeschAuswahl,
 	db: Database = openDb(),
@@ -316,6 +321,7 @@ export type PlanAenderung = {
 	unchanged: number
 }
 
+// NUL als Trenner, weil er in keinem Group-Key vorkommen kann.
 const gleicherTermin = (a: Termin, b: Termin): boolean =>
 	a.note === b.note &&
 	a.groups.length === b.groups.length &&

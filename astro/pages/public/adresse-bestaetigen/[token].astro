@@ -19,6 +19,7 @@ const jetzt = new Date()
 let bestaetigt = false
 let fehler: 'unknown' | 'expired' | 'used' | null = null
 
+// Erst auf Knopfdruck: ein Scanner-GET würde den Einmal-Schlüssel sonst verbrauchen.
 if (Astro.request.method === 'POST') {
 	const ergebnis = bestaetigeAdresswechsel(token, db, jetzt)
 	if (ergebnis.ok) bestaetigt = true

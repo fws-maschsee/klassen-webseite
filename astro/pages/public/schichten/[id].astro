@@ -280,7 +280,7 @@ const besetzung = (c: { count: number; full: boolean }) =>
           if (!res.ok) { alert(res.fehler || 'Das hat nicht geklappt.'); return }
           if (res.entry && res.entry.edit_token) { meine[res.entry.id] = res.entry.edit_token; speichere(meine) }
           zurücksetzen()
-          stand = -1
+          stand = -1 // erzwingt Neuzeichnen beim nächsten Abruf
           await holeStand()
         })
       }

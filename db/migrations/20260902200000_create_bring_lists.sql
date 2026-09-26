@@ -2,6 +2,7 @@
 -- migrate:up
 
 CREATE TABLE bring_lists (
+  -- Zufallsschlüssel statt Slug: der Link ist der Zugang, ein Slug wäre erratbar.
   id             TEXT PRIMARY KEY,
   title          TEXT NOT NULL,
   event_date     TEXT CHECK (event_date IS NULL OR event_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),

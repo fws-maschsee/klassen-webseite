@@ -72,6 +72,7 @@ export const setzeEinstellung = (
 
 const neuerToken = (): string => randomBytes(32).toString('base64url')
 
+// Nie erneuert: ein neuer Token entwertete die Abmeldelinks in allen schon verschickten Mails.
 export const tokenFuer = (email: string, db: Database = openDb()): string => {
 	const normalisiert = normalizeEmail(email)
 	const vorhanden = db
@@ -86,6 +87,7 @@ export const tokenFuer = (email: string, db: Database = openDb()): string => {
      VALUES (?, ?)
      ON CONFLICT (email) DO NOTHING`,
 	).run(normalisiert, neuerToken())
+	// Neu lesen statt den gewürfelten Wert zurückgeben: bei einem Wettlauf gewinnt der zuerst geschriebene.
 	const zeile = db
 		.prepare<[string], { token: string }>(
 			'SELECT token FROM list_settings_tokens WHERE email = ?',
@@ -110,6 +112,7 @@ export type ListenEinstellung = Einstellung & {
 	label: string
 }
 
+// Listen als Argument statt listMailingLists(): mailingLists.ts importiert von hier, das wäre ein Importkreis.
 export const einstellungenFuer = (
 	email: string,
 	listen: readonly MailingListRow[],

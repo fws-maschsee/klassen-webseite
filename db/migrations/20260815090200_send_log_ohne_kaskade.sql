@@ -1,7 +1,9 @@
 -- migrate:up
+-- Neubau, weil SQLite einen Fremdschlüssel nicht nachträglich fallen lassen kann.
 CREATE TABLE email_send_log_neu (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   email_slug    TEXT NOT NULL REFERENCES emails (slug) ON DELETE CASCADE,
+  -- Ohne REFERENCES: das Protokoll ist ein Nachweis und darf das Löschen der Person überdauern.
   mitglied_id   TEXT NOT NULL,
   sent_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   status        TEXT NOT NULL CHECK (status IN ('sent', 'error', 'skipped', 'queued', 'sending')),

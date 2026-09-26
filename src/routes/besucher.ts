@@ -23,6 +23,7 @@ export const besucherLesen = async (request: Request): Promise<Besucher> => {
 			admin: may(ergebnis.user.roles, 'bearbeiten'),
 		}
 	} catch {
+		// Anmeldung nicht konfiguriert oder ZITADEL weg: dann Gast – eine offene Liste darf daran nicht scheitern.
 		return { sub: null, name: null, admin: false }
 	}
 }

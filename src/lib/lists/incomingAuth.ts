@@ -42,6 +42,7 @@ export const authenticateListRequest = ({
 		keyIds: config.listKeyIds,
 		now,
 	})
+	// Nie ein Text an den Absender: 401 gilt dem Dispatcher als unsere Störung, er stellt später erneut zu.
 	if (!verified.ok) {
 		return {
 			ok: false,

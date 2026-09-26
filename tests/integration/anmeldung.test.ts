@@ -24,6 +24,7 @@ let basis: string
 let lage: Ausgangslage
 let aufraeumen: (() => void)[] = []
 
+// Rund fünfzehn ZITADEL-Aufrufe im Aufbau; auf ausgelasteten Runnern ist der erste sehr langsam.
 const AUFBAU_FRIST_MS = 120_000
 
 beforeAll(async () => {
@@ -34,6 +35,7 @@ beforeAll(async () => {
 
 	process.env.PORT = '0'
 	process.env.DB_PATH = path.join(verzeichnis, `${TESTKLASSE.slug}.db`)
+	// Ausdrücklich aus: mit der Abkürzung wären alle Nachweise grün und keiner wahr.
 	process.env.DISABLE_AUTH = 'false'
 	process.env.SESSION_SECRET = 'testgeheimnis-fuer-den-integrationslauf'
 
@@ -43,6 +45,7 @@ beforeAll(async () => {
 	const { stopQueueWorker } = await import('../../src/server/queue-worker.ts')
 	const { closeDb } = await import('../../src/lib/db/index.ts')
 
+	// Erst die Anwendung, dann ZITADEL: die redirect_uri muss zeichengenau passen, der Port steht erst nach listen fest.
 	server = await startServer({
 		config: TESTKLASSE,
 		astroEntry: fileURLToPath(new URL('./astro-attrappe.ts', import.meta.url)),
@@ -213,6 +216,7 @@ describe('(d) Entzug während einer bestehenden Sitzung', () => {
 		expect(text).not.toContain(GESCHUETZTER_INHALT)
 		expect(text).toContain('keinen Zugriff')
 
+		// Unverändertes Cookie belegt: der Zugang endete an der Rollenabfrage, nicht an einer verworfenen Sitzung.
 		expect(browser.kekse()).toBe(sitzungVorher)
 	})
 })

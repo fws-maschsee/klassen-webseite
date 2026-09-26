@@ -69,6 +69,7 @@ type BauenOptions = {
 	attachments?: ListAttachmentRow[]
 }
 
+// `reply_mode` immer setzen: die DB-Vorgabe ist `sender`, die Klassen nutzen `list`.
 const bauen = (options: BauenOptions = {}) =>
 	buildListSendInput(
 		nachricht(options.message),
@@ -81,6 +82,7 @@ const bauen = (options: BauenOptions = {}) =>
 const vorkommen = (haystack: string, needle: string): number =>
 	haystack.split(needle).length - 1
 
+// Nicht `-- `: hinter der Signatur-Trennzeile klappen viele Mailprogramme alles zu.
 const FOOTER_RULE_ANFANG = '-'.repeat(44)
 
 describe('From zeigt auf die Liste und nennt den Absender', () => {
@@ -339,6 +341,7 @@ describe('Reply-To bleibt, wie es war', () => {
 	})
 
 	test('die Vorgabe einer neuen Liste ist sender', () => {
+		// Bewusst ohne `bauen()`: der Helfer setzt `reply_mode`, geprüft wird aber die DB-Vorgabe.
 		const sent = buildListSendInput(
 			nachricht(),
 			[],

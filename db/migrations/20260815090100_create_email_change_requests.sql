@@ -1,5 +1,6 @@
 -- migrate:up
 CREATE TABLE email_change_requests (
+  -- Klartext statt Hash: wer die Datei lesen kann, kann die Adresse ohnehin direkt ändern.
   token        TEXT PRIMARY KEY,
   mitglied_id  TEXT NOT NULL REFERENCES mitglieder (id) ON DELETE CASCADE,
   new_email    TEXT NOT NULL,

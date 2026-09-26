@@ -4,6 +4,7 @@ import { dbTimestamp, openDb } from './index.ts'
 import { normalizeEmail } from './mailingLists.ts'
 import { getMitglied } from './members.ts'
 
+// Lang genug für einen Urlaub, kurz genug, dass ein abgefangener Link nicht monatelang gilt.
 export const GUELTIGKEIT_SEKUNDEN = 7 * 24 * 60 * 60
 
 export type EmailChangeRequestRow = {
@@ -18,6 +19,7 @@ export type EmailChangeRequestRow = {
 const SPALTEN =
 	'token, mitglied_id, new_email, created_at, expires_at, confirmed_at'
 
+// Bewusst grob: RFC-strenge Prüfung lehnt gültige Adressen ab, die Bestätigungsmail prüft ohnehin.
 export const istAdresse = (wert: string): boolean =>
 	/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(wert.trim())
 
@@ -41,6 +43,7 @@ export const beantrageAdresswechsel = (
 	const token = neuerToken()
 	const lauf = db.transaction((): EmailChangeRequestRow => {
 		db.prepare<[string]>(
+			// Ältere offene Links verwerfen, sonst setzt ein später Klick (oder Virenscanner) eine verworfene Adresse.
 			'DELETE FROM email_change_requests WHERE mitglied_id = ? AND confirmed_at IS NULL',
 		).run(mitgliedId)
 		db.prepare<[string, string, string, string, string]>(
@@ -100,10 +103,12 @@ export const bestaetigeAdresswechsel = (
 		const zeile = anforderungZuToken(token, db)
 		if (!zeile) return { ok: false, grund: 'unknown' }
 		if (zeile.confirmed_at) return { ok: false, grund: 'used' }
+		// Zeichenvergleich: funktioniert nur, weil beide Seiten im dbTimestamp-Format stehen.
 		if (zeile.expires_at <= dbTimestamp(jetzt)) {
 			return { ok: false, grund: 'expired' }
 		}
 
+		// Das bedingte UPDATE ist die eigentliche Einmal-Sperre; die Prüfung oben allein hätte eine Lücke.
 		const zuschlag = db
 			.prepare<[string, string]>(
 				'UPDATE email_change_requests SET confirmed_at = ? WHERE token = ? AND confirmed_at IS NULL',
@@ -132,6 +137,7 @@ export const bestaetigeAdresswechsel = (
 	return lauf()
 }
 
+// Einstellungen hängen an der Adresse, ohne Umzug fiele jede Abmeldung still weg.
 const uebertrageEinstellungen = (
 	alt: string,
 	neu: string,
@@ -139,6 +145,7 @@ const uebertrageEinstellungen = (
 ): void => {
 	if (alt === neu) return
 	db.prepare<[string, string]>(
+		// OR IGNORE: schon vorhandene Angaben der neuen Adresse sind jünger und gewinnen.
 		`INSERT OR IGNORE INTO list_recipient_settings (list_address, email, subscribed, own_mail, updated_at)
        SELECT list_address, ?, subscribed, own_mail, updated_at
          FROM list_recipient_settings WHERE email = ?`,

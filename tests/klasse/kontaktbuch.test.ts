@@ -130,6 +130,7 @@ const alleQuellen = [
 ]
 const relativ = (datei: string): string => path.relative(WURZEL, datei)
 
+// Ohne Kommentare: ein Verbot des Worts verböte die Begründung mit.
 const ohneKommentare = (inhalt: string): string =>
 	inhalt.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
 
@@ -138,6 +139,7 @@ const code = (datei: string): string =>
 
 describe('Kontaktbuch: es fliessen keine Daten', () => {
 	test('es gibt ueberhaupt Dateien zu pruefen', () => {
+		// Sonst waere ein kaputtes `quellen()` ein gruener Test ueber die leere Menge.
 		expect(alleQuellen.length).toBeGreaterThan(40)
 	})
 

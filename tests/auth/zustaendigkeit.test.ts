@@ -43,6 +43,7 @@ const MIT_NAME = defineKlassenConfig({
 	calendarPath: null,
 })
 
+// setup.ts hinterlegt TESTKLASSE fuer alle Tests; ohne Zuruecksetzen haengen andere Dateien an der Reihenfolge.
 afterEach(() => {
 	setKlassenConfig(TESTKLASSE)
 })
@@ -147,6 +148,7 @@ describe('geteilter Code verdrahtet keine Zustaendigkeit', () => {
 	].sort()
 
 	test('es gibt ueberhaupt Dateien zu pruefen', () => {
+		// Sonst waere ein kaputtes `dateien()` ein gruener Test ueber die leere Menge.
 		expect(geteilt.length).toBeGreaterThan(50)
 	})
 
@@ -160,6 +162,7 @@ describe('geteilter Code verdrahtet keine Zustaendigkeit', () => {
 	})
 
 	test('verdrahtet keine Mailadresse in einem mailto-Link', () => {
+		// Bewusst nicht alle Adress-Literale: `mailFrom` in config.ts ist eine schulweite Vorgabe.
 		const treffer = geteilt
 			.filter((datei) =>
 				/mailto:[^\s'"`${]*@/.test(fs.readFileSync(datei, 'utf-8')),

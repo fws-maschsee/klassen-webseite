@@ -73,6 +73,7 @@ describe('Das Stunden-Cap zaehlt eine Stunde', () => {
 
 describe('Eine Listenmail nach dem Tagespensum', () => {
 	test('geht sofort raus statt bis 3 Uhr morgens zu warten', async () => {
+		// Mehr als das Cap von 250, aber alle älter als eine Stunde.
 		for (let i = 0; i < 300; i++) eintragen(vor(8 * STUNDE), i)
 
 		upsertGroup({ key: 'eltern', label: 'Eltern' }, db)

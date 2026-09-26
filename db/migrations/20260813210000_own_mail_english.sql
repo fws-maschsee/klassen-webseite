@@ -16,6 +16,7 @@ SELECT  list_address, email, subscribed,
           WHEN 'kopie'        THEN 'copy'
           WHEN 'bestaetigung' THEN 'confirmation'
           WHEN 'nichts'       THEN 'none'
+          -- Sollte nicht vorkommen; die Vorgabe entspricht dem Verhalten ohne Einstellung.
           ELSE 'copy'
         END,
         updated_at

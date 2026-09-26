@@ -71,6 +71,7 @@ export const listSuccessfullySentMitgliedIds = (
 			.map((r) => r.mitglied_id),
 	)
 
+// Nach dem letzten Eintrag je Person: ein erfolgreich nachgeholter Fehlversuch soll nicht als Fehler zählen.
 export const countByStatus = (
 	email_slug: string,
 	db: Database = openDb(),
@@ -173,6 +174,7 @@ export const claimQueued = (id: number, db: Database = openDb()): boolean =>
 		)
 		.run(dbTimestamp(), id).changes === 1
 
+// Alle, unabhängig vom Alter: direkt nach dem Start kann nichts legitim gerade gesendet werden.
 export const cleanupStuckOnBoot = (db: Database = openDb()): number =>
 	db
 		.prepare<[string, string]>(

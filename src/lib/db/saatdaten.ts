@@ -41,6 +41,7 @@ const naechsterFreitag = (ab: Date): Date => {
 	const tag = new Date(
 		Date.UTC(ab.getUTCFullYear(), ab.getUTCMonth(), ab.getUTCDate()),
 	)
+	// `|| 7`: ein Termin heute wäre in der Vorschau sofort überfällig.
 	const bisFreitag = (5 - tag.getUTCDay() + 7) % 7 || 7
 	tag.setUTCDate(tag.getUTCDate() + bisFreitag)
 	return tag
@@ -48,6 +49,7 @@ const naechsterFreitag = (ab: Date): Date => {
 
 const alsDatum = (d: Date): string => d.toISOString().slice(0, 10)
 
+// app_meta fehlt bewusst: eine DB mit eingetragener Instanz ist nicht mehr frisch.
 const BUCHHALTUNG = new Set(['schema_migrations'])
 
 const tabellen = (db: Database): string[] =>
@@ -69,6 +71,7 @@ const anzahl = (db: Database, tabelle: string): number =>
 
 export type Abweichung = { tabelle: string; ist: number; soll: number }
 
+// Vergleich mit einer frisch migrierten DB statt „null Zeilen“: Migrationen legen selbst Zeilen an (Gruppe eltern).
 export const abweichungGegenFrisch = (
 	db: Database = openDb(),
 	klassenVerzeichnisse: readonly string[] = [],

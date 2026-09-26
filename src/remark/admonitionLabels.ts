@@ -4,6 +4,7 @@ type Knoten = {
 	type: string
 	value?: string
 	data?: {
+		// `| null` wie in mdast-util-directive, sonst bricht astro check in den Klassen-Repos (hier verdecken die shipyard-Stubs das).
 		directiveLabel?: boolean | null
 		hProperties?: { className?: unknown }
 	}
@@ -15,6 +16,7 @@ const hatKlasse = (knoten: Knoten | undefined, klasse: string): boolean => {
 	return Array.isArray(klassen) && klassen.includes(klasse)
 }
 
+// Läuft NACH shipyards remarkAdmonitions: das schreibt seit 0.9 immer den Vorgabetitel statt des geschriebenen.
 export const remarkAdmonitionLabels =
 	() =>
 	(tree: Knoten): void => {

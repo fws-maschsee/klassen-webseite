@@ -15,12 +15,14 @@ export const listAddressFull = (list: MailingListRow): string =>
 const sanitizeDisplay = (value: string): string =>
 	value.replace(/["\r\n]+/g, ' ').trim()
 
+// Adresse im Anzeigenamen, weil `From` und `Reply-To` auf die Liste zeigen koennen und `X-Original-From` kein Mailprogramm zeigt.
 const senderDisplay = (message: ListMessageRow): string => {
 	const name = sanitizeDisplay(message.from_name ?? '')
 	const email = sanitizeDisplay(message.from_email)
 	return name ? `${name} (${email})` : email
 }
 
+// `From` ist die Liste: SES signiert nur die eigene Domain, eine fremde From-Domain scheitert an DMARC.
 export const buildListFrom = (
 	message: ListMessageRow,
 	list: MailingListRow,
@@ -39,6 +41,7 @@ export const applySubjectPrefix = (
 	return subject.includes(trimmed) ? subject : `${trimmed} ${subject}`
 }
 
+// Bewusst pro Liste statt pro Empfaenger per `isSenderAllowed`: der Mailbau bleibt ohne Datenbank.
 export const listAllowsPosting = (list: MailingListRow): boolean =>
 	listPosterPolicy(list) === 'offen' || list.broadcast === 1
 
@@ -63,6 +66,7 @@ export const isSignedMessage = (
 }
 
 const mailtoHref = (address: string, subject: string): string => {
+	// `?`/`&` im Localpart muessen kodiert sein, ein kodiertes `@` waere nur unleserlich.
 	const target = encodeURIComponent(address).replace(/%40/g, '@')
 	return `mailto:${target}?subject=${encodeURIComponent(subject)}`
 }
@@ -74,6 +78,7 @@ const escapeHtml = (value: string): string =>
 		.replace(/>/g, '&gt;')
 		.replace(/"/g, '&quot;')
 
+// Nicht `-- `: alles hinter dem Signaturtrenner klappen viele Mailprogramme weg.
 const FOOTER_RULE = '-'.repeat(44)
 
 const FOOTER_STYLE = [
@@ -91,6 +96,7 @@ type ReplyFooter = {
 	marker: string
 }
 
+// Ohne Listenname/Betreff und ohne `& < > "`: nur so wird der zitierte Fuss im Faden und im HTML wiedererkannt.
 const OPT_OUT_MARKER =
 	'Sie erhalten diese Nachricht, weil Ihre Adresse im Verteiler'
 
@@ -123,6 +129,8 @@ const appendTextFooter = (text: string, footer: ReplyFooter): string =>
 	text.includes(footer.marker) ? text : `${text}${footer.text}`
 
 const appendHtmlFooter = (html: string, footer: ReplyFooter): string => {
+	// Leeres HTML bleibt leer, sonst entsteht aus einer Textmail eine Alternative ohne Inhalt.
+	// Vor `</body>`, weil strenge Darstellungen dahinter alles ignorieren.
 	if (html.trim() === '' || html.includes(footer.marker)) return html
 	const closing = html.toLowerCase().lastIndexOf('</body>')
 	if (closing === -1) return `${html}${footer.html}`
@@ -139,6 +147,7 @@ export const buildListSendInput = (
 	const full = listAddressFull(list)
 	const envelopeFrom = listEnvelopeFrom()
 	const replyTo = list.reply_mode === 'list' ? full : message.from_email
+	// Nicht `mailReplyTo()`: das faellt auf `noreply@` zurueck, und das verwirft das Email Routing der Zone.
 	const unsubscribeContact = klassenConfig().contactMail
 	const unsubscribeSubject = encodeURIComponent(`Austragen ${list.address}`)
 
@@ -150,6 +159,7 @@ export const buildListSendInput = (
 
 	return {
 		from: buildListFrom(message, list),
+		// Die Liste, nicht der Empfaenger: nur so erreicht „Allen antworten" die Liste auch ohne `List-Post`-Unterstuetzung.
 		to: full,
 		replyTo,
 		sender: envelopeFrom,
@@ -164,6 +174,7 @@ export const buildListSendInput = (
 		})),
 		headers: {
 			'List-Id': `${list.label} <${list.address}.${listDomain()}>`,
+			// Persoenlicher Link nur im Header (wird nicht mitzitiert); bewusst ohne `List-Unsubscribe-Post`, keine Ein-Klick-Abmeldung.
 			'List-Unsubscribe': `<${unsubscribeUrl}>, <mailto:${unsubscribeContact}?subject=${unsubscribeSubject}>`,
 			'List-Post': listAllowsPosting(list) ? `<mailto:${full}>` : 'NO',
 			Precedence: 'list',

@@ -95,6 +95,7 @@ export const istFertig = (messageId: number, db: Database): boolean =>
 		(z) => z.status === 'sent' || z.status === 'error',
 	)
 
+// Der bedingte UPDATE ist die Sperre: genau ein Arbeiter verschickt die Quittung, auch nach einem Neustart.
 export const beanspruchtQuittung = (messageId: number, db: Database): boolean =>
 	db
 		.prepare(
@@ -119,6 +120,7 @@ export const sendeQuittungFallsFaellig = async (
 		)
 		return true
 	} catch (err) {
+		// Geschluckt: Die Rundmail ist zugestellt, eine geplatzte Quittung darf keinen Neuversuch auslösen.
 		console.error(
 			`[lists] Quittung an ${message.from_email} fuer Nachricht ${message.id} nicht verschickt: ${
 				err instanceof Error ? err.message : String(err)

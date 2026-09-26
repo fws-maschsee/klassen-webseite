@@ -64,6 +64,7 @@ const auth = (headers: Headers, rawBody: Buffer = BODY) =>
 	authenticateListRequest({ headers, rawBody, now: NOW })
 
 beforeEach(() => {
+	// Eigenes Schlüsselpaar: den Privatschlüssel zur Vorgabe hat nur der Dispatcher.
 	setKlassenConfig({
 		...TESTKLASSE,
 		listPublicKeyPem: PEM,

@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
 
+// Aus dem Modulpfad statt process.cwd(): in der Klasse liegt dieser Code unter geteilt/.
 const wurzel = new URL('../../', import.meta.url)
 
 export const geteilt = (relativ: string): string =>

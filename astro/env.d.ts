@@ -1,5 +1,6 @@
 /// <reference types="astro/client" />
 
+// Script, kein Modul: kein Top-Level-import, sonst wird das declare module unten zur Erweiterung (TS2307).
 declare namespace App {
 	interface Locals {
 		user?: import('../src/server/auth/oidc.ts').Session

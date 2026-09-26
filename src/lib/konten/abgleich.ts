@@ -65,6 +65,7 @@ export const abgleichen = async (
 			email: normalize(eintrag.email),
 			from_address_book: true,
 		}),
+		// `enforce` nur, damit eine ZITADEL-Stoerung wirft statt „alle fehlen" zu melden; geloescht wird nichts.
 		{ db, mode: 'enforce', occasion: 'Abgleich Adressbuch/ZITADEL' },
 	)
 
@@ -79,6 +80,7 @@ export const abgleichen = async (
 		}),
 	)
 
+	// Selbst berechnet statt aus dem Versandbericht: dort sind die Adressen obfuskiert, hier muss man einladen koennen.
 	const rolle = klassenConfig().authRole
 	const berechtigt = (await grantedAccounts()).filter((konto) =>
 		canRead(konto.roles, rolle),

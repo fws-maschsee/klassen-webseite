@@ -14,6 +14,7 @@ import {
 const FIXTURE = new URL('../fixtures/', import.meta.url)
 const FIXTURE_DATEI = 'putzplan.yaml'
 
+// Aus der Fixture ausgezählt statt als Zahl, damit ein neuer Eintrag keinen Test umschreibt.
 const termineInDerDatei = (): string[] =>
 	readFileSync(fileURLToPath(new URL(FIXTURE_DATEI, FIXTURE)), 'utf-8')
 		.split('\n')
@@ -49,6 +50,7 @@ const sammlungLaden = async (
 			debug: notiz('debug'),
 		},
 		config: { root: wurzel },
+		// Validiert wie Astro, sonst prüfte der Test das Schema nicht mit.
 		parseData: async ({ data }: { data: unknown }) =>
 			putzplanSchema.parseAsync(data),
 		// biome-ignore lint/suspicious/noExplicitAny: Attrappe eines LoaderContext
@@ -236,6 +238,7 @@ describe('Sammlung aus der YAML-Datei', () => {
 			},
 		})
 		const eintraege = [
+			// Zwei Termine am selben Tag: eine Sortierung über das Datum als Schlüssel verlöre einen.
 			eintrag('b', '2026-08-21'),
 			eintrag('a', '2026-08-21'),
 			eintrag('c', '2026-08-14'),

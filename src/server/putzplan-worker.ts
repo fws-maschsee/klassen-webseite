@@ -4,6 +4,7 @@ import { sendeFaelligeErinnerung } from '../klasse/putzplanErinnerung.ts'
 import { putzplanQuelle } from '../klasse/putzplanQuelle.ts'
 import type { EmailTransport } from '../lib/email/transport.ts'
 
+// Pollen statt Timer auf Sonntag 17 Uhr: ein Neustart (sonntags wird deployt) holt Verpasstes so von selbst nach.
 const DEFAULT_POLL_MS = 10 * 60_000
 
 export type ErinnerungsdienstOptionen = {
@@ -25,6 +26,7 @@ const tick = async (
 		quelle: PutzplanQuelle
 	},
 ): Promise<void> => {
+	// Schuetzt nur im Prozess; gegen mehrere Prozesse sichert der bedingte INSERT in `putzplan_reminders`.
 	if (running) return
 	running = true
 	try {

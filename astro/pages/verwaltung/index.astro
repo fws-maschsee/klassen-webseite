@@ -44,6 +44,7 @@ if (Astro.request.method === 'POST') {
   const action = String(form.get('action') ?? '')
   const text = (name: string): string => String(form.get(name) ?? '').trim()
 
+  // Vor der mayEdit-Prüfung: eigene Verbindungen widerrufen darf jeder.
   if (action === 'revoke') {
     const clientId = text('client_id')
     const { access, refresh } = revokeAllTokensForClientAndUser(
@@ -220,6 +221,7 @@ const editingList = listId ? lists.find((l) => l.address === listId) : undefined
             <span class="label">Erlaubte Absender (ein Muster je Zeile)</span>
             <textarea class="textarea w-full font-mono text-sm" name="sender_patterns" rows="4"
               >{listSenderPatterns(editingList).join('\n')}</textarea>
+            {/* Kein label: daisyUI 5 setzt dort nowrap und quetschte den Hilfetext in eine Zeile. */}
             <span class="mt-1 text-xs opacity-70">
               Volle Adresse (<code>anna@example.org</code>) oder ganze Domain
               (<code>*@waldorfschule-maschsee.de</code>). Der Stern steht nur
@@ -430,6 +432,7 @@ const editingList = listId ? lists.find((l) => l.address === listId) : undefined
             Anrede, keine Telefonnummer, keine Notizen. Für den Versand
             reicht das, und was nicht da ist, kann auch nicht abhandenkommen.
           </p>
+          {/* Ohne daisyUI-fieldset-Klasse: die verkleinerte die ganze Gruppenliste. */}
           <fieldset class="border rounded-sm p-3">
             <legend class="px-1 text-sm font-semibold">Gruppen</legend>
             {groups.map((g) => (
@@ -452,6 +455,7 @@ const editingList = listId ? lists.find((l) => l.address === listId) : undefined
 </Layout>
 
 <script>
+  // Am Formular statt am Knopf, damit die Rückfrage auch bei Absenden per Tastatur greift.
   document.querySelectorAll('form[data-confirm]').forEach((form) => {
     form.addEventListener('submit', (event) => {
       const frage = form.getAttribute('data-confirm') ?? 'Wirklich fortfahren?'

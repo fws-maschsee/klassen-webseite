@@ -1,5 +1,7 @@
 import { inflateSync } from 'node:zlib'
 
+// Von Hand statt pdfjs: geprüft werden die PDF-Bytes, unabhängig vom Modul, das sie schrieb.
+
 type PdfObjekt = {
 	dict: string
 	strom: Buffer | null
@@ -35,6 +37,7 @@ const objektLesen = (
 	const stromStart = start + stromMarke.index + stromMarke[0].length
 	const stromEnde = text.indexOf('endstream', stromStart)
 	const roh = pdf.subarray(stromStart, stromEnde === -1 ? ende : stromEnde)
+	// Nicht Entpackbares (Schriftdaten, ICC-Profile) ist für diesen Leser uninteressant.
 	try {
 		return { dict, strom: inflateSync(roh) }
 	} catch {
@@ -102,6 +105,7 @@ const schriften = (
 	return nachName
 }
 
+// Abtaster statt Regex: PDF-Zeichenketten dürfen geschachtelte oder geschützte Klammern enthalten.
 const stromText = (
 	strom: Buffer,
 	schriftNachName: Map<string, Map<number, string>>,
@@ -164,6 +168,7 @@ const stromText = (
 			continue
 		}
 
+		// `<<` ist ein Wörterbuch (Marken der getaggten Struktur), keine Hex-Zeichenkette.
 		if (zeichen === '<' && daten[i + 1] === '<') {
 			i += 2
 			continue
@@ -198,6 +203,7 @@ const stromText = (
 			if (operator === 'Tf') {
 				aktuell = schriftNachName.get(letzterName)
 			}
+			// Typst setzt jede Tabellenzelle als eigenen Block; ohne Trenner klebten Nachbarzellen zusammen.
 			if (operator === 'ET' && stueck !== '') {
 				ausgabe.push(stueck)
 				stueck = ''

@@ -19,12 +19,14 @@ const module = alleModule(SRC)
 
 describe('Importzeit', () => {
 	test('es gibt überhaupt Module zu prüfen', () => {
+		// Sonst waere ein kaputtes `alleModule()` ein gruener Test ueber die leere Menge.
 		expect(module.length).toBeGreaterThan(40)
 	})
 
 	test.each(module.map((datei) => path.relative(SRC, datei)))(
 		'src/%s lässt sich ohne hinterlegte KlassenConfig importieren',
 		async (relativ) => {
+			// Leeres Register wie im frischen Container; setup.ts hat sonst schon eine Konfiguration hinterlegt.
 			vi.resetModules()
 			vi.stubEnv('PUBLIC_BASE_URL', undefined)
 			vi.stubEnv('DB_PATH', undefined)

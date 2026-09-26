@@ -7,6 +7,7 @@ export type KalenderBefund = {
 	gefundeneDateien: string[]
 }
 
+// Funktion für einen Test in der Klasse statt Laufzeitprüfung: Astro lädt die Middleware erst bei der ersten Anfrage.
 export const pruefeKalender = (
 	projektWurzel: string,
 	config: Pick<KlassenConfig, 'calendarPath'> &

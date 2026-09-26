@@ -11,12 +11,14 @@ export const prerender = false
 
 const eintrag = await getEntry('docs', 'putzen/putzplan')
 
+// 404 statt Umleitung: so darf die Route in jeder Klasse bedingungslos hängen.
 if (!eintrag || eintrag.data.render === false) {
   return new Response(null, { status: 404 })
 }
 
 const { Content, headings } = await render(eintrag)
 
+// Leer bewusst ohne Hinweis: manche Klasse führt die Tabelle noch im Markdown darüber.
 const zeilen = putzplanZeilen(planAlsEintraege())
 
 const UEBERSCHRIFT = 'Einteilung'

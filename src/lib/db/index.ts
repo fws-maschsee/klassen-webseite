@@ -10,6 +10,7 @@ export const openDb = (path?: string): DatabaseType => {
 	if (cached) return cached
 	const db = new Database(path ?? dbPath())
 	db.pragma('journal_mode = WAL')
+	// SQLite hat das je Verbindung standardmäßig aus; ohne greifen die CASCADE-Regeln nicht.
 	db.pragma('foreign_keys = ON')
 	db.pragma('synchronous = NORMAL')
 	cached = db
@@ -23,6 +24,7 @@ export const closeDb = (): void => {
 	}
 }
 
+// Zeitstempel sind TEXT und werden per Zeichen verglichen: Grenzen immer hier rechnen, nie datetime('now') gegen strftime-Spalten.
 export const dbTimestamp = (date: Date = new Date()): string =>
 	date.toISOString()
 

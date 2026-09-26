@@ -43,6 +43,7 @@ export class TypstFehler extends Error {
 }
 
 export type TypstLauf = {
+	// Quelltext statt Pfad: Vite buendelt die Route nach dist/, ein modulrelativer Pfad zeigte daneben.
 	vorlage: string
 	daten: unknown
 	fristMs?: number
@@ -54,9 +55,11 @@ export const typstPdf = async (lauf: TypstLauf): Promise<Buffer> => {
 		lauf.programm ?? process.env.TYPST_BIN?.trim() ?? VORGABE_PROGRAMM
 	const fristMs = lauf.fristMs ?? VORGABE_FRIST_MS
 
+	// Ein Verzeichnis je Lauf, sonst ueberschreiben sich gleichzeitige Laeufe die Daten.
 	const arbeit = await mkdtemp(path.join(tmpdir(), 'typst-'))
 	try {
 		await writeFile(path.join(arbeit, VORLAGEN_DATEI), lauf.vorlage, 'utf8')
+		// Daten als JSON-Datei, nie in den Quelltext eingesetzt: `#` in einem Namen waere sonst Typst-Code.
 		await writeFile(
 			path.join(arbeit, DATEN_DATEI),
 			JSON.stringify(lauf.daten),
@@ -78,13 +81,17 @@ const starte = (
 			programm,
 			[
 				'compile',
+				// Das leere Arbeitsverzeichnis als Wurzel: die Vorlage kann keine Datei des Servers lesen.
 				'--root',
 				arbeit,
+				// Sonst findet Typst je Basis-Image andere Systemschriften, und das PDF sieht still anders aus.
 				'--ignore-system-fonts',
+				// Paketpfade ins leere Verzeichnis: ein Import scheitert, statt zur Laufzeit aus dem Netz zu laden.
 				'--package-path',
 				arbeit,
 				'--package-cache-path',
 				arbeit,
+				// Ein Kern je Lauf, damit ein Download nicht den ganzen Pod belegt.
 				'--jobs',
 				'1',
 				'--diagnostic-format',
@@ -94,6 +101,7 @@ const starte = (
 			],
 			{
 				cwd: arbeit,
+				// Typst liest Schalter auch aus TYPST_*-Variablen; die Server-Umgebung koennte die Schalter oben still aushebeln.
 				env: { PATH: process.env.PATH ?? '' },
 				stdio: ['ignore', 'pipe', 'pipe'],
 			},
@@ -106,6 +114,7 @@ const starte = (
 		const wecker = setTimeout(() => {
 			if (beendet) return
 			beendet = true
+			// SIGKILL: ein haengender Prozess reagiert auf ein behandelbares Signal gerade nicht.
 			kind.kill('SIGKILL')
 			ablehnen(new TypstZeitueberschreitung(fristMs))
 		}, fristMs)

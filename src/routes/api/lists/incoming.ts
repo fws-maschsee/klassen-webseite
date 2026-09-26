@@ -7,6 +7,7 @@ import { authenticateListRequest } from '../../../lib/lists/incomingAuth.ts'
 
 export const prerender = false
 
+// Zweite Linie hinter `MAX_MESSAGE_BYTES` des Workers, für direkte Aufrufe am Worker vorbei.
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024
 
 const maxBytes = (): number =>
@@ -44,6 +45,7 @@ export const POST: APIRoute = async ({ request }) => {
 		})
 		return Response.json(result, { status: statusForResult(result) })
 	} catch (err) {
+		// 5xx heißt für den Worker „später erneut zustellen“ – richtig bei einem Fehler auf unserer Seite.
 		console.error('[lists/incoming] unerwarteter Fehler', err)
 		return Response.json(
 			{ error: err instanceof Error ? err.message : String(err) },

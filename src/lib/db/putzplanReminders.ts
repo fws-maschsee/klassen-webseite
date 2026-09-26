@@ -8,6 +8,7 @@ export type PutzplanReminderRow = {
 	recipient_count: number
 }
 
+// Der Zuschlag entsteht durch den INSERT selbst, nicht durch Nachsehen — dazwischen passte ein zweiter Tick.
 export const beanspruchtErinnerung = (
 	terminDate: string,
 	db: Database = openDb(),
@@ -39,6 +40,7 @@ export const gibErinnerungFrei = (
 ): boolean =>
 	db
 		.prepare<[string]>(
+			// sent_at IS NULL: eine abgeschlossene Erinnerung darf nie wieder frei werden, sonst droht Doppelversand.
 			'DELETE FROM putzplan_reminders WHERE termin_date = ? AND sent_at IS NULL',
 		)
 		.run(terminDate).changes === 1

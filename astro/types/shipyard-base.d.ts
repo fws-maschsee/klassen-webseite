@@ -1,5 +1,7 @@
 import type { AstroIntegration } from 'astro'
 
+// Eigene Deklaration statt shipyards Typen: dessen rohes TS scheitert unter nodenext an TS2835.
+
 export type NavigationEintrag = {
 	label?: string
 	href?: string

@@ -1,6 +1,7 @@
 -- migrate:up
 CREATE TABLE list_suppressions (
   mitglied_id  TEXT NOT NULL REFERENCES mitglieder (id) ON DELETE CASCADE,
+  -- Ohne FK auf mailing_lists, weil '*' für „alle Listen“ steht.
   list_address TEXT NOT NULL,
   reason       TEXT,
   source       TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'bounce', 'complaint')),

@@ -51,6 +51,7 @@ const verteilen = async () => {
 		{
 			listName: 'eltern',
 			envelopeFrom: ABSENDER,
+			// Eigene Message-ID je Mail: der Eingang ist idempotent und verwürfe Wiederholungen.
 			messageId: `<elternabend-${laufendeNummer}@example.org>`,
 		},
 		db,
@@ -98,6 +99,7 @@ beforeAll(async () => {
 	db = createTestDb()
 	upsertGroup({ key: 'eltern', label: 'Eltern' }, db)
 
+	// Adressen = Anmeldenamen: ohne ersten Login fehlt `user_sub`, verbunden wird über die Adresse.
 	for (const [id, benutzer] of [
 		['mila', lage.benutzer.mitGrant],
 		['edda', lage.benutzer.entzug],
@@ -193,6 +195,7 @@ describe('(3) Rolle entzogen, report', () => {
 describe('(4) ZITADEL nicht erreichbar', () => {
 	test('in enforce geht keine Mail raus, und der Grund steht im Ergebnis', async () => {
 		process.env.LIST_ACCOUNT_CHECK = 'enforce'
+		// Toter Issuer statt gestopptem Container: die anderen Dateien brauchen ihn noch.
 		process.env.ZITADEL_ISSUER = 'http://127.0.0.1:1'
 		resetGrantsConfig()
 

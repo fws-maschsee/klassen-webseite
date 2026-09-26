@@ -21,17 +21,21 @@ import type { NavigationTree } from './types/shipyard-base.js'
 
 export type FwsKlasseOptions = {
 	config: KlassenConfigInput | KlassenConfig
+	// Pflicht, obwohl shipyard es optional führt: ohne lädt die Seite still gar kein CSS.
 	css: string
 	navigation?: NavigationTree
 }
 
 const VIRTUELLES_MODUL = 'virtual:fws-klasse/config'
 
+// Fester Wert statt Config-Feld: die Seiten werden privat betrieben, keine Klasse darf die Angabe vergessen.
 const BETREIBER = 'Levin Keller, Hohenzollerndamm 152, 14199 Berlin'
 
+// Liste statt updateConfig({ integrations }): nachgereichte Integrationen verpassen astro:config:done.
 export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 	const config = defineKlassenConfig(options.config)
 
+	// middleware, weil Express davorsitzt (MCP, OAuth). Als Integration UND config.adapter nötig, sonst NoAdapterInstalled.
 	const adapter = node({ mode: 'middleware' })
 
 	const kern: AstroIntegration = {
@@ -43,6 +47,7 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 				injectScript,
 				config: astroConfig,
 			}) => {
+				// Als Route statt unter public/, damit die Blätter hinter der Anmeldung liegen.
 				for (const blatt of config.blaetter) {
 					injectRoute({
 						pattern: blatt.pfad,
@@ -63,8 +68,11 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 					site: config.siteUrl,
 					output: 'server',
 					adapter,
+					// Hinter Express greift Astros Origin-Check nicht verlässlich; Consent schützen Zufallstoken, PKCE und redirect_uri.
 					security: { checkOrigin: false },
 					markdown: {
+						// processor statt remarkPlugins: Astro 7 rendert sonst mit Sätteri ohne unified-Plugins.
+						// remarkDirective nicht ergänzen: shipyard setzt seinen eigenen Block-Parser (Gender-Doppelpunkt).
 						processor: unified({
 							remarkPlugins: [remarkStundenplanTabelle],
 						}),
@@ -98,6 +106,7 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 		},
 	}
 
+	// Muss als letzte Integration laufen: korrigiert die Admonition-Titel, die shipyard danach überschreibt.
 	const titelNachtrag: AstroIntegration = {
 		name: 'fws-klasse-admonition-titel',
 		hooks: {
@@ -135,6 +144,8 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 				unterlagen: { label: 'Unterlagen', href: '/docs' },
 				berichte: { label: 'Berichte', href: '/blog' },
 				...(options.navigation ?? {}),
+				// Nach den Klassen-Einträgen, damit keine Klasse die geteilten Links überschreibt.
+				// „(konto)“ kündigt den Hostwechsel an, shipyard rendert Links ohne Kennzeichnung.
 				kontaktbuch: {
 					label: 'Kontaktbuch (konto)',
 					href: kontaktbuchUrl(config),
@@ -162,11 +173,13 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 				{
 					src: 'https://analytics.levinkeller.de/js/script.js',
 					defer: true,
+					// Die in Plausible angelegte Domain, nicht der Klassenname.
 					'data-domain': config.analyticsDomain,
 				},
 			],
 		}),
 		shipyardDocs({
+			// Ohne Sammlungsordner: shipyard-docs hängt den vollen Dateipfad an, shipyard-blog nur die id.
 			editUrl: bearbeitenUrl(config, ''),
 		}),
 		shipyardBlog({
@@ -180,6 +193,7 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 	]
 }
 
+// Absolut, weil ein virtuelles Modul kein Verzeichnis und keine package.json zum Auflösen hat.
 const CONFIG_MODUL = fileURLToPath(
 	new URL('../src/klasse/config.ts', import.meta.url),
 )

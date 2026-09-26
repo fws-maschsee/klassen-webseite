@@ -4,6 +4,7 @@ import { openDb } from './index.ts'
 
 const META_KEY = 'instance'
 
+// Env vor Config: bei einem Umzug ist zuerst das Deployment richtig.
 export const instanceName = (): string =>
 	process.env.MCP_INSTANCE_NAME?.trim() || klassenConfig().slug
 
@@ -22,6 +23,7 @@ export const recordInstanceIfEmpty = (
 	db: Database = openDb(),
 ): string => {
 	const existing = getRecordedInstance(db)
+	// Nie überschreiben: der Wert in der Datei ist die Wahrheit, die Env nur eine Behauptung darüber.
 	if (existing) return existing
 	db.prepare<[string, string]>(
 		'INSERT INTO app_meta (key, value) VALUES (?, ?)',

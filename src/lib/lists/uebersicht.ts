@@ -60,6 +60,7 @@ export const verteilerUebersicht = (
 	db: Database = openDb(),
 ): VerteilerAnsicht[] => {
 	const domain = listDomain()
+	// Inaktive Listen fehlen: sie nehmen keine Post an, und eine Adresse, die abprallt, ist schlimmer als keine.
 	return listMailingLists(db)
 		.filter((list) => list.aktiv === 1)
 		.map((list) => {

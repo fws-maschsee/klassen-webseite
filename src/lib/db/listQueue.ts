@@ -246,6 +246,7 @@ export const recentListMessages = (
 		.all(limit)
 		.map((message) => ({ ...message, counts: countsFor(message.id, db) }))
 
+// Nur von Hand auszulösen: error heißt nicht „SES hat nicht angenommen“, eine Wiederholung kann doppelt zustellen.
 export const requeueListErrors = (
 	messageId?: number,
 	db: Database = openDb(),

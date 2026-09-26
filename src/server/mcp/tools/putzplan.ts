@@ -326,6 +326,8 @@ export const registerPutzplanTools = (
 
 			return mitFehlermeldung(
 				() => {
+					// Erst die Gruppen, sonst scheitert der Plan an unbekannten Keys. Labels nie aus Keys raten:
+					// aus `familie-probst-vogel` folgt nicht „Probst/Vogel".
 					for (const { slug, label } of families ?? []) {
 						upsertGroup({ key: familienGruppenKey(slug), label })
 					}

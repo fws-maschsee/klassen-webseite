@@ -10,6 +10,7 @@ import { runMigrations } from '../../src/migrations.ts'
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-guard-'))
 const dbFile = path.join(tmpDir, 'test.db')
 
+// Vor jedem Import, der die DB oeffnet: `openDb()` merkt sich die erste Verbindung.
 process.env.DB_PATH = dbFile
 process.env.MCP_INSTANCE_NAME = 'klasse-eins'
 

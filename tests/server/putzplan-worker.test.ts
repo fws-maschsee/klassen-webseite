@@ -39,6 +39,7 @@ const transport = {
 
 const starten = async () => {
 	startErinnerungsdienst({ intervalMs: POLL_MS, quelle, db, transport })
+	// Lässt den asynchronen Start-Tick zu Ende laufen, ohne die Uhr zu bewegen.
 	await vi.advanceTimersByTimeAsync(0)
 }
 

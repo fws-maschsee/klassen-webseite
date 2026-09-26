@@ -15,6 +15,7 @@ const blog = defineCollection({
 	loader: glob({ pattern: '**/*.md', base: './src/content/blog' }),
 })
 
+// optionaleDatei statt file(): nicht jede Klasse hat die Datei, ihr Fehlen ist kein Fehler.
 const putzplan = defineCollection({
 	loader: optionaleDatei(PUTZPLAN_DATEI),
 	schema: putzplanSchema,

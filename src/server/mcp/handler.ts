@@ -6,6 +6,7 @@ import { mcpOAuthProvider } from '../oauth/provider.ts'
 import { authFromInfo } from './guard.ts'
 import { buildMcpServer } from './server.ts'
 
+// Funktion statt Konstante: `publicBaseUrl()` braucht die KlassenConfig, die beim Import noch nicht gesetzt ist.
 export const createMcpAuthMiddleware = (): RequestHandler =>
 	requireBearerAuth({
 		verifier: mcpOAuthProvider,
@@ -19,6 +20,7 @@ export const mcpAuthMiddleware: RequestHandler = (
 	res: Response,
 	next: NextFunction,
 ) => {
+	// Gemerkt, weil `requireBearerAuth` je Aufruf einen eigenen Rate-Limiter anlegt.
 	if (!gebaut) gebaut = createMcpAuthMiddleware()
 	gebaut(req, res, next)
 }

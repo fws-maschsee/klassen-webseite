@@ -10,6 +10,7 @@ import {
 } from '../../src/routes/auth/logout.ts'
 import { GET as healthRoute } from '../../src/routes/health.ts'
 
+// Unverwechselbar statt Status 200: auch eine Fehlerseite kann mit 200 kommen.
 export const GESCHUETZTER_INHALT = 'Klasseninterner Inhalt dieser Testklasse'
 
 type Weiter = () => Promise<Response>
@@ -60,6 +61,7 @@ const alsRequest = async (req: IncomingMessage): Promise<Request> => {
 	return new Request(url, {
 		method: req.method,
 		headers: kopfzeilen,
+		// `BodyInit` kennt keinen Buffer; `Uint8Array` ist dieselbe Sicht ohne Kopie.
 		body: ohneKoerper ? undefined : new Uint8Array(await koerperLesen(req)),
 	})
 }
@@ -70,6 +72,7 @@ const antwortSchreiben = async (
 ): Promise<void> => {
 	res.statusCode = antwort.status
 	for (const [name, wert] of antwort.headers) {
+		// Beim Iterieren fasst `Headers` mehrere Set-Cookie zu einem kaputten Wert zusammen.
 		if (name.toLowerCase() === 'set-cookie') continue
 		res.setHeader(name, wert)
 	}
@@ -80,6 +83,7 @@ const antwortSchreiben = async (
 
 let middleware: MiddlewareHandler | null = null
 
+// Konfiguration über globalThis: `startServer()` lädt den Entry per `import()` ohne Argumente.
 declare global {
 	var __fwsAttrappenConfig: KlassenConfig | undefined
 }

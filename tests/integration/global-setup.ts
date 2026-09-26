@@ -20,6 +20,7 @@ const stehenlassen = (): boolean => process.env.INTEGRATION_ZITADEL_KEEP === '1'
 
 export const setup = async (projekt: TestProject): Promise<void> => {
 	fs.mkdirSync(PAT_VERZEICHNIS, { recursive: true })
+	// ZITADEL schreibt als Benutzer `zitadel`, nicht als der des Testlaufs.
 	fs.chmodSync(PAT_VERZEICHNIS, 0o777)
 
 	const begonnen = Date.now()

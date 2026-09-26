@@ -15,6 +15,7 @@ const stripHtmlTags = (html: string): string =>
 		.replace(/\n{3,}/g, '\n\n')
 		.trim()
 
+// async, obwohl MJML 4 synchron ist: MJML 5 liefert ein Promise, so laeuft beides.
 export const compile = async (
 	mjmlString: string,
 ): Promise<{ html: string; text: string }> => {

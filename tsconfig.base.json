@@ -1,6 +1,7 @@
 {
 	"compilerOptions": {
 		"target": "ES2022",
+		// DOM wegen Request/Response/Headers, nicht für einen Browser.
 		"lib": ["ES2023", "DOM", "DOM.Iterable"],
 		"types": ["node"],
 		"strict": true,
@@ -10,6 +11,7 @@
 		"isolatedModules": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
+		// Stubs, weil tsc shipyards rohes TS an endungslosen Importen scheitern lässt (TS2835).
 		"paths": {
 			"@levino/shipyard-base": ["./astro/types/shipyard-base.d.ts"],
 			"@levino/shipyard-blog": ["./astro/types/shipyard-blog.d.ts"],
@@ -17,6 +19,7 @@
 		},
 		"allowImportingTsExtensions": true,
 		"noEmit": true,
+		// Node strippt nur Typen: enum, Parameter-Properties usw. schlügen erst zur Laufzeit fehl.
 		"erasableSyntaxOnly": true
 	}
 }

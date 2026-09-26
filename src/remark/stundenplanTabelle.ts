@@ -10,6 +10,7 @@ const WOCHENTAGE = new Set([
 	'Samstag',
 ])
 
+// Dieselbe Zuordnung steht in dokumente/stundenplan.typ der Klasse — beide gemeinsam ändern.
 export const BEREICH_JE_FACH: Readonly<Record<string, string>> = Object.freeze({
 	Hauptunterricht: 'haupt',
 	Klassenlehrerstunde: 'haupt',
@@ -47,6 +48,7 @@ const ZEITANGABE = /^\d{1,2}[:.]\d{2}/
 const istFrei = (text: string): boolean =>
 	text === '' || text === '–' || text === '-' || text === '—'
 
+// Nur die letzte Klammer am Ende ist der Raum; verschachtelte Klammern darin bleiben Teil davon.
 const KLAMMER = /^(.*?)\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)$/
 
 const geteilteZelle = (
@@ -89,6 +91,7 @@ export const remarkStundenplanTabelle =
 						colSpan: zellen.length,
 					}
 					klassen(zeile, 'stundenplan-pause')
+					// Ausblenden statt löschen: mdast-util-to-hast füllt die Zeile sonst wieder auf, dann ohne Klasse.
 					for (const leer of rest) klassen(leer, 'stundenplan-leer')
 					continue
 				}
@@ -128,6 +131,7 @@ export const remarkStundenplanTabelle =
 				}
 			}
 
+			// Eigener Rollrahmen, weil shipyard Tabellen display:block gibt; not-prose, weil Typography sonst per Layer jede Zellregel schlägt.
 			if (eltern && typeof index === 'number') {
 				const rahmen: Knoten = {
 					type: 'stundenplanRahmen',
@@ -138,6 +142,7 @@ export const remarkStundenplanTabelle =
 					children: [tabelle],
 				}
 				eltern.children[index] = rahmen
+				// Nicht in den neuen Rahmen absteigen, die Tabelle darin ist schon fertig.
 				return ['skip', index + 1]
 			}
 		})

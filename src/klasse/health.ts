@@ -34,6 +34,7 @@ const filled = (wert: string | undefined): string | undefined => {
 
 export const healthReport = (input: HealthInput): HealthReport => {
 	const schemes: SignatureScheme[] = []
+	// Dieselbe Bedingung wie in incomingAuth.ts, sonst meldet health „ed25519“, während die Mail ein 401 bekommt.
 	if (input.hasPublicKey && input.listKeyIds.length > 0) {
 		schemes.push('ed25519')
 	}

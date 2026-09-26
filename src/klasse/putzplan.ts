@@ -11,6 +11,7 @@ import { naechsterTerminAb, planMitNamen } from '../lib/db/putzplan.ts'
 export const PUTZPLAN_DATEI = 'src/content/putzplan.yaml'
 
 export const putzplanSchema = z.object({
+	// coerce: js-yaml liefert ein Date, andere Wege einen String.
 	datum: z.coerce.date(),
 	familien: z
 		.array(
@@ -30,12 +31,14 @@ export type PutzplanEintrag = {
 	data: PutzplanDaten
 }
 
+// Vorschalter, weil Astros file() eine fehlende Datei als Fehler loggt; ohne Putzplan ist aber der Normalfall.
 export const optionaleDatei = (pfad: string): Loader => {
 	const dateiLoader = file(pfad)
 	return {
 		name: 'optionale-datei',
 		load: async (context) => {
 			if (!existsSync(new URL(pfad, context.config.root))) {
+				// Astro hält Sammlungen zwischen Builds vor; ohne clear() überlebte eine gelöschte Datei im Cache.
 				context.store.clear()
 				context.logger.info(
 					`${pfad} gibt es in dieser Klasse nicht — die Sammlung "${context.collection}" bleibt leer.`,
@@ -58,9 +61,11 @@ export const undVerbunden = (teile: readonly string[]): string => {
 	return `${teile.slice(0, -1).join(', ')} und ${letzter}`
 }
 
+// Ein „/“ im Namen ist EINE Familie mit Doppelnamen; mehrere Familien daher mit „und“, nie mit „/“.
 export const familienSpalte = (familien: readonly { name: string }[]): string =>
 	undVerbunden(familien.map(({ name }) => `Familie ${name}`))
 
+// UTC-Getter: das Datum liegt auf Mitternacht UTC, lokal westlich von UTC wäre es der Vortag.
 export const datumDeutsch = (datum: Date): string => {
 	const zweistellig = (zahl: number) => String(zahl).padStart(2, '0')
 	return `${zweistellig(datum.getUTCDate())}.${zweistellig(datum.getUTCMonth() + 1)}.${datum.getUTCFullYear()}`
@@ -97,6 +102,7 @@ export const familienGruppenKey = (slug: string): string =>
 
 const alsDatumsSchluessel = (datum: Date): string => datumIso(datum)
 
+// Umweg über PutzplanEintrag, damit die getestete Zeilen-Umrechnung nicht ein zweites Mal entsteht.
 export const planAlsEintraege = (db: Database = openDb()): PutzplanEintrag[] =>
 	planMitNamen(db).map((termin) => ({
 		id: termin.date,

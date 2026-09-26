@@ -1,3 +1,6 @@
+# Absichtlich nicht chronologisch: das Sortieren ist Aufgabe der Seite.
+# Die Tests zaehlen die Termine aus dieser Datei, keine feste Anzahl nachziehen.
+
 - id: "2026-09-04"
   datum: 2026-09-04
   familien:

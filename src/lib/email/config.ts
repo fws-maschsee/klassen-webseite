@@ -12,6 +12,7 @@ export const mailReplyTo = (): string => process.env.MAIL_REPLY_TO ?? mailFrom()
 export const listDomain = (): string => {
 	if (process.env.LIST_DOMAIN) return process.env.LIST_DOMAIN
 	const config = klassenConfig()
+	// Klassenteil aus der Instanz-Identitaet, damit eine Umbenennung per MCP_INSTANCE_NAME mitzieht.
 	const name = instanceName()
 	return name === config.slug
 		? config.listDomain

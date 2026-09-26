@@ -21,6 +21,7 @@ const listenAdresse = new URL(Astro.request.url).searchParams.get('liste') ?? ''
 const liste = listenAdresse ? getMailingList(listenAdresse, db) : undefined
 
 let abgemeldet = false
+// Erst auf Knopfdruck: Virenscanner und Mail-Vorschauen rufen Links per GET von selbst ab.
 if (adresse && liste && Astro.request.method === 'POST') {
 	setzeEinstellung(
 		liste.address,

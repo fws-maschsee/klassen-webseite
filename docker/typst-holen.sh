@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 
+# Feste Fassung statt latest: Vorlage und Tests sind gegen genau diese geprüft, Builds bleiben wiederholbar.
 TYPST_VERSION=0.15.1
 
 SHA256_X86_64=a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389ded33118c
@@ -8,7 +9,9 @@ SHA256_AARCH64=5aa8d74a3d906e60ea12a66ac2f37f8eef1b14cbad7182a745e393a10c23dcee
 
 ziel=${1:-/usr/local/bin}
 
+# uname -m statt TARGETARCH: meldet unter buildx die Zielarchitektur, auch unter QEMU.
 arch=$(uname -m)
+# musl-Bauten, weil statisch gelinkt: glibc-Programme starten auf alpine mit irreführendem "not found".
 case "$arch" in
 	x86_64)
 		ziel_arch=x86_64-unknown-linux-musl
@@ -40,6 +43,7 @@ echo "$erwartet  $arbeit/$archiv" | sha256sum -c - >/dev/null || {
 	exit 1
 }
 
+# busybox-tar in alpine kennt kein -J.
 xz -dc "$arbeit/$archiv" | tar -x -C "$arbeit"
 
 mkdir -p "$ziel"

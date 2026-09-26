@@ -7,6 +7,7 @@ export const konfigurationDurchlaufen = async (
 	start: Record<string, any> = {},
 ) => {
 	const wurzel = new URL(`file://${process.cwd()}/`)
+	// cacheDir, image, build und server liest der Node-Adapter ungefragt und wirft ohne sie.
 	// biome-ignore lint/suspicious/noExplicitAny: Attrappe eines AstroConfig
 	let config: Record<string, any> = {
 		root: wurzel,

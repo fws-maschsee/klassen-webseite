@@ -21,8 +21,10 @@ afterEach(async () => {
 describe('startServer ohne PUBLIC_BASE_URL', () => {
 	test('der Import von server-app wertet die Konfiguration nicht aus', async () => {
 		vi.stubEnv('PUBLIC_BASE_URL', undefined)
+		// Leeres Register wie im frischen Container; setup.ts hat sonst schon eine Konfiguration hinterlegt.
 		vi.resetModules()
 
+		// Kein `resolves`/try: der Import ist die Behauptung, seine Fehlermeldung soll im Protokoll stehen.
 		const modul = await import('../../src/server/app.ts')
 		expect(typeof modul.startServer).toBe('function')
 	})
@@ -39,6 +41,7 @@ describe('startServer ohne PUBLIC_BASE_URL', () => {
 		vi.resetModules()
 
 		const { startServer } = await import('../../src/server/app.ts')
+		// Nach resetModules aus derselben Modulinstanz wie app.ts, nicht aus setup.ts.
 		const { setKlassenConfig } = await import('../../src/klasse/config.ts')
 		const { stopQueueWorker } = await import('../../src/server/queue-worker.ts')
 		const { closeDb } = await import('../../src/lib/db/index.ts')

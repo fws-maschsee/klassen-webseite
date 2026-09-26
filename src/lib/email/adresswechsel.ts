@@ -52,6 +52,7 @@ export const buildBestaetigungsMail = (
 		html: '',
 		attachments: [],
 		headers: {
+			// RFC 3834: sonst beantwortet eine Abwesenheitsnotiz die Mail, im schlimmsten Fall im Kreis.
 			'Auto-Submitted': 'auto-generated',
 			Precedence: 'auto_reply',
 		},

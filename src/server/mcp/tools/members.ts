@@ -137,6 +137,7 @@ export const registerMitgliederTools = (
 				'Legt eine Person an oder aktualisiert sie. Pflicht: first_name, last_name. Zugehoerigkeiten via groups[]. PARTIELLES UPDATE: Beim Aktualisieren werden nur die mitgeschickten Felder veraendert — ein Feld weglassen laesst es unveraendert, explizit null leert es (z.B. email: null entfernt die Adresse).',
 			inputSchema: MitgliedInputShape,
 		},
+		// Felder 1:1 durchreichen, kein `?? null`: undefined heisst unveraendert, null heisst leeren.
 		(input) => {
 			try {
 				const row = upsertMitglied({

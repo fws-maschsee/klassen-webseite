@@ -93,6 +93,7 @@ export const subtreeGroupKeys = (
 	db: Database = openDb(),
 ): string[] =>
 	db
+		// UNION statt UNION ALL: dedupliziert und terminiert auch bei einem Zyklus in Altdaten.
 		.prepare<[string], { key: string }>(
 			`WITH RECURSIVE subtree(key) AS (
          SELECT ?

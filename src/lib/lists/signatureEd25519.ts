@@ -16,6 +16,7 @@ export const HEADER_KEY_ID = 'x-list-key-id'
 
 export const SIGNING_VERSION = 'fwslist.v2'
 
+// Muss zum Dispatcher passen.
 export const TIMESTAMP_TOLERANCE_SECONDS = 300
 
 export type ListRequestFields = {
@@ -63,6 +64,7 @@ const headerValue = (
 	return typeof value === 'string' && value.length > 0 ? value : null
 }
 
+// Muss zeichengenau zu `buildSigningInput` im Repo lists-dispatcher passen; beide Golden-String-Tests mitziehen.
 export const buildSigningInput = (fields: ListRequestFields): string =>
 	[
 		SIGNING_VERSION,
@@ -71,6 +73,7 @@ export const buildSigningInput = (fields: ListRequestFields): string =>
 		fields.list,
 		fields.recipient,
 		fields.envelopeFrom,
+		// Leere Zeile statt weglassen, sonst bildeten zwei Feldbelegungen dieselbe Zeichenkette.
 		fields.messageId ?? '',
 		fields.timestamp,
 		fields.bodyHash,
@@ -79,6 +82,7 @@ export const buildSigningInput = (fields: ListRequestFields): string =>
 export const listKeyIdFromPem = (publicKeyPem: string): string => {
 	let x: string | undefined
 	try {
+		// Rohschlüssel über JWK statt DER-Offset, ohne Annahme über die Länge des SPKI-Präfixes; wie `generate-keypair.mjs` im Dispatcher.
 		x = createPublicKey(publicKeyPem).export({ format: 'jwk' }).x
 	} catch (error) {
 		throw new Error(
@@ -118,9 +122,12 @@ export const verifyListRequest = ({
 		return deny('X-List-Timestamp liegt ausserhalb des Zeitfensters')
 	}
 
+	// Selbst berechnet statt aus einem Header: nur so deckt die Signatur die tatsächlich gelesenen Bytes.
+	// Kein timing-safe Vergleich nötig, der Hash öffentlicher Daten ist kein Geheimnis.
 	const bodyHash = createHash('sha256').update(rawBody).digest('hex')
 
 	const listClass = headerValue(headers, HEADER_CLASS)
+	// Alle Klassen prüfen mit demselben öffentlichen Schlüssel; nur dieser Vergleich trennt Post der Nachbarklasse ab.
 	if (listClass !== expectedClass) {
 		return deny('Aufruf gehoert zu einer anderen Klasse')
 	}

@@ -37,6 +37,7 @@ export const listRecipientGroups = (list: MailingListRow): string[] =>
 export const listPosterGroups = (list: MailingListRow): string[] =>
 	parseStringArray(list.poster_groups)
 
+// Unbekannte Werte gelten als eingeschränkt — im Zweifel die engere Auslegung.
 export const listPosterPolicy = (list: MailingListRow): PosterPolicy =>
 	list.poster_policy === 'offen' ? 'offen' : 'eingeschraenkt'
 
@@ -45,6 +46,7 @@ export const listSenderPatterns = (list: MailingListRow): string[] =>
 
 const isDomainPattern = (pattern: string): boolean => pattern.startsWith('*@')
 
+// Domain wird exakt verglichen, keine Subdomains: eine fremd kontrollierte Subdomain dürfte sonst an die Liste schreiben.
 export const matchesSenderPattern = (
 	email: string,
 	pattern: string,
@@ -169,6 +171,7 @@ export const upsertMailingList = (
 		label: input.label,
 		recipient_groups: JSON.stringify(recipientGroups),
 		poster_groups: JSON.stringify(posterGroups),
+		// Vorgabe 'offen' für neue Listen ist Entscheidung des Betreibers.
 		poster_policy: input.poster_policy ?? 'offen',
 		sender_patterns: JSON.stringify(senderPatterns),
 		extra_recipients: JSON.stringify(extraRecipients),
@@ -195,6 +198,7 @@ export const deleteMailingList = (
 		.prepare<[string]>('DELETE FROM mailing_lists WHERE address = ?')
 		.run(normalizeEmail(address)).changes > 0
 
+// Bewusst unvollständig (Domain-Muster, 'offen' nicht aufzählbar) — nur für Anzeige; entscheiden tut isSenderAllowed.
 export const resolveAllowedSenders = (
 	list: MailingListRow,
 	db: Database = openDb(),
@@ -225,6 +229,7 @@ export const resolveAllowedSenders = (
 	return allowed
 }
 
+// Aufrufer übergeben die Envelope-Adresse, nicht den From-Header: nur der Envelope läuft gegen SPF.
 export const isSenderAllowed = (
 	list: MailingListRow,
 	fromEmail: string,
@@ -258,6 +263,7 @@ export const setListPosterRules = (
 	return row
 }
 
+// Sicherheitsventil für die Erprobung: gesetzt, bekommen nur diese Adressen Post, unabhängig vom Aktiv-Schalter der Liste.
 const allowlist = (): string[] =>
 	(process.env.LIST_RECIPIENT_ALLOWLIST ?? '')
 		.split(',')
@@ -281,6 +287,7 @@ export const resolveListRecipients = (
 		const placeholders = groups.map(() => '?').join(', ')
 		const rows = db
 			.prepare<string[], MitgliedRow>(
+				// Spalten aufgezählt statt m.*, damit künftige Spalten nicht ungefragt mitkommen.
 				`SELECT DISTINCT m.id, m.first_name, m.last_name, m.email,
                 m.created_at, m.updated_at
            FROM mitglieder m

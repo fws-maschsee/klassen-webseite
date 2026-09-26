@@ -1,5 +1,7 @@
 name: Anmeldung
 
+# Eigener Workflow statt Schritt in ci.yml, damit Rot klar sagt: Code kaputt oder ZITADEL nicht hochgekommen.
+
 on:
   push:
     branches: [main]
@@ -22,8 +24,10 @@ jobs:
       - name: Images holen
         run: docker compose -f tests/integration/docker-compose.yml pull --quiet
 
+      # Container startet der Testlauf selbst statt über services:, damit lokal derselbe Befehl reicht.
       - run: npm run test:integration
         env:
+          # Container stehen lassen, sonst ist ZITADELs Protokoll beim Fehlschlag schon weg.
           INTEGRATION_ZITADEL_KEEP: '1'
 
       - name: ZITADEL-Protokoll bei Fehlschlag

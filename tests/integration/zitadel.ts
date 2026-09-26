@@ -25,6 +25,7 @@ export type Ausgangslage = {
 	}
 }
 
+// ZITADEL verlangt ab Werk Groß-, Kleinbuchstabe, Ziffer und Sonderzeichen.
 export const TEST_PASSWORT = 'Testpasswort1!'
 
 export const ROLLE_MITGLIED = 'mitglied'
@@ -43,6 +44,7 @@ const api = async <T>(
 		headers: {
 			authorization: `Bearer ${zugang.token}`,
 			'content-type': 'application/json',
+			// Ohne den Header arbeitet die API in der Organisation des Maschinen-Benutzers.
 			...(orgId ? { 'x-zitadel-orgid': orgId } : {}),
 		},
 		body: rumpf === undefined ? undefined : JSON.stringify(rumpf),
@@ -56,6 +58,7 @@ const api = async <T>(
 	return (text ? JSON.parse(text) : {}) as T
 }
 
+// Der Compose-Healthcheck läuft im Container und sagt nichts über den veröffentlichten Port.
 export const aufZitadelWarten = async (
 	issuer: string,
 	frist = 60_000,
@@ -77,6 +80,7 @@ export const aufZitadelWarten = async (
 	)
 }
 
+// IAM_LOGIN_CLIENT erlaubt die Login-v2-Schnittstellen direkt, statt das Next.js-Frontend mitzustarten.
 export const anmeldedienstErlauben = async (
 	zugang: ZitadelZugang,
 ): Promise<void> => {
@@ -108,6 +112,7 @@ export const benutzerAnlegen = async (
 		{
 			userName: person.loginName,
 			profile: { firstName: person.vorname, lastName: person.nachname },
+			// Verifiziert und ohne Passwortwechsel, sonst schiebt ZITADEL einen Schritt nur für die Login-Oberfläche ein.
 			email: { email: person.loginName, isEmailVerified: true },
 			password: TEST_PASSWORT,
 			passwordChangeRequired: false,
@@ -168,6 +173,7 @@ export const grantErteilen = async (
 	return antwort.userGrantId
 }
 
+// Gelöscht statt deaktiviert; der inaktive Grant hat seinen Test in tests/auth/grants.test.ts.
 export const grantEntziehen = async (
 	zugang: ZitadelZugang,
 	orgId: string,
@@ -186,6 +192,7 @@ export const grantEntziehen = async (
 	benutzer.grantId = null
 }
 
+// Eigene Organisation je Lauf wie in Produktion je Klasse, statt der Standard-Organisation.
 export const ausgangslageHerstellen = async (
 	zugang: ZitadelZugang,
 	optionen: {
@@ -196,6 +203,7 @@ export const ausgangslageHerstellen = async (
 ): Promise<Ausgangslage> => {
 	await anmeldedienstErlauben(zugang)
 
+	// Loginnamen mit „@" sind instanzweit eindeutig; ohne Kennung scheitert ein zweiter Lauf mit INTEGRATION_ZITADEL_KEEP=1.
 	const lauf = Date.now().toString(36)
 
 	const org = await api<{ id: string }>(zugang, 'POST', '/management/v1/orgs', {
@@ -210,6 +218,7 @@ export const ausgangslageHerstellen = async (
 		org.id,
 	)
 
+	// `admin` wird nicht benutzt, muss aber existieren, damit `canRead()` widerlegbar bleibt.
 	for (const [roleKey, displayName] of [
 		[ROLLE_MITGLIED, 'Mitglied'],
 		['admin', 'Admin'],
@@ -232,12 +241,14 @@ export const ausgangslageHerstellen = async (
 			redirectUris: [optionen.redirectUri],
 			postLogoutRedirectUris: [optionen.postLogoutUri],
 			responseTypes: ['OIDC_RESPONSE_TYPE_CODE'],
+			// Ohne REFRESH_TOKEN gibt ZITADEL trotz offline_access kein Refresh-Token aus.
 			grantTypes: [
 				'OIDC_GRANT_TYPE_AUTHORIZATION_CODE',
 				'OIDC_GRANT_TYPE_REFRESH_TOKEN',
 			],
 			appType: 'OIDC_APP_TYPE_WEB',
 			authMethodType: 'OIDC_AUTH_METHOD_TYPE_BASIC',
+			// Erlaubt http:// in der Redirect-URI; ohne lehnt ZITADEL die App schon beim Anlegen ab.
 			devMode: true,
 			accessTokenType: 'OIDC_TOKEN_TYPE_BEARER',
 			idTokenRoleAssertion: true,
@@ -289,6 +300,7 @@ const sitzungAnlegen = async (
 		'/v2/sessions',
 		{
 			checks: {
+				// Über die Id: der Anmeldename gilt je nach Organisation mit oder ohne Domain-Suffix.
 				user: { userId: benutzer.userId },
 				password: { password: benutzer.password },
 			},

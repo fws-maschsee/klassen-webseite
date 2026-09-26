@@ -1,10 +1,12 @@
 
 @import "tailwindcss";
 
+/* Die Pakete bringen ihre @source-Zeilen selbst mit; `@source` loest keine Paketnamen auf, und zwar still. */
 @import "@levino/shipyard-base";
 @import "@levino/shipyard-blog";
 @import "@levino/shipyard-docs";
 
+/* Ausdruecklich: hinter der Submodule-Grenze findet Tailwind die geteilten Seiten nicht verlaesslich. */
 @source "../../astro";
 
 @plugin "daisyui";
@@ -17,6 +19,8 @@
 		border-radius: var(--radius-box, 0.5rem);
 	}
 
+	/* Mit Elementname, damit es shipyards `.prose :where(table)` unabhaengig von der Importreihenfolge schlaegt.
+	   Nur warning/info/error/success: primary & Co. darf eine Klasse umfaerben, dann passte es nicht zum PDF. */
 	table.stundenplan {
 		--fws-lasur: 14%;
 		--fws-fach-haupt: color-mix(
@@ -40,6 +44,7 @@
 			var(--color-base-100)
 		);
 
+		/* Holt die volle Breite zurueck, die shipyards `display: block` fuer Markdown-Tabellen nimmt. */
 		display: table;
 		@apply w-full border-separate border-spacing-0 text-sm;
 		min-width: 42rem;
@@ -125,6 +130,7 @@
 		);
 	}
 
+	/* `td.` schlaegt `td:first-child { text-align: left }`. */
 	table.stundenplan td.stundenplan-band {
 		background-color: color-mix(
 			in oklab,
@@ -132,6 +138,7 @@
 			var(--color-base-100)
 		);
 		@apply text-center text-xs uppercase tracking-wider;
+		/* Im Markdown steht `*Große Pause*`, kursiv soll es trotzdem nicht werden. */
 		font-style: normal;
 		color: color-mix(
 			in oklab,
@@ -144,6 +151,7 @@
 		font-style: inherit;
 	}
 
+	/* Im Dunklen weniger Lasur, nicht mehr: dieselbe Beimischung hebt dort die Helligkeit viel staerker an. */
 	[data-theme="dark"] table.stundenplan {
 		--fws-lasur: 12%;
 	}

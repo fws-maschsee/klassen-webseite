@@ -25,6 +25,7 @@ describe('Rollen aus ZITADEL', () => {
 	it('fragt die Grants des Projekts dieser Instanz ab', async () => {
 		const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
 			const body = JSON.parse(String(init.body))
+			// Nur nach Projekt gefiltert: `userIdQuery` liefert gegen echtes ZITADEL still null Zeilen.
 			expect(body.queries).toEqual([
 				{ projectIdQuery: { projectId: 'proj-1' } },
 			])

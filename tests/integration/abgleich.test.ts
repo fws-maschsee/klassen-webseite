@@ -73,6 +73,7 @@ beforeAll(async () => {
 	db = createTestDb()
 	upsertGroup({ key: 'eltern', label: 'Eltern' }, db)
 
+	// Adressen = Anmeldenamen: ohne ersten Login fehlt `user_sub`, verbunden wird über die Adresse.
 	for (const [id, email] of [
 		['mila', lage.benutzer.mitGrant.email],
 		['edda', lage.benutzer.entzug.email],

@@ -72,6 +72,7 @@ const clientsStore: OAuthRegisteredClientsStore = {
 	},
 }
 
+// Bewusst ohne Rollen, obwohl die Spalte sie fuehrt: entschieden wird frisch in ZITADEL (mcp/guard.ts).
 const accessTokenToAuthInfo = (token: AccessToken, raw: string): AuthInfo => ({
 	token: raw,
 	clientId: token.client_id,
@@ -103,6 +104,7 @@ export const mcpOAuthProvider: OAuthServerProvider = {
 		_client: OAuthClientInformationFull,
 		authorizationCode: string,
 	): Promise<string> {
+		// Nur peeken, nicht verbrauchen: das passiert erst in `exchangeAuthorizationCode`.
 		const { peekAuthCode } = await import('../../lib/db/oauth.ts')
 		const row = peekAuthCode(authorizationCode)
 		if (!row) throw new Error('invalid_grant: code not found')
@@ -159,6 +161,7 @@ export const mcpOAuthProvider: OAuthServerProvider = {
 	async verifyAccessToken(token: string): Promise<AuthInfo> {
 		const access = verifyAccessToken(token)
 		if (!access) {
+			// Nur `InvalidTokenError` wird zu 401 mit `WWW-Authenticate`; bei 500 holt sich der Client kein neues Token.
 			throw new InvalidTokenError('Token unbekannt, abgelaufen oder widerrufen')
 		}
 		return accessTokenToAuthInfo(access, token)

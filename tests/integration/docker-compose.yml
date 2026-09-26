@@ -1,6 +1,7 @@
 name: klassen-webseite-anmeldung
 
 services:
+  # Ohne Volume: jeder Lauf braucht die Ersteinrichtung, sonst passt das PAT in pat/ nicht mehr.
   db:
     image: postgres:17.11-alpine
     environment:
@@ -14,7 +15,9 @@ services:
       retries: 60
 
   zitadel:
+    # Dieselbe Fassung wie in Produktion (server-config); nur gemeinsam anheben.
     image: ghcr.io/zitadel/zitadel:v4.16.2
+    # Der Masterkey muss genau 32 Zeichen haben; Testwert, kein Geheimnis.
     command: 'start-from-init --masterkey MasterkeyNeedsToHave32Characters --tlsMode disabled'
     environment:
       ZITADEL_DATABASE_POSTGRES_HOST: db
@@ -27,6 +30,7 @@ services:
       ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: postgres
       ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
 
+      # Muss zeichengleich zu OIDC_ISSUER passen: `jose` prüft `iss` exakt.
       ZITADEL_EXTERNALSECURE: 'false'
       ZITADEL_EXTERNALDOMAIN: localhost
       ZITADEL_EXTERNALPORT: '${ZITADEL_PORT:-8080}'
@@ -40,6 +44,7 @@ services:
       ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: '2099-01-01T00:00:00Z'
       ZITADEL_FIRSTINSTANCE_PATPATH: /pat/ci-admin.pat
     volumes:
+      # Bind-Mount, damit der Testprozess das PAT ohne Griff in den Container liest.
       - ./pat:/pat
     ports:
       - '127.0.0.1:${ZITADEL_PORT:-8080}:8080'

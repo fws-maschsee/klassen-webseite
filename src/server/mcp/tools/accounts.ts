@@ -66,6 +66,7 @@ export const registerAccountTools = (
 			},
 		},
 		({ user_sub }) => {
+			// Vorher lesen: nach dem DELETE laesst sich nicht mehr belegen, was geloescht wurde.
 			const konto = getUser(user_sub)
 			const eintrag = mitgliedFuerKonto(user_sub)
 			const ergebnis = loescheKonto(user_sub)

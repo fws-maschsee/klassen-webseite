@@ -125,6 +125,7 @@ export const handleIncomingListMail = async (
 
 	const parsed = await simpleParser(rawBody)
 
+	// mailparser buendelt alle List-*-Header unter dem strukturierten Header `list`.
 	const listHeader = parsed.headers.get('list') as { id?: unknown } | undefined
 	if (listHeader?.id) {
 		return {
@@ -147,6 +148,7 @@ export const handleIncomingListMail = async (
 		}
 	}
 
+	// Envelope statt `From:` – mit einem gefälschten `From:` ließe sich sonst gezielt jemand aus der Zustellung nehmen.
 	const absender = normalizeEmail(envelopeFrom)
 	const ohneAbsender =
 		einstellungFuer(list.address, absender, db).ownMail !== 'copy'
@@ -164,6 +166,7 @@ export const handleIncomingListMail = async (
 		}
 	}
 
+	// Nur in `enforce` kann das werfen; 503 lässt den Worker später erneut zustellen statt den Absender abzuweisen.
 	let pruefung: Awaited<ReturnType<typeof pruefeKonten<(typeof aufgeloest)[0]>>>
 	try {
 		pruefung = await pruefeKonten(
@@ -181,6 +184,7 @@ export const handleIncomingListMail = async (
 	}
 
 	const recipients = pruefung.recipients
+	// Eigener Fall: `enqueued` mit 0 Empfängern sähe im Dispatcher-Protokoll wie zugestellt aus.
 	if (recipients.length === 0) {
 		return {
 			kind: 'skipped',
@@ -205,6 +209,7 @@ export const handleIncomingListMail = async (
 			body_html: html,
 			body_text: text,
 			original_message_id: messageId,
+			// Ohne Message-ID keine Idempotenz – lieber doppelt verteilen als schlucken.
 			idempotency_key: messageId ? `${list.address}|${messageId}` : null,
 			attachments: parsed.attachments.map((a) => ({
 				filename: a.filename ?? null,

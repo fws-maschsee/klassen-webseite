@@ -16,6 +16,7 @@ export const GET: APIRoute = () => {
 	})
 
 	return new Response(JSON.stringify(report, null, 2), {
+		// Immer 200 und bewusst ohne DB-/Mail-Prüfung: eine volle Warteschlange soll den Pod nicht aus dem Service nehmen.
 		status: 200,
 		headers: {
 			'Content-Type': 'application/json; charset=utf-8',

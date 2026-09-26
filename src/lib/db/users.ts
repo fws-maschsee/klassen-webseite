@@ -57,6 +57,7 @@ export const nameZerlegen = (
 	if (!geputzt) {
 		return { first_name: email.split('@')[0] ?? email, last_name: '' }
 	}
+	// Am letzten Leerzeichen: „Anna Maria Beispiel“ hat zwei Vornamen, nicht zwei Nachnamen.
 	const schnitt = geputzt.lastIndexOf(' ')
 	if (schnitt === -1) return { first_name: geputzt, last_name: '' }
 	return {
@@ -65,6 +66,7 @@ export const nameZerlegen = (
 	}
 }
 
+// Automatisch -2, -3 …: eine Erstanmeldung darf nicht an Namensgleichheit scheitern, Dubletten klärt ein Mensch.
 const freierSchluessel = (basis: string, db: Database): string => {
 	const start = basis || 'konto'
 	if (!getMitglied(start, db)) return start
@@ -102,6 +104,7 @@ export const merkeAnmeldung = (
 		const verknuepft = mitgliedFuerKonto(sub, db)
 		if (verknuepft) return { user, mitglied: verknuepft, art: 'kept' }
 
+		// Nur Einträge ohne Konto: zwei Menschen können sich ein Postfach teilen. Der älteste trägt meist die Gruppen.
 		const frei = email
 			? db
 					.prepare<[string], { id: string }>(
@@ -122,6 +125,7 @@ export const merkeAnmeldung = (
 			return { user, mitglied, art: 'linked' }
 		}
 
+		// Bewusst in keine Gruppe: ein Zugang ist keine Verteilerzugehörigkeit, die setzt ein Mensch.
 		const { first_name, last_name } = nameZerlegen(name, email)
 		const id = freierSchluessel(slugify(first_name, last_name), db)
 		db.prepare<[string, string, string, string | null, string]>(
@@ -151,6 +155,7 @@ export const loescheKonto = (
 	sub: string,
 	db: Database = openDb(),
 ): LoeschErgebnis => {
+	// Ohne das Pragma liefe das DELETE durch, die Kaskade aber nicht: Konto weg, Eintrag noch da.
 	if (db.pragma('foreign_keys', { simple: true }) !== 1) {
 		throw new Error(
 			'loescheKonto: PRAGMA foreign_keys ist aus — die Loesch-Kaskade wuerde nicht greifen',
@@ -170,11 +175,13 @@ export const loescheKonto = (
 					.filter((a) => a.length > 0),
 			),
 		]
+		// Hängen an der Adresse, daher kein FK; address_suppressions bleiben bewusst, sie beschreiben das Postfach.
 		const loescheEinstellung = db.prepare<[string]>(
 			'DELETE FROM list_recipient_settings WHERE email = ?',
 		)
 		for (const adresse of adressen) loescheEinstellung.run(adresse)
 
+		// Den Rest (Eintrag, Gruppen, Opt-outs) erledigt ON DELETE CASCADE.
 		db.prepare<[string]>('DELETE FROM users WHERE sub = ?').run(sub)
 
 		return { found: true, mitglied: mitglied?.id ?? null }

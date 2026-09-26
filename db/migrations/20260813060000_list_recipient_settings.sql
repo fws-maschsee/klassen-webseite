@@ -15,6 +15,7 @@ CREATE TABLE list_recipient_settings (
 CREATE INDEX idx_list_recipient_settings_email
   ON list_recipient_settings (email);
 
+-- Gewürfelt und nie erneuert statt aus einem Secret abgeleitet: ein Secret-Wechsel entwertete sonst alle Abmeldelinks in alten Mails.
 CREATE TABLE list_settings_tokens (
   email      TEXT PRIMARY KEY,
   token      TEXT NOT NULL UNIQUE,

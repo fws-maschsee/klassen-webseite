@@ -24,6 +24,7 @@ export const browserAufmachen = (basis: string): Browser => {
 	): Promise<Response> => {
 		const url = new URL(ziel, basis)
 		const kopfzeilen: Record<string, string> = {
+			// `wantsHtml()` entscheidet daran zwischen Anmeldeseite und 401.
 			accept: optionen.accept ?? 'text/html,application/xhtml+xml',
 		}
 		const vorhanden = kekse()

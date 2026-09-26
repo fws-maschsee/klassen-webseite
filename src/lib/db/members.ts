@@ -4,6 +4,7 @@ import type { MitgliedInput, MitgliedRow } from './types.ts'
 
 export const GROUP_ELTERN = 'eltern'
 
+// Aufgezählt statt SELECT *, damit keine künftige Spalte ungefragt in Oberfläche und MCP-Antworten landet.
 const COLUMNS = 'id, first_name, last_name, email, created_at, updated_at'
 
 const cols = (alias: string): string =>
@@ -112,6 +113,7 @@ export const searchMitglieder = (
 	filter: MitgliederSearchFilter,
 	db: Database = openDb(),
 ): MitgliedRow[] => {
+	// In JS gefiltert statt SQL-LIKE, weil LIKE Diakritika nicht faltet; die Datenmenge ist eine Klasse.
 	let rows = filter.group
 		? listMitgliederByGroupEffective(filter.group, db)
 		: listMitglieder(db)
@@ -184,6 +186,7 @@ export const upsertMitglied = (
 	return row
 }
 
+// Ohne eigene Transaktion: läuft innerhalb von bulkUpsertMitglieder, und better-sqlite3 verschachtelt nicht.
 const syncGroups = (
 	mitgliedId: string,
 	groupKeys: string[],

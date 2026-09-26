@@ -22,6 +22,7 @@ const quellen = (verzeichnis: string): string[] =>
 		})
 		.sort()
 
+// Bewusst ohne das Wort „ZITADEL": es steht in Kommentaren, die das Verbot begruenden.
 const ZITADEL_QUELLE: RegExp[] = [
 	/from\s+['"][^'"]*auth\/grants\.ts['"]/,
 	/\/management\/v1\/users\/grants/,
@@ -43,6 +44,7 @@ const relativ = (datei: string): string => path.relative(WURZEL, datei)
 
 describe('Getrennte Datenschichten: statisch', () => {
 	test('es gibt ueberhaupt Dateien zu pruefen', () => {
+		// Sonst waere ein kaputtes `quellen()` ein gruener Test ueber die leere Menge.
 		expect(alleQuellen.length).toBeGreaterThan(40)
 	})
 
@@ -83,6 +85,7 @@ describe('Getrennte Datenschichten: statisch', () => {
 	})
 
 	test('die Konten-Pruefung schreibt das Adressbuch nicht', () => {
+		// Bewusst doppelt zum globalen Test: der rote Test soll den Dateinamen tragen.
 		const inhalt = fs.readFileSync(
 			path.join(SRC, 'lib/versand/kontopruefung.ts'),
 			'utf-8',
@@ -167,6 +170,7 @@ describe('Getrennte Datenschichten: Schema', () => {
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'datenschichten-'))
 const dbFile = path.join(tmpDir, 'test.db')
 
+// Vor jedem Import, der die DB oeffnet: `openDb()` merkt sich die erste Verbindung.
 process.env.DB_PATH = dbFile
 process.env.MCP_INSTANCE_NAME = 'klasse-eins'
 

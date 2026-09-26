@@ -12,6 +12,7 @@ CREATE TABLE list_messages (
   received_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+-- Partiell: Mails ohne Message-ID bekommen keine Idempotenz, blockieren sich aber auch nicht gegenseitig.
 CREATE UNIQUE INDEX idx_list_messages_idempotency
   ON list_messages (idempotency_key)
   WHERE idempotency_key IS NOT NULL;

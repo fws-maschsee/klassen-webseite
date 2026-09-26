@@ -18,6 +18,7 @@ jobs:
 
       - run: npm ci
 
+      # Ohne Typst überspringt putzplan-pdf.test.ts genau die aussagekräftigen Tests.
       - name: Typst holen (dieselbe Fassung wie im Image)
         run: sudo sh docker/typst-holen.sh /usr/local/bin
 

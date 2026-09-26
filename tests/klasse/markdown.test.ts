@@ -5,6 +5,7 @@ import { fwsKlasse } from '../../astro/integration.ts'
 import { konfigurationDurchlaufen } from '../helpers/astro.ts'
 import { TESTKLASSE } from '../setup.ts'
 
+// Seit Astro 7 stehen die Plugins im `markdown.processor`, nicht mehr in `remarkPlugins`.
 const remarkPluginsAus = (
 	// biome-ignore lint/suspicious/noExplicitAny: Attrappe eines AstroConfig
 	config: Record<string, any>,

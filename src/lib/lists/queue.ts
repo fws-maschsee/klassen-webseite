@@ -22,6 +22,8 @@ import { sendeQuittungFallsFaellig } from './receipt.ts'
 import { buildListSendInput } from './redistribute.ts'
 import { abmeldeUrl } from './settingsLink.ts'
 
+// Reissleine gegen Schleifen, die das SES-Kontingent aller Klassen verbrennen, keine Spam-Bremse:
+// eine Mail an 59 Eltern sind 59 Zustellungen, 250 legte den Verteiler lahm.
 const DEFAULT_HOURLY_CAP = 1000
 const DEFAULT_PARALLEL_BURST = 25
 
@@ -57,6 +59,7 @@ export const processListOne = async (
 		message: ListMessageRow,
 		list: MailingListRow,
 	): Promise<void> => {
+		// Nur `ownMail`, nicht das Abo: Abgemeldete duerfen weiter an den Verteiler schreiben.
 		if (
 			einstellungFuer(list.address, message.from_email, db).ownMail !==
 			'confirmation'
@@ -66,6 +69,7 @@ export const processListOne = async (
 		await sendeQuittungFallsFaellig(message, list, db, transport)
 	}
 
+	// Ausserhalb des `try`: Scheitert die letzte Zustellung, ist die Quittung trotzdem faellig.
 	let message: ListMessageRow | undefined
 	let list: MailingListRow | undefined
 
@@ -75,6 +79,7 @@ export const processListOne = async (
 		list = getMailingList(message.list_address, db)
 		if (!list) return fail('Mailingliste wurde geloescht')
 
+		// Innerhalb des `try`, sonst bleibt der Eintrag bei einem Wurf ohne Fehlermeldung auf `sending` stehen.
 		const attachments = getListAttachments(message.id, db)
 		const input = buildListSendInput(
 			message,

@@ -35,6 +35,7 @@ export type PutzplanQuelle = {
 	familienEmpfaenger(groupKey: string, db: Database): FamilienEmpfaenger[]
 }
 
+// Sonntagabend, damit bis Freitag noch Zeit zum Tauschen bleibt.
 const SENDESTUNDE = 17
 
 const WOCHENTAGE = [
@@ -62,6 +63,7 @@ const MONATE = [
 	'Dezember',
 ] as const
 
+// UTC-Getter: das Datum liegt auf Mitternacht UTC, lokale Getter liefern westlich davon den Vortag.
 const kalendertag = (datum: Date) => ({
 	jahr: datum.getUTCFullYear(),
 	monat: datum.getUTCMonth() + 1,
@@ -71,10 +73,12 @@ const kalendertag = (datum: Date) => ({
 
 export const sendezeitFuer = (datum: Date): Date => {
 	const { jahr, monat, tag, wochentag } = kalendertag(datum)
+	// „Sonntag davor“ statt „minus fünf Tage“, weil Termine auf andere Wochentage vorgezogen werden können.
 	const tageZurueck = wochentag === 0 ? 7 : wochentag
 	return berlinZeitpunkt(jahr, monat, tag - tageZurueck, SENDESTUNDE)
 }
 
+// Endet mit dem Termintag, weil die Mail „am kommenden …“ sagt und am Tag selbst falsch wäre.
 export const spaetestensBis = (datum: Date): Date => {
 	const { jahr, monat, tag } = kalendertag(datum)
 	return berlinZeitpunkt(jahr, monat, tag)
@@ -101,6 +105,7 @@ const wochentagName = (datum: Date): string =>
 const familienName = (groupKey: string, db: Database): string => {
 	const label = getGroup(groupKey, db)?.label?.trim()
 	if (!label) return groupKey
+	// Die Mail setzt „Familie “ selbst davor.
 	return label.replace(/^Familie\s+/i, '')
 }
 
@@ -148,6 +153,8 @@ export const baueErinnerungstext = (
 	}
 }
 
+// Eine Mail je Adresse, damit die Familien ihre Adressen nicht untereinander sehen;
+// Reply-To ist die Kontaktadresse, weil Absagen irgendwo ankommen müssen.
 export const baueErinnerungsMail = (
 	empfaenger: string,
 	datum: Date,
@@ -220,6 +227,7 @@ export const baueMeldung = (
 	}
 }
 
+// Bewusst per Env statt Konstante: vorläufig bestellt, abbestellen ohne Code-Änderung.
 const quittungAn = (): string => (process.env.REMINDER_RECEIPT_TO ?? '').trim()
 
 export const baueQuittung = (
@@ -272,6 +280,7 @@ export const baueQuittung = (
 }
 
 export type ErinnerungsOptionen = {
+	// Ohne Vorgabe, sonst zöge schon der Import dieses Moduls putzplan.ts mit.
 	quelle: PutzplanQuelle
 	db?: Database
 	transport?: EmailTransport
@@ -309,6 +318,7 @@ export const sendeFaelligeErinnerung = async (
 	const terminDate = datumIso(termin.datum)
 	if (!istFaellig(termin.datum, jetzt)) return { kind: 'not_due', terminDate }
 
+	// Vor dem Versand beanspruchen: ein Absturz mittendrin darf keine zweite Runde auslösen.
 	if (!beanspruchtErinnerung(terminDate, db))
 		return { kind: 'already_sent', terminDate }
 
@@ -341,6 +351,7 @@ export const sendeFaelligeErinnerung = async (
 		),
 	]
 
+	// Ohne Konto keine Mail: ein entzogener Grant löst kein Ereignis aus, also vor jedem Versand prüfen.
 	let pruefung: Awaited<ReturnType<typeof pruefeKonten<string>>>
 	try {
 		pruefung = await pruefeKonten(
@@ -369,6 +380,7 @@ export const sendeFaelligeErinnerung = async (
 		}
 	}
 
+	// Nur Totalausfall gibt frei; gezählt nach der Konten-Prüfung, damit ein bewusster Schnitt kein SMTP-Ausfall ist.
 	if (pruefung.recipients.length > 0 && zugestellt === 0) {
 		gibErinnerungFrei(terminDate, db)
 		const fehler = `keine der ${pruefung.recipients.length} Adressen erreicht`
@@ -381,6 +393,7 @@ export const sendeFaelligeErinnerung = async (
 		`Erinnerung ${terminDate} verschickt: ${zugestellt} Adresse(n), ${unerreicht.length} Familie(n) nicht erreichbar`,
 	)
 
+	// Nur mit Befund in die Meldung, sonst lernt man die wöchentliche Mail wegzuklicken.
 	const kontenBericht = hatBefund(pruefung.report)
 		? berichtAlsText(pruefung.report)
 		: undefined
@@ -411,6 +424,7 @@ export const sendeFaelligeErinnerung = async (
 		}
 	}
 
+	// Eigenes try und ganz zuletzt: die Quittung darf den Versand nie gefährden.
 	const quittungsziel = quittungAn()
 	if (quittungsziel) {
 		try {

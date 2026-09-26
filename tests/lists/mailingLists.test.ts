@@ -261,6 +261,7 @@ describe('Migration auf poster_policy', () => {
 			'eltern',
 			'elternvertretung',
 		])
+		// Am Datenzugriff vorbei, wie ein Bestandsdatensatz aus der Zeit vor der Migration.
 		db.prepare(
 			`INSERT INTO mailing_lists (address, label, recipient_groups, poster_groups, sender_patterns, poster_policy)
        VALUES ('alt', 'Alt', '["eltern"]', '["elternvertretung"]', '[]', 'eingeschraenkt')`,

@@ -33,6 +33,7 @@ import {
 import { createTestDb } from '../helpers/db.ts'
 import { pdfText, pdfTextFlach } from '../helpers/pdfText.ts'
 
+// Ohne Typst überspringen statt Attrappe; die CI installiert dieselbe Fassung wie das Image.
 const TYPST = (() => {
 	const programm = process.env.TYPST_BIN?.trim() || 'typst'
 	const lauf = spawnSync(programm, ['--version'], { encoding: 'utf8' })
@@ -213,6 +214,7 @@ describe('die Route', () => {
 		const alteEnv = { ...process.env }
 
 		beforeAll(() => {
+			// Anmeldung konfiguriert, sonst machte ein 503 wegen fehlender Geheimnisse den Test grün.
 			process.env.DISABLE_AUTH = 'false'
 			process.env.OIDC_CLIENT_ID = 'test-client'
 			process.env.OIDC_CLIENT_SECRET = 'test-secret'
@@ -256,10 +258,12 @@ describe('die Frist', () => {
 		arbeit = fs.mkdtempSync(path.join(os.tmpdir(), 'typst-attrappe-'))
 	})
 
+	// Zufällige Nachkommastellen machen den Prozess in der Prozessliste unverwechselbar.
 	const WARTEN = `30.${Math.floor(Math.random() * 1e9)}`
 
 	const haengendesProgramm = (): string => {
 		const pfad = path.join(arbeit, 'haengt.sh')
+		// `exec`, sonst trifft der Abbruch nur die Shell und `sleep` läuft verwaist weiter.
 		fs.writeFileSync(pfad, `#!/bin/sh\nexec sleep ${WARTEN}\n`, { mode: 0o755 })
 		return pfad
 	}
@@ -323,6 +327,7 @@ const temporaereLaeufe = (): string[] =>
 		.sort()
 
 mitTypst('das PDF selbst', () => {
+	// Über `putzplanAlsPdf`, denselben Weg wie die Route, nicht direkt über `typstPdf`.
 	const setze = async (db: Database): Promise<Buffer> =>
 		(await putzplanAlsPdf(db, JETZT, KLASSE)).pdf
 

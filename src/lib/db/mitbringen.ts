@@ -147,6 +147,7 @@ export const listeLesen = (
 		.prepare<[string], ListenZeile>('SELECT * FROM bring_lists WHERE id = ?')
 		.get(id)
 	if (!z) return null
+	// Fällig gilt schon als gelöscht, auch wenn der Aufräumlauf noch nicht dran war.
 	if (z.delete_at <= dbTimestamp(jetzt)) return null
 	return zeileZuListe(z)
 }

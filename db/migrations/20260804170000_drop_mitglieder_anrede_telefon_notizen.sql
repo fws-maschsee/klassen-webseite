@@ -1,4 +1,6 @@
 -- migrate:up transaction:false
+-- Neubau statt DROP COLUMN: SQLite löscht keine Spalte aus einem CHECK. Ohne foreign_keys = OFF (wirkt nur außerhalb
+-- einer Transaktion, daher transaction:false) risse DROP TABLE Gruppen, Opt-outs und Versandprotokoll per CASCADE mit.
 PRAGMA foreign_keys = OFF;
 
 BEGIN;

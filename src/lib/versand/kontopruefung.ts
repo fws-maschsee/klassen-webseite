@@ -16,6 +16,7 @@ export type CutReason = 'no_account' | 'account_unknown' | 'role_missing'
 
 export type CheckCandidate = {
 	email: string
+	// `false`: Einzeladresse einer Liste (Sekretariat, Fachlehrer) ohne Konto – passiert die Pruefung immer.
 	from_address_book: boolean
 }
 
@@ -38,6 +39,8 @@ export type AccountCheck<T> = {
 
 const ENV = 'LIST_ACCOUNT_CHECK'
 
+// `report` als Vorgabe, damit eine neue Klasse nicht still den halben Verteiler verliert;
+// ein unbekannter Wert (Tippfehler) faellt deshalb auch auf `report` zurueck, nie auf `enforce`.
 export const accountCheckMode = (): AccountCheckMode => {
 	const wert = (process.env[ENV] ?? '').trim().toLowerCase()
 	if (wert === 'enforce' || wert === 'report') return wert
@@ -155,6 +158,7 @@ export const pruefeKonten = async <T>(
 	for (const empfaenger of zuPruefen) {
 		const email = normalize(kandidat(empfaenger).email)
 		const sub = subJeMail.get(email)
+		// Erst der stabile `sub`, dann die Adresse: `sub` entsteht erst beim ersten Login und fehlt meist noch.
 		if (sub && subsMitRolle.has(sub)) {
 			behalten.push(empfaenger)
 			continue

@@ -1,4 +1,5 @@
 name: Automerge
+# Zeitplan statt pull_request: Dependabot-PR-Events bekommen nur einen Read-only-Token.
 on:
   schedule:
     - cron: '17 * * * *'
@@ -6,6 +7,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # permissions setzt alles Ungenannte auf none; ohne diese drei scheitert statusCheckRollup.
   checks: read
   statuses: read
   actions: read
@@ -33,10 +35,12 @@ jobs:
             elif printf '%s\n' "$meta" | grep -qE 'update-type: *version-update:semver-'; then
               label=automerge
             else
+              # Auch die Gruppe security landet hier: sie darf Majors enthalten.
               paare=$(printf '%s\n' "$meta" \
                 | grep -E '^(Bump|Bumps|Updates) ' \
                 | grep -oiE 'from v?[0-9]+(\.[0-9]+)* to v?[0-9]+(\.[0-9]+)*' \
                 | sed -E 's/[Ff]rom v?([0-9.]+) to v?([0-9.]+)/\1 \2/' || true)
+              # Unlesbar heißt major: lieber ein Mensch schaut drauf als ein versehentlicher Major-Automerge.
               if [ -z "$paare" ]; then
                 label=major
               elif printf '%s\n' "$paare" \

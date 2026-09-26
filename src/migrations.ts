@@ -23,6 +23,7 @@ export const packageMigrationsDir = (): string => paketMigrationen
 export const alleMigrations = (
 	klassenVerzeichnisse: readonly string[] = [],
 ): Migration[] => [
+	// Package vor Klasse: Klassen-Migrationen dürfen auf dem Package-Schema aufbauen, nie umgekehrt.
 	...packageMigrations(),
 	...klassenVerzeichnisse.flatMap((dir) => leseVerzeichnis(dir)),
 ]
@@ -32,6 +33,7 @@ export const runMigrations = (
 	klassenVerzeichnisse: readonly string[] = [],
 ): string[] => {
 	db.exec(
+		// Dieselbe Tabelle wie dbmate, damit beide austauschbar bleiben und nichts doppelt migriert wird.
 		'CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY NOT NULL)',
 	)
 
@@ -71,6 +73,7 @@ export const runMigrations = (
 				)
 			}
 		} else {
+			// transaction:false öffnet eigene Transaktionen; SQLite kann nicht verschachteln, also außerhalb buchen wie dbmate.
 			try {
 				db.exec(up)
 			} catch (fehler) {
@@ -88,6 +91,7 @@ export const runMigrations = (
 export const upAbschnitt = (inhalt: string): string | undefined => {
 	const start = inhalt.indexOf('-- migrate:up')
 	if (start === -1) return undefined
+	// Ab Zeilenende, damit Direktiven hinter dem Marker (transaction:false) nicht als SQL mitlaufen.
 	const zeilenEnde = inhalt.indexOf('\n', start)
 	const nachMarker = zeilenEnde === -1 ? '' : inhalt.slice(zeilenEnde + 1)
 	const ende = nachMarker.indexOf('-- migrate:down')

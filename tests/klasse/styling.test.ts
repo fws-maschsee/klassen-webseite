@@ -62,11 +62,13 @@ describe('erzeugtes Stylesheet', () => {
 	})
 
 	test('ist ueberhaupt vorhanden und plausibel gross', () => {
+		// Gemessen ~200 KB; ohne CSS-Einstieg bleiben nur wenige KB.
 		expect(stylesheet.length).toBeGreaterThan(50_000)
 	})
 
 	test('enthaelt daisyUI-Komponenten', () => {
 		expect(stylesheet).toMatch(/^\s*\.btn \{/m)
+		// `.textarea` steht nur in astro/pages/verwaltung: belegt zugleich, dass die geteilten Seiten gescannt wurden.
 		expect(stylesheet).toMatch(/^\s*\.textarea \{/m)
 	})
 

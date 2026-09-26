@@ -1,18 +1,23 @@
 import { listKeyIdFromPem } from '../lib/lists/signatureEd25519.ts'
 
+// Kalender-Apps und der Listen-Dispatcher bringen kein Cookie mit; /api/lists/ prüft stattdessen die Ed25519-Signatur.
 export const PUBLIC_PATHS = ['/public/', '/api/lists/'] as const
 
 const SCHUL_VORGABEN = {
+	// Muss in SES verifiziert sein, sonst weist SES die Mail ab.
 	mailFrom: 'noreply@fws-maschsee-test.de',
 	listBaseDomain: 'lists.fws-maschsee-test.de',
 	authRole: 'mitglied',
+	// Kein Geheimnis: Ed25519 statt HMAC, damit der Prüfschlüssel offen im Package stehen kann.
 	listPublicKeyPem: `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAjYOv8AXbp+JScJ653wMEtv6lARyphIakIIRKQ+OT4IQ=
 -----END PUBLIC KEY-----
 `,
+	// Liste statt Einzelwert, damit beim Schlüsselwechsel die neue Id vorab aufgenommen werden kann.
 	listKeyIds: ['bf2226d575ece8c8'] as readonly string[],
 } as const
 
+// Vollständige CSS-Farbwerte (daisyUI 5), keine zerlegten Kanäle wie in daisyUI 4.
 export type KlassenFarben = {
 	primary?: string
 	secondary?: string
@@ -31,6 +36,7 @@ export type KlassenConfigInput = {
 	label: string
 	teacher?: string
 	grade?: string
+	// Nicht aus dem slug abgeleitet: DNS und Zertifikat hängen daran, und eine Klasse kann umziehen.
 	domain: string
 	repoUrl: string
 	contactMail: string
@@ -39,9 +45,11 @@ export type KlassenConfigInput = {
 
 	blaetter?: readonly Blatt[]
 
+	// Nur die alte Adresse leitet um; calendarPath selbst nie, Kalender-Clients (Apple: Fehler -1007) scheitern an 301.
 	calendarLegacyPath?: string | null
 
 	siteUrl?: string
+	// Getrennt von domain, damit eine umgezogene Seite ihre Plausible-Statistik behält.
 	analyticsDomain?: string
 	authRole?: string
 	zitadelProject?: string
@@ -103,6 +111,7 @@ export const defineKlassenConfig = (
 				`blaetter: pfad "${blatt.pfad}" muss mit "/" beginnen und auf ".pdf" enden`,
 			)
 		}
+		// Beim Start prüfen, weil ein offen liegendes Blatt sonst nirgends auffällt.
 		if (PUBLIC_PATHS.some((prefix) => blatt.pfad.startsWith(prefix))) {
 			fehler.push(
 				`blaetter: pfad "${blatt.pfad}" liegt unter einem oeffentlichen Pfad (${PUBLIC_PATHS.join(', ')}) — das Blatt waere ohne Anmeldung abrufbar`,
@@ -129,6 +138,7 @@ export const defineKlassenConfig = (
 		}
 	}
 
+	// Leer heißt „ableiten“ und muss durchgehen, weil eine aufgelöste Config erneut hier durchlaufen darf.
 	if (input.schuljahr) {
 		const teile = /^(\d{4})\/(\d{4})$/.exec(input.schuljahr)
 		if (!teile || Number(teile[2]) !== Number(teile[1]) + 1) {
@@ -142,6 +152,7 @@ export const defineKlassenConfig = (
 		input.listPublicKeyPem ?? SCHUL_VORGABEN.listPublicKeyPem
 	const listKeyIds = input.listKeyIds ?? SCHUL_VORGABEN.listKeyIds
 
+	// Passt die Id nicht zum PEM, bleibt jede Listenmail still beim Absender hängen — deshalb schon beim Start prüfen.
 	if (listKeyIds.length === 0) {
 		fehler.push('listKeyIds ist leer — damit kommt keine Listenmail durch')
 	} else {
@@ -194,16 +205,19 @@ export const defineKlassenConfig = (
 	}
 }
 
+// Nimmt die Config als Argument: die Integration ruft das auf, bevor setKlassenConfig gelaufen ist.
 export const bearbeitenUrl = (
 	config: KlassenConfig,
 	pfadImRepo: string,
 ): string => `${config.repoUrl}/edit/main/${pfadImRepo}`
 
+// Kein Feld der KlassenConfig: für alle Klassen gleich, eine abweichende Klasse hätte nur einen toten Link.
 const KONTO_BASIS = 'https://konto.fws-maschsee-test.de'
 
 export const kontaktbuchUrl = (config: KlassenConfig): string =>
 	`${KONTO_BASIS}/klasse/${config.slug}`
 
+// Register statt Import: Astro-Server und Express-Entrypoint laden den Code getrennt, und die Config liegt in der Klassen-App.
 let angemeldet: KlassenConfig | null = null
 
 export const setKlassenConfig = (config: KlassenConfig): KlassenConfig => {
@@ -224,6 +238,7 @@ export const klassenConfig = (): KlassenConfig => {
 	return angemeldet
 }
 
+// Funktion statt Konstante, sonst bindet schon der Import an eine hinterlegte Config.
 export const zustaendigkeit = (): string => {
 	const { contactName, contactMail } = klassenConfig()
 	return contactName ? `${contactName} (${contactMail})` : contactMail

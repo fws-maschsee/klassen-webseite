@@ -165,7 +165,7 @@ describe('Abgemeldete bekommen keine Post', () => {
 describe('Der Schluessel der Einstellungsseite', () => {
 	test('wird beim ersten Mal gewuerfelt und bleibt danach gleich', () => {
 		const erster = tokenFuer('vera@example.org', db)
-		expect(erster).toHaveLength(43)
+		expect(erster).toHaveLength(43) // 32 Byte base64url
 		expect(tokenFuer('vera@example.org', db)).toBe(erster)
 	})
 

@@ -38,6 +38,7 @@ const KLASSE = defineKlassenConfig({
 })
 
 const FREITAG = new Date('2026-08-21T00:00:00.000Z')
+// 17 Uhr Berlin ist im Sommer 15 Uhr UTC.
 const SONNTAG_17_UHR = new Date('2026-08-16T15:00:00.000Z')
 const SONNTAG_16_59_UHR = new Date('2026-08-16T14:59:00.000Z')
 const SAMSTAG_DAVOR = new Date('2026-08-15T18:00:00.000Z')
@@ -59,6 +60,7 @@ let familien: Record<string, FamilienEmpfaenger[]>
 
 const EIN_TAG_MS = 24 * 60 * 60 * 1000
 
+// Absichtlich großzügig bis Tagesende: über „zu spät" soll der Produktivcode entscheiden.
 const quelle: PutzplanQuelle = {
 	naechsterPutztermin: (ab) =>
 		[...termine]
@@ -97,6 +99,7 @@ beforeEach(() => {
 	db = createTestDb()
 	sent = []
 	scheitert = new Set()
+	// Eine stehengebliebene Quittungsadresse zählte sonst in `anFamilien()` als Familie.
 	delete process.env.REMINDER_RECEIPT_TO
 	termine = [{ datum: FREITAG, gruppen: ['probst-vogel', 'sonnenschein'] }]
 	familien = {
@@ -278,6 +281,7 @@ describe('Familie ohne erreichbare Adresse', () => {
 	})
 
 	test('ist alles in Ordnung, geht KEINE Meldung an den Betrieb', async () => {
+		// Auch ins Adressbuch, sonst meldete die Konten-Prüfung zu Recht Konten ohne Eintrag.
 		for (const [id, email] of [
 			['anke', 'anke@example.org'],
 			['jens', 'jens@example.org'],

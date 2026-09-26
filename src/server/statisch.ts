@@ -26,6 +26,7 @@ export const nurAngemeldet = (staticDir: string): RequestHandler => {
 			next()
 			return
 		}
+		// CSS/JS/Schriften brauchen auch die Seiten unter /public/ ohne Sitzung; Bilder und Dokumente nicht.
 		if (pfad.startsWith('/_astro/') && /\.(css|js|mjs|woff2?)$/.test(pfad)) {
 			next()
 			return
@@ -37,6 +38,7 @@ export const nurAngemeldet = (staticDir: string): RequestHandler => {
 
 		void (async () => {
 			try {
+				// Erst hier gelesen: beim Bauen der Middleware kann das Register noch leer sein.
 				const { contactMail } = klassenConfig()
 				const { response } = await authenticate(alsWebRequest(req), {
 					siteOwner: wemGehoertDieSeite(),
@@ -94,6 +96,7 @@ const istDatei = (wurzel: string, pfad: string): boolean => {
 	}
 
 	const ziel = path.resolve(wurzel, `.${path.posix.normalize(entpackt)}`)
+	// Eigene Pruefung gegen `..`: das laeuft vor `express.static` und verlaesst sich nicht darauf.
 	if (ziel !== wurzel && !ziel.startsWith(wurzel + path.sep)) return false
 
 	const eintrag = fs.statSync(ziel, { throwIfNoEntry: false })

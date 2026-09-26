@@ -20,6 +20,7 @@ import { renderForRecipient } from './render.ts'
 import type { EmailTransport } from './transport.ts'
 import { sesTransport } from './transport.ts'
 
+// Gilt fuer beide Warteschlangen gemeinsam (SES-Kontingent der Domain); gehoert zum Wert in ../lists/queue.ts.
 const DEFAULT_HOURLY_CAP = 1000
 const DEFAULT_PARALLEL_BURST = 25
 
@@ -75,6 +76,7 @@ export const enqueueEmailToRecipients = async (
 	const aufgeloest = resolveRecipients(email.recipients, db)
 
 	const ohneAdresse = aufgeloest.filter((m) => !isEmailRecipient(m))
+	// Wurf in `enforce` bewusst ungefangen: lieber keine Rundmail als eine an Ehemalige.
 	const pruefung = await pruefeKonten(
 		aufgeloest.filter(isEmailRecipient),
 		(m) => ({ email: m.email as string, from_address_book: true }),
