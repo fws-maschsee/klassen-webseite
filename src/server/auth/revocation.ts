@@ -147,11 +147,17 @@ const OIDC_SESSION_EVENTS = new Set([
 ])
 
 const REVOKE_GRANT_EVENTS = new Set([
-	'user.grant.changed',
-	'user.grant.cascade.changed',
 	'user.grant.removed',
 	'user.grant.cascade.removed',
 	'user.grant.deactivated',
+])
+
+// Geänderte Rollen brauchen keine neue Anmeldung: die Verlängerung holt sie frisch, MCP liest sie mit Dienstzugang je Aufruf.
+const REFRESH_GRANT_EVENTS = new Set([
+	'user.grant.changed',
+	'user.grant.cascade.changed',
+	'user.grant.added',
+	'user.grant.reactivated',
 ])
 
 export type EventOutcome =
@@ -229,18 +235,14 @@ export const handleZitadelEvent = (
 			// Deactivated/cascade grant events carry no userId; renewing every session re-reads the roles within one request.
 			return { action: 'refresh_all', sessions: expireAllAccessTokens(db()) }
 		}
-		if (
-			(eventType === 'user.grant.added' ||
-				eventType === 'user.grant.reactivated') &&
-			userId
-		) {
-			return {
-				action: 'refresh_user',
-				sub: userId,
-				sessions: expireAccessTokensBySub(userId, db()),
+		if (REFRESH_GRANT_EVENTS.has(eventType)) {
+			if (userId) {
+				return {
+					action: 'refresh_user',
+					sub: userId,
+					sessions: expireAccessTokensBySub(userId, db()),
+				}
 			}
-		}
-		if (eventType === 'user.grant.reactivated') {
 			return { action: 'refresh_all', sessions: expireAllAccessTokens(db()) }
 		}
 	}

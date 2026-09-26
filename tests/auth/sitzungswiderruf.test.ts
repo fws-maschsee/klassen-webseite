@@ -231,6 +231,28 @@ describe('ZITADEL-Ereignisse', () => {
 		expect(danach?.accessExpiresAt).toBe(0)
 	})
 
+	test('geaenderte Rollen lassen die Sitzung neu lesen, ohne sie zu beenden', () => {
+		const { handle } = sitzung({ roles: ['mitglied', 'admin'] })
+		expect(
+			handleZitadelEvent(
+				{
+					event_type: 'user.grant.changed',
+					aggregateID: 'grant-11',
+					event_payload: {
+						userId: 'u-anna',
+						projectId: 'proj-1',
+						roleKeys: ['mitglied'],
+					},
+				},
+				'proj-1',
+				db,
+			),
+		).toEqual({ action: 'refresh_user', sub: 'u-anna', sessions: 1 })
+		const danach = activeAuthSession(handle, db)
+		expect(danach).not.toBeNull()
+		expect(danach?.accessExpiresAt).toBe(0)
+	})
+
 	test('ein neuer Grant laesst die Rollen sofort neu lesen', () => {
 		const { handle } = sitzung({ roles: [] })
 		expect(
