@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import type { Server } from 'node:http'
+import http, { type Server } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -65,6 +65,27 @@ const starte = async (): Promise<string> => {
 	return `http://127.0.0.1:${adresse.port}`
 }
 
+// `fetch` normalisiert die URL vorher (`%2e%2e` fiele weg); der Angriff braucht den Pfad byte-genau.
+const rohAbruf = (
+	basis: string,
+	pfad: string,
+): Promise<{ status: number; text: string }> =>
+	new Promise((resolve, reject) => {
+		const { hostname, port } = new URL(basis)
+		http
+			.get({ hostname, port, path: pfad }, (antwort) => {
+				let text = ''
+				antwort.setEncoding('latin1')
+				antwort.on('data', (teil) => {
+					text += teil
+				})
+				antwort.on('end', () =>
+					resolve({ status: antwort.statusCode ?? 0, text }),
+				)
+			})
+			.on('error', reject)
+	})
+
 describe('statische Dateien', () => {
 	test('eine Datei unter /dokumente/ bekommt ohne Anmeldung keine 200', {
 		// resetModules lädt Express, MCP-SDK und SQLite samt Migrationen kalt neu.
@@ -90,5 +111,47 @@ describe('statische Dateien', () => {
 
 		expect(antwort.status).toBe(200)
 		expect(await antwort.text()).toContain('BEGIN:VCALENDAR')
+	})
+
+	test.each([
+		'/public/..%2fdokumente/geheim.pdf',
+		'/public/..%2Fdokumente%2Fgeheim.pdf',
+		'/public/%2e%2e/dokumente/geheim.pdf',
+		'/public/%2E%2E/dokumente/geheim.pdf',
+		'/public/../dokumente/geheim.pdf',
+		'/public/..%5cdokumente/geheim.pdf',
+		'/public/..%5Cdokumente%5Cgeheim.pdf',
+		'/public/..\\dokumente\\geheim.pdf',
+		'/public/..%252fdokumente/geheim.pdf',
+		'/public/%252e%252e/dokumente/geheim.pdf',
+		'/auth/..%2fdokumente/geheim.pdf',
+		'/auth/%2e%2e/dokumente/geheim.pdf',
+		'/api/lists/..%2f..%2fdokumente/geheim.pdf',
+		'/_astro/..%2fdokumente/geheim.pdf',
+		'//dokumente/geheim.pdf',
+		'/./dokumente/geheim.pdf',
+	])(
+		'%s liefert die geschützte Datei nicht aus',
+		{
+			timeout: 30_000,
+		},
+		async (pfad) => {
+			const basis = await starte()
+
+			const antwort = await rohAbruf(basis, pfad)
+
+			expect(antwort.status).not.toBe(200)
+			expect(antwort.text).not.toContain('%PDF')
+		},
+	)
+
+	test('kodierte Pfadtrenner werden mit 400 abgewiesen', {
+		timeout: 30_000,
+	}, async () => {
+		const basis = await starte()
+
+		const antwort = await rohAbruf(basis, '/public/..%2fdokumente/geheim.pdf')
+
+		expect(antwort.status).toBe(400)
 	})
 })

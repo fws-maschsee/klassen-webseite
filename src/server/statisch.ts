@@ -1,11 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { RequestHandler } from 'express'
-import {
-	klassenConfig,
-	PUBLIC_PATHS,
-	wemGehoertDieSeite,
-} from '../klasse/config.ts'
+import { klassenConfig, wemGehoertDieSeite } from '../klasse/config.ts'
+import { brauchtKeineAnmeldung, normalisierterPfad } from '../klasse/pfad.ts'
 import { authenticate } from './auth/oidc.ts'
 
 export const nurAngemeldet = (staticDir: string): RequestHandler => {
@@ -17,12 +14,12 @@ export const nurAngemeldet = (staticDir: string): RequestHandler => {
 			return
 		}
 
-		const pfad = req.path
-		if (PUBLIC_PATHS.some((prefix) => pfad.startsWith(prefix))) {
-			next()
+		const pfad = normalisierterPfad(req.path)
+		if (pfad === null) {
+			res.status(400).type('text/plain; charset=utf-8').send('Ungültiger Pfad')
 			return
 		}
-		if (pfad.startsWith('/auth/')) {
+		if (brauchtKeineAnmeldung(pfad)) {
 			next()
 			return
 		}
@@ -88,14 +85,7 @@ const schreibe = async (
 }
 
 const istDatei = (wurzel: string, pfad: string): boolean => {
-	let entpackt: string
-	try {
-		entpackt = decodeURIComponent(pfad)
-	} catch {
-		return false
-	}
-
-	const ziel = path.resolve(wurzel, `.${path.posix.normalize(entpackt)}`)
+	const ziel = path.resolve(wurzel, `.${pfad}`)
 	// Eigene Pruefung gegen `..`: das laeuft vor `express.static` und verlaesst sich nicht darauf.
 	if (ziel !== wurzel && !ziel.startsWith(wurzel + path.sep)) return false
 

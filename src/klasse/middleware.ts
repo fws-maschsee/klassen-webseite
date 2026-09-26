@@ -5,12 +5,10 @@ import { authenticate, OidcConfigError } from '../server/auth/oidc.ts'
 import {
 	type KlassenConfig,
 	klassenConfig,
-	PUBLIC_PATHS,
 	setKlassenConfig,
 	wemGehoertDieSeite,
 } from './config.ts'
-
-const AUTH_PREFIX = '/auth/'
+import { brauchtKeineAnmeldung, normalisierterPfad } from './pfad.ts'
 
 export const createKlassenMiddleware = (
 	config: KlassenConfig,
@@ -22,13 +20,15 @@ export const createKlassenMiddleware = (
 			return next()
 		}
 
-		const path = new URL(context.request.url).pathname
-
-		if (PUBLIC_PATHS.some((prefix) => path.startsWith(prefix))) {
-			return next()
+		const path = normalisierterPfad(new URL(context.request.url).pathname)
+		if (path === null) {
+			return new Response('Ungültiger Pfad', {
+				status: 400,
+				headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+			})
 		}
 
-		if (path.startsWith(AUTH_PREFIX)) {
+		if (brauchtKeineAnmeldung(path)) {
 			return next()
 		}
 

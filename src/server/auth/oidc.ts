@@ -219,11 +219,19 @@ const basicAuth = (clientId: string, clientSecret: string): string =>
 		`${encodeURIComponent(clientId)}:${encodeURIComponent(clientSecret)}`,
 	).toString('base64')}`
 
-const safeReturnTo = (value: string | null | undefined): string => {
-	if (!value) return '/'
-	if (!value.startsWith('/')) return '/'
-	if (value.startsWith('//')) return '/'
-	return value
+const RUECKSPRUNG_BASIS = 'https://ruecksprung.invalid'
+
+// Geparst statt mit Präfixen verglichen: Browser lesen `/\evil.example` wie `//evil.example`.
+export const safeReturnTo = (value: string | null | undefined): string => {
+	if (!value?.startsWith('/')) return '/'
+	let ziel: URL
+	try {
+		ziel = new URL(value, RUECKSPRUNG_BASIS)
+	} catch {
+		return '/'
+	}
+	if (ziel.origin !== RUECKSPRUNG_BASIS) return '/'
+	return `${ziel.pathname}${ziel.search}${ziel.hash}`
 }
 
 const publicOrigin = (request: Request): string => {
