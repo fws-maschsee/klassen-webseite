@@ -2,12 +2,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { APIContext, MiddlewareHandler } from 'astro'
 import type { KlassenConfig } from '../../src/klasse/config.ts'
 import { createKlassenMiddleware } from '../../src/klasse/middleware.ts'
+import { POST as authBackchannelLogout } from '../../src/routes/auth/backchannelLogout.ts'
 import { GET as authCallback } from '../../src/routes/auth/callback.ts'
 import { GET as authLogin } from '../../src/routes/auth/login.ts'
 import {
 	GET as authLogoutGet,
 	POST as authLogoutPost,
 } from '../../src/routes/auth/logout.ts'
+import { POST as authZitadelEvents } from '../../src/routes/auth/zitadelEvents.ts'
 import { GET as healthRoute } from '../../src/routes/health.ts'
 
 // Unverwechselbar statt Status 200: auch eine Fehlerseite kann mit 200 kommen.
@@ -28,6 +30,10 @@ const ROUTEN: Record<string, Route> = {
 		kontext.request.method === 'POST'
 			? authLogoutPost(kontext as unknown as APIContext)
 			: authLogoutGet(kontext as unknown as APIContext),
+	'/auth/backchannel-logout': (kontext) =>
+		authBackchannelLogout(kontext as unknown as APIContext),
+	'/auth/zitadel-events': (kontext) =>
+		authZitadelEvents(kontext as unknown as APIContext),
 	'/public/health': (kontext) => healthRoute(kontext as unknown as APIContext),
 }
 

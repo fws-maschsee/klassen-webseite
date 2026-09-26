@@ -16,7 +16,7 @@ export type Ausgangslage = {
 	orgId: string
 	projectId: string
 	clientId: string
-	clientSecret: string
+	clientKey: string
 	rolle: string
 	benutzer: {
 		mitGrant: Benutzer
@@ -29,6 +29,8 @@ export type Ausgangslage = {
 export const TEST_PASSWORT = 'Testpasswort1!'
 
 export const ROLLE_MITGLIED = 'mitglied'
+
+const SCHLUESSEL_ABLAUF = '2099-01-01T00:00:00Z'
 
 type Methode = 'GET' | 'POST' | 'PUT' | 'DELETE'
 
@@ -58,6 +60,39 @@ const api = async <T>(
 	return (text ? JSON.parse(text) : {}) as T
 }
 
+const rpc = async <T>(
+	zugang: ZitadelZugang,
+	methode: string,
+	rumpf: unknown = {},
+): Promise<T> => {
+	const antwort = await fetch(`${zugang.issuer}/${methode}`, {
+		method: 'POST',
+		headers: {
+			authorization: `Bearer ${zugang.token}`,
+			'content-type': 'application/json',
+			'connect-protocol-version': '1',
+		},
+		body: JSON.stringify(rumpf),
+	})
+	const text = await antwort.text()
+	if (!antwort.ok) {
+		throw new Error(
+			`ZITADEL ${methode} antwortete mit HTTP ${antwort.status}: ${text}`,
+		)
+	}
+	return (text ? JSON.parse(text) : {}) as T
+}
+
+const ORG = 'zitadel.org.v2.OrganizationService'
+const PROJECT = 'zitadel.project.v2.ProjectService'
+const APPLICATION = 'zitadel.application.v2.ApplicationService'
+const USER = 'zitadel.user.v2.UserService'
+const AUTHORIZATION = 'zitadel.authorization.v2.AuthorizationService'
+const PERMISSION = 'zitadel.internal_permission.v2.InternalPermissionService'
+
+const schluesselJson = (base64: string): string =>
+	Buffer.from(base64, 'base64').toString('utf8')
+
 // Der Compose-Healthcheck läuft im Container und sagt nichts über den veröffentlichten Port.
 export const aufZitadelWarten = async (
 	issuer: string,
@@ -84,20 +119,60 @@ export const aufZitadelWarten = async (
 export const anmeldedienstErlauben = async (
 	zugang: ZitadelZugang,
 ): Promise<void> => {
-	const mitglieder = await api<{
-		result?: { userId: string; userType?: string }[]
-	}>(zugang, 'POST', '/admin/v1/members/_search', {})
-	const maschine = (mitglieder.result ?? []).find(
-		(eintrag) => eintrag.userType === 'TYPE_MACHINE',
-	)
-	if (!maschine) {
+	const ich = await fetch(`${zugang.issuer}/oidc/v1/userinfo`, {
+		headers: { authorization: `Bearer ${zugang.token}` },
+	})
+	const { sub } = (await ich.json()) as { sub?: string }
+	if (!ich.ok || !sub) {
 		throw new Error(
-			'Kein Maschinen-Benutzer in der Instanz gefunden — ist ZITADEL_FIRSTINSTANCE_ORG_MACHINE_* gesetzt?',
+			`Userinfo des Maschinen-Benutzers nicht lesbar: HTTP ${ich.status} — ist ZITADEL_FIRSTINSTANCE_ORG_MACHINE_* gesetzt?`,
 		)
 	}
-	await api(zugang, 'PUT', `/admin/v1/members/${maschine.userId}`, {
+	await rpc(zugang, `${PERMISSION}/UpdateAdministrator`, {
+		userId: sub,
+		resource: { instance: true },
 		roles: ['IAM_OWNER', 'IAM_LOGIN_CLIENT'],
 	})
+}
+
+export const tokenLebensdauerSetzen = async (
+	zugang: ZitadelZugang,
+	sekunden: number,
+): Promise<void> => {
+	try {
+		// ZITADEL v4.19 has no v2 API for token lifetimes; this is the only admin v1 call left.
+		await api(zugang, 'PUT', '/admin/v1/settings/oidc', {
+			accessTokenLifetime: `${sekunden}s`,
+			idTokenLifetime: `${sekunden}s`,
+			refreshTokenIdleExpiration: '2592000s',
+			refreshTokenExpiration: '7776000s',
+		})
+	} catch (fehler) {
+		if (!(fehler as Error).message.includes('COMMAND-0pk2nu')) throw fehler
+	}
+}
+
+export const dienstkontoAnlegen = async (
+	zugang: ZitadelZugang,
+	orgId: string,
+	projectId: string,
+): Promise<string> => {
+	const konto = await rpc<{ id: string }>(zugang, `${USER}/CreateUser`, {
+		organizationId: orgId,
+		username: `dienst-${Date.now().toString(36)}`,
+		machine: { name: 'Dienstkonto Klassenseite' },
+	})
+	await rpc(zugang, `${PERMISSION}/CreateAdministrator`, {
+		userId: konto.id,
+		resource: { projectId },
+		roles: ['PROJECT_OWNER_VIEWER'],
+	})
+	const schluessel = await rpc<{ keyContent: string }>(
+		zugang,
+		`${USER}/AddKey`,
+		{ userId: konto.id, expirationDate: SCHLUESSEL_ABLAUF },
+	)
+	return schluesselJson(schluessel.keyContent)
 }
 
 export const benutzerAnlegen = async (
@@ -105,22 +180,18 @@ export const benutzerAnlegen = async (
 	orgId: string,
 	person: { loginName: string; vorname: string; nachname: string },
 ): Promise<Benutzer> => {
-	const antwort = await api<{ userId: string }>(
-		zugang,
-		'POST',
-		'/management/v1/users/human/_import',
-		{
-			userName: person.loginName,
-			profile: { firstName: person.vorname, lastName: person.nachname },
+	const antwort = await rpc<{ id: string }>(zugang, `${USER}/CreateUser`, {
+		organizationId: orgId,
+		username: person.loginName,
+		human: {
+			profile: { givenName: person.vorname, familyName: person.nachname },
 			// Verifiziert und ohne Passwortwechsel, sonst schiebt ZITADEL einen Schritt nur für die Login-Oberfläche ein.
-			email: { email: person.loginName, isEmailVerified: true },
-			password: TEST_PASSWORT,
-			passwordChangeRequired: false,
+			email: { email: person.loginName, isVerified: true },
+			password: { password: TEST_PASSWORT, changeRequired: false },
 		},
-		orgId,
-	)
+	})
 	return {
-		userId: antwort.userId,
+		userId: antwort.id,
 		loginName: person.loginName,
 		email: person.loginName,
 		password: TEST_PASSWORT,
@@ -130,25 +201,19 @@ export const benutzerAnlegen = async (
 
 export const benutzerLoeschen = async (
 	zugang: ZitadelZugang,
-	orgId: string,
+	_orgId: string,
 	userId: string,
 ): Promise<void> => {
-	await api(
-		zugang,
-		'DELETE',
-		`/management/v1/users/${userId}`,
-		undefined,
-		orgId,
-	)
+	await rpc(zugang, `${USER}/DeleteUser`, { userId })
 }
 
 export const benutzerExistiert = async (
 	zugang: ZitadelZugang,
-	orgId: string,
+	_orgId: string,
 	userId: string,
 ): Promise<boolean> => {
 	try {
-		await api(zugang, 'GET', `/management/v1/users/${userId}`, undefined, orgId)
+		await rpc(zugang, `${USER}/GetUserByID`, { userId })
 		return true
 	} catch {
 		return false
@@ -162,33 +227,32 @@ export const grantErteilen = async (
 	projectId: string,
 	rollen: readonly string[] = [ROLLE_MITGLIED],
 ): Promise<string> => {
-	const antwort = await api<{ userGrantId: string }>(
+	const antwort = await rpc<{ id: string }>(
 		zugang,
-		'POST',
-		`/management/v1/users/${benutzer.userId}/grants`,
-		{ projectId, roleKeys: rollen },
-		orgId,
+		`${AUTHORIZATION}/CreateAuthorization`,
+		{
+			userId: benutzer.userId,
+			projectId,
+			organizationId: orgId,
+			roleKeys: rollen,
+		},
 	)
-	benutzer.grantId = antwort.userGrantId
-	return antwort.userGrantId
+	benutzer.grantId = antwort.id
+	return antwort.id
 }
 
 // Gelöscht statt deaktiviert; der inaktive Grant hat seinen Test in tests/auth/grants.test.ts.
 export const grantEntziehen = async (
 	zugang: ZitadelZugang,
-	orgId: string,
+	_orgId: string,
 	benutzer: Benutzer,
 ): Promise<void> => {
 	if (!benutzer.grantId) {
 		throw new Error(`${benutzer.loginName} hat keinen Grant, der entzogen wird`)
 	}
-	await api(
-		zugang,
-		'DELETE',
-		`/management/v1/users/${benutzer.userId}/grants/${benutzer.grantId}`,
-		undefined,
-		orgId,
-	)
+	await rpc(zugang, `${AUTHORIZATION}/DeleteAuthorization`, {
+		id: benutzer.grantId,
+	})
 	benutzer.grantId = null
 }
 
@@ -206,38 +270,39 @@ export const ausgangslageHerstellen = async (
 	// Loginnamen mit „@" sind instanzweit eindeutig; ohne Kennung scheitert ein zweiter Lauf mit INTEGRATION_ZITADEL_KEEP=1.
 	const lauf = Date.now().toString(36)
 
-	const org = await api<{ id: string }>(zugang, 'POST', '/management/v1/orgs', {
-		name: `${optionen.slug}-${lauf}`,
-	})
-
-	const projekt = await api<{ id: string }>(
+	const org = await rpc<{ organizationId: string }>(
 		zugang,
-		'POST',
-		'/management/v1/projects',
-		{ name: optionen.slug },
-		org.id,
+		`${ORG}/AddOrganization`,
+		{ name: `${optionen.slug}-${lauf}` },
 	)
+	const orgId = org.organizationId
+
+	const projekt = await rpc<{ projectId: string }>(
+		zugang,
+		`${PROJECT}/CreateProject`,
+		{ organizationId: orgId, name: optionen.slug },
+	)
+	const projectId = projekt.projectId
 
 	// `admin` wird nicht benutzt, muss aber existieren, damit `canRead()` widerlegbar bleibt.
 	for (const [roleKey, displayName] of [
 		[ROLLE_MITGLIED, 'Mitglied'],
 		['admin', 'Admin'],
 	]) {
-		await api(
-			zugang,
-			'POST',
-			`/management/v1/projects/${projekt.id}/roles`,
-			{ roleKey, displayName },
-			org.id,
-		)
+		await rpc(zugang, `${PROJECT}/AddProjectRole`, {
+			projectId,
+			roleKey,
+			displayName,
+		})
 	}
 
-	const anwendung = await api<{ clientId: string; clientSecret: string }>(
-		zugang,
-		'POST',
-		`/management/v1/projects/${projekt.id}/apps/oidc`,
-		{
-			name: `${optionen.slug}-web`,
+	const anwendung = await rpc<{
+		applicationId: string
+		oidcConfiguration: { clientId: string }
+	}>(zugang, `${APPLICATION}/CreateApplication`, {
+		projectId,
+		name: `${optionen.slug}-web`,
+		oidcConfiguration: {
 			redirectUris: [optionen.redirectUri],
 			postLogoutRedirectUris: [optionen.postLogoutUri],
 			responseTypes: ['OIDC_RESPONSE_TYPE_CODE'],
@@ -246,42 +311,52 @@ export const ausgangslageHerstellen = async (
 				'OIDC_GRANT_TYPE_AUTHORIZATION_CODE',
 				'OIDC_GRANT_TYPE_REFRESH_TOKEN',
 			],
-			appType: 'OIDC_APP_TYPE_WEB',
-			authMethodType: 'OIDC_AUTH_METHOD_TYPE_BASIC',
+			applicationType: 'OIDC_APP_TYPE_WEB',
+			authMethodType: 'OIDC_AUTH_METHOD_TYPE_PRIVATE_KEY_JWT',
 			// Erlaubt http:// in der Redirect-URI; ohne lehnt ZITADEL die App schon beim Anlegen ab.
-			devMode: true,
+			developmentMode: true,
 			accessTokenType: 'OIDC_TOKEN_TYPE_BEARER',
+			accessTokenRoleAssertion: true,
 			idTokenRoleAssertion: true,
 			idTokenUserinfoAssertion: true,
 		},
-		org.id,
+	})
+
+	const clientKey = await rpc<{ keyDetails: string }>(
+		zugang,
+		`${APPLICATION}/CreateApplicationKey`,
+		{
+			projectId,
+			applicationId: anwendung.applicationId,
+			expirationDate: SCHLUESSEL_ABLAUF,
+		},
 	)
 
-	const mitGrant = await benutzerAnlegen(zugang, org.id, {
+	const mitGrant = await benutzerAnlegen(zugang, orgId, {
 		loginName: `mila.mitglied-${lauf}@example.org`,
 		vorname: 'Mila',
 		nachname: 'Mitglied',
 	})
-	const ohneGrant = await benutzerAnlegen(zugang, org.id, {
+	const ohneGrant = await benutzerAnlegen(zugang, orgId, {
 		loginName: `olf.ohnegrant-${lauf}@example.org`,
 		vorname: 'Olf',
 		nachname: 'Ohnegrant',
 	})
-	const entzug = await benutzerAnlegen(zugang, org.id, {
+	const entzug = await benutzerAnlegen(zugang, orgId, {
 		loginName: `edda.entzug-${lauf}@example.org`,
 		vorname: 'Edda',
 		nachname: 'Entzug',
 	})
 
-	await grantErteilen(zugang, org.id, mitGrant, projekt.id)
-	await grantErteilen(zugang, org.id, entzug, projekt.id)
+	await grantErteilen(zugang, orgId, mitGrant, projectId)
+	await grantErteilen(zugang, orgId, entzug, projectId)
 
 	return {
 		zugang,
-		orgId: org.id,
-		projectId: projekt.id,
-		clientId: anwendung.clientId,
-		clientSecret: anwendung.clientSecret,
+		orgId,
+		projectId,
+		clientId: anwendung.oidcConfiguration.clientId,
+		clientKey: schluesselJson(clientKey.keyDetails),
 		rolle: ROLLE_MITGLIED,
 		benutzer: { mitGrant, ohneGrant, entzug },
 	}

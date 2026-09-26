@@ -88,10 +88,10 @@ die die Spiegelung ihre Zeilen wiedererkannte. Wer den Namen `sync_mitglieder`
 noch irgendwo findet — in einer Notiz, in einem Chatverlauf, in einem alten
 Klassen-Stand —: das Werkzeug gibt es nicht mehr.
 
-`src/server/auth/grants.ts` fragt weiterhin bei jedem Seitenaufruf und jedem
-MCP-Werkzeugaufruf frisch bei ZITADEL nach — aber nur nach **Rollen**. Ein
-entzogener Grant wirkt dort weiter sofort: der Zugang zur Seite und zum
-MCP-Server ist weg.
+Die Rollen für die Seite kommen aus dem **Token** (siehe
+[Anmeldung](#anmeldung-kurzlebige-tokens-serverseitige-sitzungen)); ein
+entzogener Grant wirkt spätestens beim nächsten Refresh (Access-Token: 5 min),
+per Webhook sofort.
 
 ### Die Folge, und sie ist datenschutzrelevant
 
@@ -268,7 +268,7 @@ heute. Also: erst der `sub`, wo er da ist, sonst die Adresse.
 
 | Feld | Was drinsteht |
 | --- | --- |
-| `cut` | Wer geschnitten wurde (bzw. würde), mit Grund: `no_account` (kein Konto), `account_unknown` (Konto in ZITADEL gelöscht), `role_missing` (Grant entzogen) |
+| `cut` | Wer geschnitten wurde (bzw. würde), Grund immer `no_role`: kein aktiver Grant mit Leserolle in **diesem** Projekt. Ob es das Konto anderswo in ZITADEL gibt, sieht der Dienstzugang bewusst nicht |
 | `accounts_without_entry` | Konten **mit** Rolle, zu denen es **keinen** Adressbuch-Eintrag gibt. Diese Personen gehören dazu und bekommen trotzdem nichts — das fällt in keiner Zustellung auf, weil dort niemand fehlt, den man vermissen könnte |
 | `extra_recipients` | Anzahl der Einzeladressen ohne Adressbuch-Eintrag |
 | `unavailable` | Gesetzt, wenn ZITADEL nicht erreichbar war. Dann ist der Bericht blind, und es wurde nichts geschnitten |
@@ -306,12 +306,12 @@ Familie, die die Schule verlassen hat, ist ein Datenschutzvorfall.
 
 ### Eine Abfrage je Versand
 
-`grantedAccounts()` in `src/server/auth/grants.ts` holt **alle** Grants des
-Projekts in einem Aufruf (mit dem 5-Sekunden-Zwischenspeicher, den die
-Rollenabfrage ohnehin hat) — nicht einen je Empfänger. Eine zweite Abfrage
-(`knownAccounts()`) kommt nur dann, wenn überhaupt jemand herausfällt; sie
-unterscheidet „Konto gelöscht" von „Grant entzogen", also zwei verschiedene
-Handgriffe für den Menschen, der den Bericht liest.
+`grantedAccounts()` in `src/server/auth/grants.ts` holt **alle**
+Autorisierungen des Projekts (Authorization Service v2, seitenweise, mit
+5-Sekunden-Zwischenspeicher) — nicht eine Abfrage je Empfänger. Eine
+org-weite Benutzerliste gibt es nicht mehr: Der Dienstzugang darf nur das
+eigene Projekt lesen. Die Adresse ist der `preferredLoginName`, sofern er eine
+Mailadresse ist; sonst verbindet nur `mitglieder.user_sub`.
 
 Bewiesen wird das Ganze gegen ein echtes ZITADEL in
 [`tests/integration/kontopruefung.test.ts`](tests/integration/kontopruefung.test.ts);
@@ -481,24 +481,57 @@ der Weg, der kaputt ist, wenn man ihn braucht — und hier heißt „kaputt" im
 schlimmsten Fall: Wir haben zugesagt, Daten zu löschen, und haben es nicht
 getan.
 
-### Hier lag ein Webhook, und er hat nie gefeuert
+### Kein Webhook für die Lösch-Kaskade
 
-Bis zum 15.08. hing die Kaskade an `POST /api/zitadel/events`: ein Empfänger für
-ZITADEL **Actions v2**, HMAC-signiert mit einem `ZITADEL_WEBHOOK_SIGNING_KEY`,
-der bei `user.removed` löschen sollte. Route, Signaturprüfung, Ereignis-Auswertung
-und der Schlüssel sind **entfernt**.
+Die Kaskade hängt nicht an einem ZITADEL-Ereignis: Der Normalfall ist der
+entzogene Grant, nicht das gelöschte Konto, und gelöscht wird nur, was ein
+Mensch verlangt. Den Webhook `POST /auth/zitadel-events` gibt es wieder — aber
+nur, um **Sitzungen** zu beenden (siehe
+[Anmeldung](#anmeldung-kurzlebige-tokens-serverseitige-sitzungen)); er löscht
+keine Daten.
 
-Der Grund ist nicht Geschmack: In der Instanz gibt es **keine Actions-v2-Targets**
-(`Target not found`). Das Target, das diesen Endpunkt hätte rufen sollen, wurde
-nie angelegt — der Endpunkt hat in seiner ganzen Lebenszeit keinen einzigen
-Aufruf gesehen. Was blieb, war ein öffentlich erreichbarer Pfad und ein geteiltes
-Geheimnis, das gepflegt, gedreht und beim Deployment mitgeschleppt werden will.
-**Ein Ereignis, das nie kommt, ist keine Absicherung; es ist Angriffsfläche.**
+## Anmeldung: kurzlebige Tokens, serverseitige Sitzungen
 
-Und selbst verdrahtet hätte er das Falsche gemeldet. `user.removed` ist das
-**gelöschte Konto**. Der Normalfall ist aber der **entzogene Grant** — und der
-löst überhaupt kein Ereignis aus. Deshalb steht an seiner Stelle jetzt nichts,
-worauf man wartet, sondern etwas, das **fragt**: der Abgleich.
+- **Rollen aus dem Token.** Angefragt wird mit
+  `urn:zitadel:iam:org:project:id:<ZITADEL_PROJECT_ID>:aud` und
+  `urn:zitadel:iam:org:projects:roles`; gezählt wird nur der Claim
+  `urn:zitadel:iam:org:project:<ZITADEL_PROJECT_ID>:roles`, bei gesetzter
+  `ZITADEL_ORG_ID` nur Rollen aus dieser Organisation. Fehlt der Claim im
+  ID-Token, gilt Userinfo. Für die Anmeldung braucht es **keinen** Dienstzugang.
+- **Refresh**, sobald das Access-Token abläuft (`expires_in`, bei ZITADEL 5 min).
+  Scheitert er, ist die Sitzung gelöscht und man ist abgemeldet.
+- **Sitzungen** liegen in `auth_sessions` (Refresh-Token, Rollen, `sid`). Der
+  Keks `fws_session` trägt nur einen verschlüsselten Griff (`SESSION_SECRET`),
+  in der Tabelle steht dessen SHA-256. Abmelden löscht die Zeile und widerruft
+  das Refresh-Token bei ZITADEL.
+- **Client-Authentifizierung** `private_key_jwt` (`OIDC_CLIENT_KEY`).
+- **`POST /auth/backchannel-logout`** (OIDC Back-Channel-Logout): `logout_token`
+  wird gegen die JWKS des Issuers geprüft (`iss`, `aud`, `iat`, Ereignis, keine
+  `nonce`), dann endet die Sitzung mit dieser `sid` (sonst alle des `sub`).
+- **`POST /auth/zitadel-events`** (Actions v2, `ZITADEL-Signature`, HMAC-SHA256
+  über `<t>.<Rumpf>`, 5 min Toleranz; ohne Schlüssel 404): gesperrte,
+  deaktivierte, gelöschte Konten und geänderte/entzogene Grants beenden alle
+  Sitzungen **und** MCP-Tokens der Person; beendete ZITADEL-Sitzungen und
+  entfernte Tokens beenden die Sitzungen. Ereignisse ohne zuordenbare Person
+  (`oidc_session.*.revoked`, Grant-Kaskaden) erzwingen den Refresh aller
+  Sitzungen. Unbekanntes: 200, nichts passiert.
+- **Dienstzugang** (nur Kontolisten: Abgleich, Kontoprüfung, MCP
+  `reconcile_accounts`): JWT-Profile mit `ZITADEL_SERVICE_KEY`, Token im Speicher
+  bis kurz vor Ablauf, bei 401 einmal neu. Fehlt er, melden diese Funktionen
+  „nicht verfügbar"; Seiten und Anmeldung laufen. `/public/health` meldet ihn
+  unter `serviceAccess` (Prüfung höchstens alle 5 min); schlägt sie fehl:
+  `status: degraded` und HTTP 503.
+
+| Env | Bedeutung |
+| --- | --- |
+| `OIDC_ISSUER`, `OIDC_CLIENT_ID` | wie bisher |
+| `OIDC_CLIENT_KEY` | JSON-Key der ZITADEL-App (`type: application`) für `private_key_jwt` |
+| `OIDC_CLIENT_SECRET` | nur Übergang, wenn `OIDC_CLIENT_KEY` fehlt |
+| `SESSION_SECRET` | verschlüsselt den Sitzungs-Griff im Keks |
+| `ZITADEL_PROJECT_ID`, `ZITADEL_ORG_ID` | Projekt/Organisation der Klasse (Rollen, Kontoliste) |
+| `ZITADEL_SERVICE_KEY` | JSON-Key eines Dienstkontos (`type: serviceaccount`, `PROJECT_OWNER_VIEWER` aufs eigene Projekt); optional |
+| `ZITADEL_SERVICE_TOKEN` | PAT, nur Übergang, wenn `ZITADEL_SERVICE_KEY` fehlt |
+| `ZITADEL_WEBHOOK_SIGNING_KEY` | Signierschlüssel des Actions-v2-Targets; ohne ihn antwortet `/auth/zitadel-events` 404 |
 
 ## Der Abgleich: `reconcile_accounts`
 
@@ -508,7 +541,7 @@ meldet **beide Richtungen**:
 
 | Richtung | Was sie bedeutet |
 | --- | --- |
-| `entries_without_account` | Adressbuch-Eintrag ohne Konto mit Leserolle. Diese Person bekommt nach dem Scharfschalten von `LIST_ACCOUNT_CHECK=enforce` keine Post mehr. Mit Grund: `no_account`, `account_unknown`, `role_missing` |
+| `entries_without_account` | Adressbuch-Eintrag ohne Konto mit Leserolle. Diese Person bekommt nach dem Scharfschalten von `LIST_ACCOUNT_CHECK=enforce` keine Post mehr. Grund: `no_role` |
 | `accounts_without_entry` | Konto **mit** Rolle, aber ohne Adressbuch-Eintrag. Diese Person gehört dazu und bekommt trotzdem nichts — das fällt in keiner Zustellung auf, weil dort niemand fehlt, den man vermissen könnte |
 
 **Melden, nicht löschen.** Der Abgleich fasst nichts an, in keiner Betriebsart —

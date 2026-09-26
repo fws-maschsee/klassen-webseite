@@ -6,35 +6,20 @@ import {
 	hatAbweichungen,
 } from '../../src/lib/konten/abgleich.ts'
 import { resetGrantsConfig } from '../../src/server/auth/grants.ts'
+import {
+	AUTHORIZATIONS_PATH,
+	authorizationsResponse,
+} from '../helpers/authorizations.ts'
 import { createTestDb } from '../helpers/db.ts'
 
 const zitadelAntwortet = (
 	grants: { userId: string; email?: string; roleKeys: string[] }[],
-	konten: { id: string; email: string }[] = [],
 ): ReturnType<typeof vi.fn> =>
 	vi.fn(async (url: string) => {
-		if (String(url).includes('/users/grants/_search')) {
-			return new Response(
-				JSON.stringify({
-					result: grants.map((g) => ({
-						userId: g.userId,
-						email: g.email,
-						roleKeys: g.roleKeys,
-						state: 'USER_GRANT_STATE_ACTIVE',
-					})),
-				}),
-				{ status: 200 },
-			)
+		if (!String(url).includes(AUTHORIZATIONS_PATH)) {
+			return new Response('unerwartet', { status: 500 })
 		}
-		return new Response(
-			JSON.stringify({
-				result: konten.map((k) => ({
-					id: k.id,
-					human: { email: { email: k.email } },
-				})),
-			}),
-			{ status: 200 },
-		)
+		return authorizationsResponse(grants)
 	})
 
 let db: Database
@@ -109,16 +94,13 @@ describe('Der Abgleich', () => {
 		mitglied('bert', 'bert@example.org', null, ['eltern'])
 		vi.stubGlobal(
 			'fetch',
-			zitadelAntwortet(
-				[
-					{
-						userId: 'u-anna',
-						email: 'anna@example.org',
-						roleKeys: ['mitglied'],
-					},
-				],
-				[{ id: 'u-anna', email: 'anna@example.org' }],
-			),
+			zitadelAntwortet([
+				{
+					userId: 'u-anna',
+					email: 'anna@example.org',
+					roleKeys: ['mitglied'],
+				},
+			]),
 		)
 
 		const bericht = await abgleichen({ db })
@@ -130,28 +112,25 @@ describe('Der Abgleich', () => {
 				email: 'bert@example.org',
 				user_sub: null,
 				groups: ['eltern'],
-				reason: 'no_account',
+				reason: 'no_role',
 			},
 		])
 		expect(bericht.entries_with_account).toBe(1)
 		expect(hatAbweichungen(bericht)).toBe(true)
 	})
 
-	test('unterscheidet entzogene Rolle von geloeschtem Konto', async () => {
+	test('ohne Grant in diesem Projekt heisst der Grund immer no_role', async () => {
 		mitglied('carla', 'carla@example.org', 'u-carla')
 		mitglied('dora', 'dora@example.org', 'u-dora')
-		vi.stubGlobal(
-			'fetch',
-			zitadelAntwortet([], [{ id: 'u-carla', email: 'carla@example.org' }]),
-		)
+		vi.stubGlobal('fetch', zitadelAntwortet([]))
 
 		const bericht = await abgleichen({ db })
 
 		expect(
 			bericht.entries_without_account.map((e) => [e.mitglied_id, e.reason]),
 		).toEqual([
-			['carla', 'role_missing'],
-			['dora', 'account_unknown'],
+			['carla', 'no_role'],
+			['dora', 'no_role'],
 		])
 	})
 
@@ -206,7 +185,7 @@ describe('Der Abgleich', () => {
 		mitglied('anna', 'anna@example.org')
 
 		await expect(abgleichen({ db })).rejects.toThrow(
-			/nicht konfiguriert|ZITADEL_SERVICE_TOKEN/,
+			/nicht verfuegbar.*ZITADEL_SERVICE_KEY/,
 		)
 	})
 })

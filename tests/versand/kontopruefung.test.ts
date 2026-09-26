@@ -1,6 +1,10 @@
 import type { Database } from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { resetGrantsConfig } from '../../src/server/auth/grants.ts'
+import {
+	AUTHORIZATIONS_PATH,
+	authorizationsResponse,
+} from '../helpers/authorizations.ts'
 import { createTestDb } from '../helpers/db.ts'
 
 const { accountCheckMode, berichtAlsText, hatBefund, obfuscate, pruefeKonten } =
@@ -15,31 +19,12 @@ const kandidat = (r: Kandidat) => ({
 
 const zitadelAntwortet = (
 	grants: { userId: string; email?: string; roleKeys: string[] }[],
-	konten: { id: string; email: string }[] = [],
 ): ReturnType<typeof vi.fn> =>
 	vi.fn(async (url: string) => {
-		if (String(url).includes('/users/grants/_search')) {
-			return new Response(
-				JSON.stringify({
-					result: grants.map((g) => ({
-						userId: g.userId,
-						email: g.email,
-						roleKeys: g.roleKeys,
-						state: 'USER_GRANT_STATE_ACTIVE',
-					})),
-				}),
-				{ status: 200 },
-			)
+		if (!String(url).includes(AUTHORIZATIONS_PATH)) {
+			return new Response('unerwartet', { status: 500 })
 		}
-		return new Response(
-			JSON.stringify({
-				result: konten.map((k) => ({
-					id: k.id,
-					human: { email: { email: k.email } },
-				})),
-			}),
-			{ status: 200 },
-		)
+		return authorizationsResponse(grants)
 	})
 
 let db: Database
@@ -105,19 +90,13 @@ describe('Konten-Pruefung vor dem Versand', () => {
 			mitglied('bert', 'bert@example.org')
 			vi.stubGlobal(
 				'fetch',
-				zitadelAntwortet(
-					[
-						{
-							userId: 'u-anna',
-							email: 'anna@example.org',
-							roleKeys: ['mitglied'],
-						},
-					],
-					[
-						{ id: 'u-anna', email: 'anna@example.org' },
-						{ id: 'u-bert', email: 'bert@example.org' },
-					],
-				),
+				zitadelAntwortet([
+					{
+						userId: 'u-anna',
+						email: 'anna@example.org',
+						roleKeys: ['mitglied'],
+					},
+				]),
 			)
 
 			const ergebnis = await pruefeKonten(
@@ -135,7 +114,7 @@ describe('Konten-Pruefung vor dem Versand', () => {
 			expect(ergebnis.cut).toEqual([
 				{
 					recipient: { email: 'bert@example.org', mitglied_id: 'bert' },
-					reason: 'role_missing',
+					reason: 'no_role',
 				},
 			])
 		})
@@ -178,33 +157,31 @@ describe('Konten-Pruefung vor dem Versand', () => {
 			expect(ergebnis.cut).toEqual([])
 		})
 
-		test('ein geloeschtes Konto heisst `account_unknown`, nicht `role_missing`', async () => {
+		test('ohne Grant in diesem Projekt heisst es immer `no_role` — mehr sieht der Dienstzugang nicht', async () => {
 			mitglied('emil', 'emil@example.org', 'u-emil')
-			vi.stubGlobal('fetch', zitadelAntwortet([], []))
-			const ergebnis = await pruefeKonten(
-				[{ email: 'emil@example.org', mitglied_id: 'emil' }],
-				kandidat,
-				{ db, mode: 'enforce', occasion: 'Test' },
-			)
-			expect(ergebnis.cut[0]?.reason).toBe('account_unknown')
-		})
-
-		test('eine Adresse, zu der es gar kein Konto gibt, heisst `no_account`', async () => {
 			mitglied('frida', 'frida@example.org')
-			vi.stubGlobal('fetch', zitadelAntwortet([], []))
+			const fetchMock = zitadelAntwortet([])
+			vi.stubGlobal('fetch', fetchMock)
 			const ergebnis = await pruefeKonten(
-				[{ email: 'frida@example.org', mitglied_id: 'frida' }],
+				[
+					{ email: 'emil@example.org', mitglied_id: 'emil' },
+					{ email: 'frida@example.org', mitglied_id: 'frida' },
+				],
 				kandidat,
 				{ db, mode: 'enforce', occasion: 'Test' },
 			)
-			expect(ergebnis.cut[0]?.reason).toBe('no_account')
+			expect(ergebnis.cut.map((c) => c.reason)).toEqual(['no_role', 'no_role'])
+			expect(fetchMock).toHaveBeenCalledOnce()
+			for (const [url] of fetchMock.mock.calls) {
+				expect(String(url)).not.toContain('/management/v1/users/_search')
+			}
 		})
 	})
 
 	describe('extra_recipients', () => {
 		test('Einzeladressen ohne Adressbuch-Eintrag passieren die Pruefung', async () => {
 			mitglied('gustav', 'gustav@example.org')
-			vi.stubGlobal('fetch', zitadelAntwortet([], []))
+			vi.stubGlobal('fetch', zitadelAntwortet([]))
 
 			const ergebnis = await pruefeKonten(
 				[
@@ -226,7 +203,7 @@ describe('Konten-Pruefung vor dem Versand', () => {
 	describe('report gegen enforce', () => {
 		const lage = async (mode: 'report' | 'enforce') => {
 			mitglied('hans', 'hans@example.org')
-			vi.stubGlobal('fetch', zitadelAntwortet([], []))
+			vi.stubGlobal('fetch', zitadelAntwortet([]))
 			return pruefeKonten(
 				[{ email: 'hans@example.org', mitglied_id: 'hans' }],
 				kandidat,
@@ -239,7 +216,7 @@ describe('Konten-Pruefung vor dem Versand', () => {
 			expect(ergebnis.recipients).toHaveLength(1)
 			expect(ergebnis.report.kept).toBe(1)
 			expect(ergebnis.report.cut).toEqual([
-				{ email: 'h***@***mple.org', reason: 'no_account' },
+				{ email: 'h***@***mple.org', reason: 'no_role' },
 			])
 		})
 
@@ -248,7 +225,7 @@ describe('Konten-Pruefung vor dem Versand', () => {
 			expect(ergebnis.recipients).toHaveLength(0)
 			expect(ergebnis.report.kept).toBe(0)
 			expect(ergebnis.report.cut).toEqual([
-				{ email: 'h***@***mple.org', reason: 'no_account' },
+				{ email: 'h***@***mple.org', reason: 'no_role' },
 			])
 		})
 
@@ -330,7 +307,7 @@ describe('Konten-Pruefung vor dem Versand', () => {
 					kandidat,
 					{ db, mode: 'enforce', occasion: 'Test' },
 				),
-			).rejects.toThrow(/nicht konfiguriert/)
+			).rejects.toThrow(/nicht verfuegbar/)
 		})
 	})
 
@@ -357,18 +334,6 @@ describe('Konten-Pruefung vor dem Versand', () => {
 				{ db, mode: 'enforce', occasion: 'Test' },
 			)
 			expect(fetchMock).toHaveBeenCalledTimes(1)
-		})
-
-		test('die zweite Abfrage kommt nur, wenn ueberhaupt jemand herausfaellt', async () => {
-			mitglied('nina', 'nina@example.org')
-			const fetchMock = zitadelAntwortet([], [])
-			vi.stubGlobal('fetch', fetchMock)
-			await pruefeKonten(
-				[{ email: 'nina@example.org', mitglied_id: 'nina' }],
-				kandidat,
-				{ db, mode: 'enforce', occasion: 'Test' },
-			)
-			expect(fetchMock).toHaveBeenCalledTimes(2)
 		})
 	})
 
@@ -403,7 +368,7 @@ describe('Meldung nur bei Befund', () => {
 	test('jemand wurde uebergangen: Befund', () => {
 		expect(
 			hatBefund(
-				bericht({ cut: [{ email: 'a***@***mple.org', reason: 'no_account' }] }),
+				bericht({ cut: [{ email: 'a***@***mple.org', reason: 'no_role' }] }),
 			),
 		).toBe(true)
 	})

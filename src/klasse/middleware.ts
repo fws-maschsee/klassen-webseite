@@ -1,10 +1,6 @@
 import type { MiddlewareHandler } from 'astro'
 import './locals.ts'
 import { merkeAnmeldung } from '../lib/db/users.ts'
-import {
-	GrantsConfigError,
-	GrantsUnavailableError,
-} from '../server/auth/grants.ts'
 import { authenticate, OidcConfigError } from '../server/auth/oidc.ts'
 import {
 	type KlassenConfig,
@@ -39,10 +35,10 @@ export const createKlassenMiddleware = (
 		const { contactMail } = klassenConfig()
 
 		try {
-			const { response, session, setCookie } = await authenticate(
-				context.request,
-				{ siteOwner: wemGehoertDieSeite(), contactMail },
-			)
+			const { response, session } = await authenticate(context.request, {
+				siteOwner: wemGehoertDieSeite(),
+				contactMail,
+			})
 
 			if (response) {
 				return response
@@ -66,21 +62,9 @@ export const createKlassenMiddleware = (
 				}
 			}
 
-			const pageResponse = await next()
-			if (setCookie) {
-				pageResponse.headers.append('Set-Cookie', setCookie)
-			}
-			return pageResponse
+			return next()
 		} catch (error) {
-			if (error instanceof GrantsUnavailableError) {
-				return textResponse(
-					'Die Berechtigungspruefung ist gerade nicht erreichbar. Bitte spaeter erneut versuchen.',
-				)
-			}
-			if (
-				error instanceof OidcConfigError ||
-				error instanceof GrantsConfigError
-			) {
+			if (error instanceof OidcConfigError) {
 				return textResponse(
 					'Die Anmeldung ist auf diesem Server nicht konfiguriert.',
 				)

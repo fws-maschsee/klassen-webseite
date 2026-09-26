@@ -1,9 +1,11 @@
+import type { ServiceAccessStatus } from '../server/auth/grants.ts'
+
 export const UNKNOWN = 'unknown'
 
 export type SignatureScheme = 'ed25519'
 
 export type HealthReport = {
-	status: 'ok'
+	status: 'ok' | 'degraded'
 	instance: string
 	commit: string
 	shared: string
@@ -12,6 +14,7 @@ export type HealthReport = {
 		schemes: readonly SignatureScheme[]
 		keyIds: readonly string[]
 	}
+	serviceAccess: ServiceAccessStatus
 }
 
 export type BuildEnv = {
@@ -25,6 +28,7 @@ export type HealthInput = {
 	env: BuildEnv
 	listKeyIds: readonly string[]
 	hasPublicKey: boolean
+	serviceAccess?: ServiceAccessStatus
 }
 
 const filled = (wert: string | undefined): string | undefined => {
@@ -39,8 +43,15 @@ export const healthReport = (input: HealthInput): HealthReport => {
 		schemes.push('ed25519')
 	}
 
+	const serviceAccess: ServiceAccessStatus = input.serviceAccess ?? {
+		status: 'not_configured',
+		credential: null,
+		checkedAt: null,
+		error: null,
+	}
+
 	return {
-		status: 'ok',
+		status: serviceAccess.status === 'failing' ? 'degraded' : 'ok',
 		instance: input.instance,
 		commit: filled(input.env.BUILD_COMMIT) ?? UNKNOWN,
 		shared: filled(input.env.BUILD_SHARED) ?? UNKNOWN,
@@ -49,5 +60,9 @@ export const healthReport = (input: HealthInput): HealthReport => {
 			schemes,
 			keyIds: input.listKeyIds,
 		},
+		serviceAccess,
 	}
 }
+
+export const healthStatusCode = (report: HealthReport): number =>
+	report.status === 'ok' ? 200 : 503

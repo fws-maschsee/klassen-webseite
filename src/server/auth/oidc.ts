@@ -1,16 +1,33 @@
 import { createHash, randomBytes } from 'node:crypto'
-import {
-	createRemoteJWKSet,
-	EncryptJWT,
-	type JWTPayload,
-	jwtDecrypt,
-	jwtVerify,
-} from 'jose'
+import { EncryptJWT, type JWTPayload, jwtDecrypt, jwtVerify } from 'jose'
 import { klassenConfig } from '../../klasse/config.ts'
-import { rolesForUser } from './grants.ts'
+import {
+	type AuthSession,
+	activeAuthSession,
+	authSessionId,
+	createAuthSession,
+	deleteAuthSession,
+	updateAuthSession,
+} from '../../lib/db/authSessions.ts'
+import { type Discovery, discover, remoteKeySet } from './discovery.ts'
+import {
+	applyLogout,
+	LogoutTokenError,
+	verifyLogoutToken,
+} from './revocation.ts'
 import { canRead } from './roles.ts'
-
-const ROLES_CLAIM = 'urn:zitadel:iam:org:project:roles'
+import {
+	hasRolesClaim,
+	PROJECTS_ROLES_SCOPE,
+	projectAudienceScope,
+	type RoleScope,
+	rolesFromClaims,
+} from './tokenRoles.ts'
+import {
+	parseZitadelKey,
+	signAssertion,
+	type ZitadelKey,
+} from './zitadelKey.ts'
 
 const SESSION_COOKIE = 'fws_session'
 
@@ -20,18 +37,21 @@ const STATE_MAX_AGE_SECONDS = 15 * 60
 
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 
-const ROLE_RECHECK_SECONDS = 60 * 60
+const DEFAULT_ACCESS_LIFETIME_SECONDS = 5 * 60
 
-const DISCOVERY_TTL_MS = 60 * 60 * 1000
+const REFRESH_LEEWAY_SECONDS = 15
 
-const SCOPES = 'openid profile email offline_access'
+const BASE_SCOPES = ['openid', 'profile', 'email', 'offline_access']
 
 export interface OidcConfig {
 	issuer: string
 	clientId: string
+	clientKey: ZitadelKey | null
 	clientSecret: string
 	requiredRole: string
 	sessionKey: Uint8Array
+	roleScope: RoleScope
+	scopes: string
 }
 
 export class OidcConfigError extends Error {}
@@ -44,16 +64,26 @@ export const getOidcConfig = (): OidcConfig => {
 	if (cachedConfig) return cachedConfig
 
 	const issuer = readEnv('OIDC_ISSUER') || 'https://id.fws-maschsee-test.de'
-	const clientId = readEnv('OIDC_CLIENT_ID')
-	const clientSecret = readEnv('OIDC_CLIENT_SECRET')
+	const clientKeyJson = readEnv('OIDC_CLIENT_KEY')
+	const clientKey = clientKeyJson ? parseClientKey(clientKeyJson) : null
+	const clientId = readEnv('OIDC_CLIENT_ID') || clientKey?.subject || ''
+	const clientSecret = clientKey ? '' : readEnv('OIDC_CLIENT_SECRET')
 	const requiredRole = readEnv('OIDC_REQUIRED_ROLE') || klassenConfig().authRole
 	const sessionSecret = readEnv('SESSION_SECRET')
+	const projectId = readEnv('ZITADEL_PROJECT_ID')
+	const orgId = readEnv('ZITADEL_ORG_ID')
 
 	const missing = [
 		clientId ? null : 'OIDC_CLIENT_ID',
-		clientSecret ? null : 'OIDC_CLIENT_SECRET',
+		clientKey || clientSecret ? null : 'OIDC_CLIENT_KEY',
 		sessionSecret ? null : 'SESSION_SECRET',
 	].filter(Boolean)
+
+	if (clientKey && clientKey.subject !== clientId) {
+		throw new OidcConfigError(
+			`OIDC_CLIENT_KEY gehoert zu Client ${clientKey.subject}, OIDC_CLIENT_ID ist ${clientId}`,
+		)
+	}
 
 	if (missing.length > 0) {
 		throw new OidcConfigError(
@@ -64,53 +94,37 @@ export const getOidcConfig = (): OidcConfig => {
 	cachedConfig = {
 		issuer: issuer.replace(/\/$/, ''),
 		clientId,
+		clientKey,
 		clientSecret,
 		requiredRole,
 		sessionKey: new Uint8Array(
 			createHash('sha256').update(sessionSecret).digest(),
 		),
+		roleScope: {
+			...(projectId ? { projectId } : {}),
+			...(orgId ? { orgId } : {}),
+		},
+		scopes: [
+			...BASE_SCOPES,
+			...(projectId
+				? [projectAudienceScope(projectId), PROJECTS_ROLES_SCOPE]
+				: []),
+		].join(' '),
 	}
 	return cachedConfig
 }
 
-interface Discovery {
-	authorization_endpoint: string
-	token_endpoint: string
-	jwks_uri: string
-	end_session_endpoint?: string
+const parseClientKey = (json: string): ZitadelKey => {
+	try {
+		return parseZitadelKey(json, 'OIDC_CLIENT_KEY', 'application')
+	} catch (error) {
+		throw new OidcConfigError((error as Error).message)
+	}
 }
 
-let discoveryCache: { at: number; issuer: string; doc: Discovery } | null = null
-
-const discover = async (issuer: string): Promise<Discovery> => {
-	if (
-		discoveryCache &&
-		discoveryCache.issuer === issuer &&
-		Date.now() - discoveryCache.at < DISCOVERY_TTL_MS
-	) {
-		return discoveryCache.doc
-	}
-	const response = await fetch(`${issuer}/.well-known/openid-configuration`)
-	if (!response.ok) {
-		throw new Error(
-			`OIDC-Discovery fehlgeschlagen (HTTP ${response.status}) bei ${issuer}`,
-		)
-	}
-	const doc = (await response.json()) as Discovery
-	discoveryCache = { at: Date.now(), issuer, doc }
-	return doc
-}
-
-let jwksCache: {
-	uri: string
-	jwks: ReturnType<typeof createRemoteJWKSet>
-} | null = null
-
-const getJwks = (uri: string) => {
-	if (!jwksCache || jwksCache.uri !== uri) {
-		jwksCache = { uri, jwks: createRemoteJWKSet(new URL(uri)) }
-	}
-	return jwksCache.jwks
+export const resetOidcConfig = (): void => {
+	cachedConfig = null
+	refreshInFlight.clear()
 }
 
 const parseCookies = (header: string | null): Record<string, string> => {
@@ -154,43 +168,40 @@ const expireCookie = (name: string, secure: boolean): string =>
 	].join('; ')
 
 export interface Session {
+	id: string
 	sub: string
 	email: string
 	name: string
 	roles: string[]
-	refreshToken?: string
-	checkedAt: number
-	expiresAt: number
 }
 
-const encryptSession = async (
-	session: Session,
+const toSession = (session: AuthSession): Session => ({
+	id: session.id,
+	sub: session.sub,
+	email: session.email,
+	name: session.name,
+	roles: session.roles,
+})
+
+const sealSessionHandle = (
+	handle: string,
+	expiresAt: number,
 	key: Uint8Array,
 ): Promise<string> =>
-	new EncryptJWT({
-		sub: session.sub,
-		email: session.email,
-		name: session.name,
-		refreshToken: session.refreshToken,
-		checkedAt: session.checkedAt,
-		expiresAt: session.expiresAt,
-	} as unknown as JWTPayload)
+	new EncryptJWT({ session: handle })
 		.setProtectedHeader({ alg: 'dir', enc: 'A256GCM' })
 		.setIssuedAt()
-		.setExpirationTime(session.expiresAt)
+		.setExpirationTime(expiresAt)
 		.encrypt(key)
 
-const decryptSession = async (
+const openSessionHandle = async (
 	value: string,
 	key: Uint8Array,
-): Promise<Session | null> => {
+): Promise<string | null> => {
+	if (!value) return null
 	try {
 		const { payload } = await jwtDecrypt(value, key)
-		const session = payload as unknown as Session
-		if (!session?.sub) return null
-		session.roles = []
-		if (session.expiresAt <= Math.floor(Date.now() / 1000)) return null
-		return session
+		return typeof payload.session === 'string' ? payload.session : null
 	} catch {
 		return null
 	}
@@ -345,7 +356,7 @@ export const startLogin = async (
 	const authorize = new URL(discovery.authorization_endpoint)
 	authorize.searchParams.set('client_id', config.clientId)
 	authorize.searchParams.set('response_type', 'code')
-	authorize.searchParams.set('scope', SCOPES)
+	authorize.searchParams.set('scope', config.scopes)
 	authorize.searchParams.set('redirect_uri', redirectUriFor(request))
 	authorize.searchParams.set('state', state)
 	authorize.searchParams.set('nonce', nonce)
@@ -369,8 +380,51 @@ interface TokenResponse {
 	id_token?: string
 	access_token?: string
 	refresh_token?: string
+	expires_in?: number
 	error?: string
 	error_description?: string
+}
+
+const CLIENT_ASSERTION_TYPE =
+	'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+
+export const clientAuthentication = async (
+	config: OidcConfig,
+): Promise<{
+	headers: Record<string, string>
+	params: Record<string, string>
+}> => {
+	if (config.clientKey) {
+		return {
+			headers: {},
+			params: {
+				client_id: config.clientId,
+				client_assertion_type: CLIENT_ASSERTION_TYPE,
+				client_assertion: await signAssertion(config.clientKey, config.issuer),
+			},
+		}
+	}
+	return {
+		headers: { Authorization: basicAuth(config.clientId, config.clientSecret) },
+		params: {},
+	}
+}
+
+const postToIdp = async (
+	config: OidcConfig,
+	endpoint: string,
+	body: Record<string, string>,
+): Promise<Response> => {
+	const auth = await clientAuthentication(config)
+	return fetch(endpoint, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/x-www-form-urlencoded',
+			Accept: 'application/json',
+			...auth.headers,
+		},
+		body: new URLSearchParams({ ...body, ...auth.params }).toString(),
+	})
 }
 
 const exchange = async (
@@ -378,22 +432,8 @@ const exchange = async (
 	discovery: Discovery,
 	body: Record<string, string>,
 ): Promise<TokenResponse> => {
-	const response = await fetch(discovery.token_endpoint, {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/x-www-form-urlencoded',
-			Authorization: basicAuth(config.clientId, config.clientSecret),
-			Accept: 'application/json',
-		},
-		body: new URLSearchParams(body).toString(),
-	})
+	const response = await postToIdp(config, discovery.token_endpoint, body)
 	return (await response.json()) as TokenResponse
-}
-
-const rolesFromClaims = (claims: JWTPayload): string[] => {
-	const raw = claims[ROLES_CLAIM]
-	if (!raw || typeof raw !== 'object') return []
-	return Object.keys(raw as Record<string, unknown>)
 }
 
 const verifyIdToken = async (
@@ -402,32 +442,79 @@ const verifyIdToken = async (
 	idToken: string,
 	nonce?: string,
 ): Promise<JWTPayload> => {
-	const { payload } = await jwtVerify(idToken, getJwks(discovery.jwks_uri), {
-		issuer: config.issuer,
-		audience: config.clientId,
-	})
+	const { payload } = await jwtVerify(
+		idToken,
+		remoteKeySet(discovery.jwks_uri),
+		{ issuer: config.issuer, audience: config.clientId },
+	)
 	if (nonce && payload.nonce !== nonce) {
 		throw new Error('nonce stimmt nicht')
 	}
 	return payload
 }
 
-const sessionFromClaims = (
-	claims: JWTPayload,
-	refreshToken: string | undefined,
-	previous?: Session,
-): Session => {
-	const now = Math.floor(Date.now() / 1000)
+const rolesFromUserinfo = async (
+	config: OidcConfig,
+	discovery: Discovery,
+	accessToken: string | undefined,
+	sub: string,
+): Promise<string[]> => {
+	if (!discovery.userinfo_endpoint || !accessToken) return []
+	const response = await fetch(discovery.userinfo_endpoint, {
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			Accept: 'application/json',
+		},
+	})
+	if (!response.ok) {
+		throw new Error(`Userinfo antwortete mit HTTP ${response.status}`)
+	}
+	const claims = (await response.json()) as Record<string, unknown>
+	if (claims.sub !== sub) throw new Error('Userinfo gehoert zu jemand anderem')
+	return rolesFromClaims(claims, config.roleScope)
+}
+
+type TokenIdentity = {
+	sub: string
+	sid: string | null
+	email: string
+	name: string
+	roles: string[]
+}
+
+const identityFromTokens = async (
+	config: OidcConfig,
+	discovery: Discovery,
+	tokens: TokenResponse & { id_token: string },
+	nonce?: string,
+): Promise<TokenIdentity> => {
+	const claims = await verifyIdToken(config, discovery, tokens.id_token, nonce)
+	const sub = String(claims.sub ?? '')
+	if (!sub) throw new Error('ID-Token ohne sub')
+	// ZITADEL omits the roles claim from the ID token unless idTokenRoleAssertion is on; userinfo always has it.
+	const roles = hasRolesClaim(claims, config.roleScope)
+		? rolesFromClaims(claims, config.roleScope)
+		: await rolesFromUserinfo(config, discovery, tokens.access_token, sub)
 	return {
-		sub: String(claims.sub),
-		email: String(claims.email ?? previous?.email ?? ''),
-		name: String(claims.name ?? previous?.name ?? ''),
-		roles: rolesFromClaims(claims),
-		refreshToken: refreshToken ?? previous?.refreshToken,
-		checkedAt: now,
-		expiresAt: previous?.expiresAt ?? now + SESSION_MAX_AGE_SECONDS,
+		sub,
+		sid: typeof claims.sid === 'string' && claims.sid ? claims.sid : null,
+		email: String(claims.email ?? ''),
+		name: String(claims.name ?? ''),
+		roles,
 	}
 }
+
+const accessExpiresAt = (tokens: TokenResponse, now: number): number => {
+	const lifetime = Number(tokens.expires_in)
+	return (
+		now +
+		(Number.isFinite(lifetime) && lifetime > 0
+			? lifetime
+			: DEFAULT_ACCESS_LIFETIME_SECONDS)
+	)
+}
+
+const nowSeconds = (): number => Math.floor(Date.now() / 1000)
 
 export const handleCallback = async (request: Request): Promise<Response> => {
 	const config = getOidcConfig()
@@ -490,7 +577,8 @@ export const handleCallback = async (request: Request): Promise<Response> => {
 		code_verifier: pending.verifier,
 	})
 
-	if (!tokens.id_token) {
+	const idToken = tokens.id_token
+	if (!idToken) {
 		return htmlResponse(
 			errorPage(
 				'Anmeldung fehlgeschlagen',
@@ -500,12 +588,12 @@ export const handleCallback = async (request: Request): Promise<Response> => {
 		)
 	}
 
-	let claims: JWTPayload
+	let identity: TokenIdentity
 	try {
-		claims = await verifyIdToken(
+		identity = await identityFromTokens(
 			config,
 			discovery,
-			tokens.id_token,
+			{ ...tokens, id_token: idToken },
 			pending.nonce,
 		)
 	} catch (error) {
@@ -518,8 +606,19 @@ export const handleCallback = async (request: Request): Promise<Response> => {
 		)
 	}
 
-	const session = sessionFromClaims(claims, tokens.refresh_token)
-	const sessionCookie = await encryptSession(session, config.sessionKey)
+	const now = nowSeconds()
+	const expiresAt = now + SESSION_MAX_AGE_SECONDS
+	const { handle } = createAuthSession({
+		...identity,
+		refreshToken: tokens.refresh_token ?? null,
+		accessExpiresAt: accessExpiresAt(tokens, now),
+		expiresAt,
+	})
+	const sessionCookie = await sealSessionHandle(
+		handle,
+		expiresAt,
+		config.sessionKey,
+	)
 
 	const headers = new Headers({ Location: safeReturnTo(pending.returnTo) })
 	headers.append(
@@ -533,6 +632,24 @@ export const handleCallback = async (request: Request): Promise<Response> => {
 	return new Response(null, { status: 302, headers })
 }
 
+const revokeAtIdp = async (
+	config: OidcConfig,
+	refreshToken: string,
+): Promise<void> => {
+	try {
+		const discovery = await discover(config.issuer)
+		if (!discovery.revocation_endpoint) return
+		await postToIdp(config, discovery.revocation_endpoint, {
+			token: refreshToken,
+			token_type_hint: 'refresh_token',
+		})
+	} catch (error) {
+		console.warn(
+			`[anmeldung] Refresh-Token nicht widerrufen: ${(error as Error).message}`,
+		)
+	}
+}
+
 export const handleLogout = async (request: Request): Promise<Response> => {
 	const origin = publicOrigin(request)
 	const secure = isSecureOrigin(origin)
@@ -540,6 +657,17 @@ export const handleLogout = async (request: Request): Promise<Response> => {
 
 	try {
 		const config = getOidcConfig()
+		const handle = await openSessionHandle(
+			parseCookies(request.headers.get('Cookie'))[SESSION_COOKIE] ?? '',
+			config.sessionKey,
+		)
+		if (handle) {
+			const session = activeAuthSession(handle)
+			deleteAuthSession(authSessionId(handle))
+			if (session?.refreshToken) {
+				await revokeAtIdp(config, session.refreshToken)
+			}
+		}
 		const discovery = await discover(config.issuer)
 		if (discovery.end_session_endpoint) {
 			const endSession = new URL(discovery.end_session_endpoint)
@@ -547,7 +675,11 @@ export const handleLogout = async (request: Request): Promise<Response> => {
 			endSession.searchParams.set('post_logout_redirect_uri', `${origin}/`)
 			target = endSession.toString()
 		}
-	} catch {}
+	} catch (error) {
+		console.warn(
+			`[anmeldung] Abmelden unvollstaendig: ${(error as Error).message}`,
+		)
+	}
 
 	return new Response(null, {
 		status: 302,
@@ -558,64 +690,104 @@ export const handleLogout = async (request: Request): Promise<Response> => {
 	})
 }
 
-const refreshInFlight = new Map<
-	string,
-	{ at: number; result: Promise<Session | null> }
->()
+const noStore = { 'Cache-Control': 'no-store' }
 
-const REFRESH_MEMO_MS = 60 * 1000
-
-const pruneRefreshCache = () => {
-	const cutoff = Date.now() - REFRESH_MEMO_MS
-	for (const [key, entry] of refreshInFlight) {
-		if (entry.at < cutoff) refreshInFlight.delete(key)
+export const handleBackchannelLogout = async (
+	request: Request,
+): Promise<Response> => {
+	const config = getOidcConfig()
+	let token = ''
+	try {
+		const form = new URLSearchParams(await request.text())
+		token = form.get('logout_token') ?? ''
+	} catch {}
+	if (!token) {
+		return Response.json(
+			{ error: 'invalid_request', error_description: 'logout_token fehlt' },
+			{ status: 400, headers: noStore },
+		)
+	}
+	try {
+		const discovery = await discover(config.issuer)
+		const target = await verifyLogoutToken(token, {
+			issuer: config.issuer,
+			audience: config.clientId,
+			keys: remoteKeySet(discovery.jwks_uri),
+		})
+		const revoked = applyLogout(target)
+		console.log(
+			`[backchannel-logout] ${revoked} Sitzung(en) beendet (${target.sid ? `sid ${target.sid}` : `sub ${target.sub}`})`,
+		)
+		return new Response(null, { status: 200, headers: noStore })
+	} catch (error) {
+		if (error instanceof LogoutTokenError) {
+			console.warn(`[backchannel-logout] ${error.message}`)
+			return Response.json(
+				{ error: 'invalid_request', error_description: error.message },
+				{ status: 400, headers: noStore },
+			)
+		}
+		throw error
 	}
 }
+
+const refreshInFlight = new Map<string, Promise<AuthSession | null>>()
 
 const exchangeRefreshToken = async (
 	config: OidcConfig,
-	previous: Session,
-): Promise<Session | null> => {
+	session: AuthSession,
+): Promise<AuthSession | null> => {
+	if (!session.refreshToken) return null
 	const discovery = await discover(config.issuer)
 	const tokens = await exchange(config, discovery, {
 		grant_type: 'refresh_token',
-		refresh_token: previous.refreshToken as string,
-		scope: SCOPES,
+		refresh_token: session.refreshToken,
+		scope: config.scopes,
 	})
-	if (!tokens.id_token) return null
-	try {
-		const claims = await verifyIdToken(config, discovery, tokens.id_token)
-		return sessionFromClaims(claims, tokens.refresh_token, previous)
-	} catch {
-		return null
+	const idToken = tokens.id_token
+	if (!idToken) return null
+	const identity = await identityFromTokens(config, discovery, {
+		...tokens,
+		id_token: idToken,
+	})
+	if (identity.sub !== session.sub) return null
+	const refresh = {
+		email: identity.email || session.email,
+		name: identity.name || session.name,
+		roles: identity.roles,
+		refreshToken: tokens.refresh_token ?? session.refreshToken,
+		accessExpiresAt: accessExpiresAt(tokens, nowSeconds()),
 	}
+	if (!updateAuthSession(session.id, refresh)) return null
+	return { ...session, ...refresh }
 }
 
-const refreshSession = async (
+const refreshAuthSession = (
 	config: OidcConfig,
-	previous: Session,
-): Promise<Session | null> => {
-	const key = previous.refreshToken as string
-	pruneRefreshCache()
-
-	const existing = refreshInFlight.get(key)
-	if (existing) return existing.result
-
-	const result = exchangeRefreshToken(config, previous)
-	refreshInFlight.set(key, { at: Date.now(), result })
+	session: AuthSession,
+): Promise<AuthSession | null> => {
+	const running = refreshInFlight.get(session.id)
+	if (running) return running
+	const result = exchangeRefreshToken(config, session)
+		.catch((error: unknown) => {
+			console.warn(
+				`[anmeldung] Verlaengerung fuer ${session.sub} fehlgeschlagen: ${(error as Error).message}`,
+			)
+			return null
+		})
+		.finally(() => refreshInFlight.delete(session.id))
+	refreshInFlight.set(session.id, result)
 	return result
 }
 
 export interface SessionOutcome {
 	state: 'unauthenticated' | 'unauthorized' | 'ok'
 	session: Session | null
-	setCookie: string | null
 }
 
 export interface AuthOutcome {
 	response: Response | null
 	session: Session | null
-	setCookie: string | null
 }
 
 const unauthenticated = async (request: Request): Promise<Response> => {
@@ -633,46 +805,31 @@ export const resolveSession = async (
 	request: Request,
 ): Promise<SessionOutcome> => {
 	const config = getOidcConfig()
-	const secure = isSecureOrigin(publicOrigin(request))
 	const cookies = parseCookies(request.headers.get('Cookie'))
 
-	let session = await decryptSession(
+	const handle = await openSessionHandle(
 		cookies[SESSION_COOKIE] ?? '',
 		config.sessionKey,
 	)
+	let session = handle ? activeAuthSession(handle) : null
 	if (!session) {
-		return { state: 'unauthenticated', session: null, setCookie: null }
+		return { state: 'unauthenticated', session: null }
 	}
 
-	let refreshedCookie: string | null = null
-	const now = Math.floor(Date.now() / 1000)
-
-	if (now - session.checkedAt > ROLE_RECHECK_SECONDS) {
-		if (!session.refreshToken) {
-			return { state: 'unauthenticated', session: null, setCookie: null }
-		}
-		const refreshed = await refreshSession(config, session)
+	if (nowSeconds() >= session.accessExpiresAt - REFRESH_LEEWAY_SECONDS) {
+		const refreshed = await refreshAuthSession(config, session)
 		if (!refreshed) {
-			return { state: 'unauthenticated', session: null, setCookie: null }
+			deleteAuthSession(session.id)
+			return { state: 'unauthenticated', session: null }
 		}
 		session = refreshed
-		refreshedCookie = await encryptSession(session, config.sessionKey)
 	}
-
-	const setCookie = refreshedCookie
-		? serializeCookie(SESSION_COOKIE, refreshedCookie, {
-				maxAge: SESSION_MAX_AGE_SECONDS,
-				secure,
-			})
-		: null
-
-	session.roles = await rolesForUser(session.sub)
 
 	if (!canRead(session.roles, config.requiredRole)) {
-		return { state: 'unauthorized', session, setCookie }
+		return { state: 'unauthorized', session: toSession(session) }
 	}
 
-	return { state: 'ok', session, setCookie }
+	return { state: 'ok', session: toSession(session) }
 }
 
 export const authenticate = async (
@@ -682,33 +839,27 @@ export const authenticate = async (
 	const outcome = await resolveSession(request)
 
 	if (outcome.state === 'unauthenticated') {
-		return {
-			response: await unauthenticated(request),
-			session: null,
-			setCookie: null,
-		}
+		return { response: await unauthenticated(request), session: null }
 	}
 
 	if (outcome.state === 'unauthorized') {
-		const response = new Response(
-			notAMemberPage(
-				outcome.session?.email ?? '',
-				options.siteOwner,
-				options.contactMail,
+		return {
+			response: new Response(
+				notAMemberPage(
+					outcome.session?.email ?? '',
+					options.siteOwner,
+					options.contactMail,
+				),
+				{
+					status: 403,
+					headers: { 'Content-Type': 'text/html; charset=utf-8' },
+				},
 			),
-			{ status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
-		)
-		if (outcome.setCookie) {
-			response.headers.append('Set-Cookie', outcome.setCookie)
+			session: null,
 		}
-		return { response, session: null, setCookie: null }
 	}
 
-	return {
-		response: null,
-		session: outcome.session,
-		setCookie: outcome.setCookie,
-	}
+	return { response: null, session: outcome.session }
 }
 
 export { SESSION_COOKIE }

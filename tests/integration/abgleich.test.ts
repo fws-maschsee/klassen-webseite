@@ -12,6 +12,7 @@ import {
 	ausgangslageHerstellen,
 	benutzerAnlegen,
 	benutzerLoeschen,
+	dienstkontoAnlegen,
 	grantEntziehen,
 	grantErteilen,
 } from './zitadel.ts'
@@ -67,7 +68,12 @@ beforeAll(async () => {
 	process.env.ZITADEL_ISSUER = zugang.issuer
 	process.env.ZITADEL_ORG_ID = lage.orgId
 	process.env.ZITADEL_PROJECT_ID = lage.projectId
-	process.env.ZITADEL_SERVICE_TOKEN = zugang.token
+	process.env.ZITADEL_SERVICE_KEY = await dienstkontoAnlegen(
+		zugang,
+		lage.orgId,
+		lage.projectId,
+	)
+	delete process.env.ZITADEL_SERVICE_TOKEN
 	resetGrantsConfig()
 
 	db = createTestDb()
@@ -109,13 +115,13 @@ afterAll(() => {
 })
 
 describe('(1) Eintraege ohne Konto', () => {
-	test('erkennt „nie ein Konto gehabt" und meldet den Eintrag mit Gruppe', async () => {
+	test('erkennt einen Eintrag ohne Grant und meldet ihn mit Gruppe', async () => {
 		const bericht = await abgleichen({ db })
 
 		const nora = bericht.entries_without_account.find(
 			(e) => e.mitglied_id === 'nora',
 		)
-		expect(nora?.reason).toBe('no_account')
+		expect(nora?.reason).toBe('no_role')
 		expect(nora?.groups).toEqual(['eltern'])
 		expect(
 			bericht.entries_without_account.map((e) => e.mitglied_id),
@@ -125,7 +131,7 @@ describe('(1) Eintraege ohne Konto', () => {
 		).not.toContain('edda')
 	})
 
-	test('unterscheidet entzogenen Grant von geloeschtem Konto', async () => {
+	test('entzogener Grant und geloeschtes Konto heissen beide no_role — der Dienstzugang sieht nur dieses Projekt', async () => {
 		await grantEntziehen(lage.zugang, lage.orgId, lage.benutzer.entzug)
 		await benutzerLoeschen(lage.zugang, lage.orgId, geloescht.userId)
 
@@ -140,8 +146,8 @@ describe('(1) Eintraege ohne Konto', () => {
 		const grund = (id: string) =>
 			bericht.entries_without_account.find((e) => e.mitglied_id === id)?.reason
 
-		expect(grund('edda')).toBe('role_missing')
-		expect(grund('walter')).toBe('account_unknown')
+		expect(grund('edda')).toBe('no_role')
+		expect(grund('walter')).toBe('no_role')
 		expect(
 			bericht.entries_without_account.find((e) => e.mitglied_id === 'walter')
 				?.user_sub,

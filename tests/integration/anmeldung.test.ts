@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import fs from 'node:fs'
 import type { Server } from 'node:http'
 import os from 'node:os'
@@ -17,6 +18,8 @@ import {
 	benutzerExistiert,
 	benutzerLoeschen,
 	grantEntziehen,
+	grantErteilen,
+	tokenLebensdauerSetzen,
 } from './zitadel.ts'
 
 let server: Server
@@ -26,6 +29,10 @@ let aufraeumen: (() => void)[] = []
 
 // Rund fünfzehn ZITADEL-Aufrufe im Aufbau; auf ausgelasteten Runnern ist der erste sehr langsam.
 const AUFBAU_FRIST_MS = 120_000
+
+const TOKEN_LEBENSDAUER_S = 20
+
+const WEBHOOK_SCHLUESSEL = 'integration-webhook-schluessel'
 
 beforeAll(async () => {
 	const verzeichnis = fs.mkdtempSync(path.join(os.tmpdir(), 'anmeldung-'))
@@ -76,12 +83,17 @@ beforeAll(async () => {
 
 	process.env.OIDC_ISSUER = zugang.issuer
 	process.env.OIDC_CLIENT_ID = lage.clientId
-	process.env.OIDC_CLIENT_SECRET = lage.clientSecret
+	process.env.OIDC_CLIENT_KEY = lage.clientKey
+	delete process.env.OIDC_CLIENT_SECRET
 	process.env.OIDC_PUBLIC_ORIGIN = basis
 	process.env.ZITADEL_ISSUER = zugang.issuer
 	process.env.ZITADEL_ORG_ID = lage.orgId
 	process.env.ZITADEL_PROJECT_ID = lage.projectId
-	process.env.ZITADEL_SERVICE_TOKEN = zugang.token
+	delete process.env.ZITADEL_SERVICE_TOKEN
+	delete process.env.ZITADEL_SERVICE_KEY
+	process.env.ZITADEL_WEBHOOK_SIGNING_KEY = WEBHOOK_SCHLUESSEL
+
+	await tokenLebensdauerSetzen(zugang, TOKEN_LEBENSDAUER_S)
 }, AUFBAU_FRIST_MS)
 
 afterAll(() => {
@@ -221,6 +233,87 @@ describe('(d) Entzug während einer bestehenden Sitzung', () => {
 	})
 })
 
+describe('(f) Abmelden beendet die Sitzung auf dem Server', () => {
+	test('ein aufgehobener Keks oeffnet nach dem Abmelden nichts mehr', async () => {
+		const browser = await anmelden(lage.benutzer.mitGrant)
+		const keks = browser.kekse()
+		expect((await browser.gehe('/verwaltung')).status).toBe(200)
+
+		const abmelden = await browser.gehe('/auth/logout')
+		expect(abmelden.status).toBe(302)
+
+		const nachher = await fetch(`${basis}/verwaltung`, {
+			headers: { accept: 'application/json', cookie: keks },
+			redirect: 'manual',
+		})
+		expect(nachher.status).toBe(401)
+	})
+})
+
+describe('(g) signiertes ZITADEL-Ereignis beendet Sitzungen sofort', () => {
+	const senden = (rumpf: string, schluessel = WEBHOOK_SCHLUESSEL) => {
+		const t = Math.floor(Date.now() / 1000)
+		const v1 = createHmac('sha256', schluessel)
+			.update(`${t}.${rumpf}`)
+			.digest('hex')
+		return fetch(`${basis}/auth/zitadel-events`, {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json',
+				'ZITADEL-Signature': `t=${t},v1=${v1}`,
+			},
+			body: rumpf,
+		})
+	}
+
+	test('ohne gueltige Signatur passiert nichts', async () => {
+		const antwort = await senden(
+			JSON.stringify({ event_type: 'user.locked', aggregateID: 'x' }),
+			'falsch',
+		)
+		expect(antwort.status).toBe(401)
+	})
+
+	test('ein gesperrtes Konto verliert den Zugang, ohne auf den Refresh zu warten', async () => {
+		const browser = await anmelden(lage.benutzer.mitGrant)
+		expect((await browser.gehe('/verwaltung')).status).toBe(200)
+
+		const antwort = await senden(
+			JSON.stringify({
+				aggregateID: lage.benutzer.mitGrant.userId,
+				aggregateType: 'user',
+				event_type: 'user.locked',
+			}),
+		)
+		expect(antwort.status).toBe(200)
+
+		const nachher = await browser.gehe('/verwaltung', {
+			accept: 'application/json',
+		})
+		expect(nachher.status).toBe(401)
+	})
+})
+
+describe('(h) ein neuer Grant wirkt beim naechsten Refresh', () => {
+	test('wer ohne Rolle angemeldet ist, kommt nach dem Grant hinein', async () => {
+		const browser = await anmelden(lage.benutzer.ohneGrant)
+		expect((await browser.gehe('/verwaltung')).status).toBe(403)
+
+		await grantErteilen(
+			lage.zugang,
+			lage.orgId,
+			lage.benutzer.ohneGrant,
+			lage.projectId,
+		)
+
+		const nachher = await bisAntwort(
+			() => browser.gehe('/verwaltung'),
+			(antwort) => antwort.status === 200,
+		)
+		expect(nachher.status).toBe(200)
+	})
+})
+
 describe('(e) /public/health ohne Anmeldung', () => {
 	test('die Bereitschaftsprüfung bleibt erreichbar', async () => {
 		const antwort = await fetch(`${basis}/public/health`, {
@@ -231,9 +324,11 @@ describe('(e) /public/health ohne Anmeldung', () => {
 		const bericht = (await antwort.json()) as {
 			status: string
 			instance: string
+			serviceAccess: { status: string }
 		}
 		expect(bericht.status).toBe('ok')
 		expect(bericht.instance).toBe(TESTKLASSE.slug)
+		expect(bericht.serviceAccess.status).toBe('not_configured')
 	})
 })
 

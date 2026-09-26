@@ -123,7 +123,7 @@ export const abgleichAlsText = (bericht: AbgleichBericht): string => {
 	]
 	if (bericht.entries_without_account.length > 0) {
 		zeilen.push(
-			`${bericht.entries_without_account.length} Eintrag/Eintraege OHNE Konto — sie bekommen nach dem Scharfschalten (LIST_ACCOUNT_CHECK=enforce) keine Post mehr:`,
+			`${bericht.entries_without_account.length} Eintrag/Eintraege ohne Konto mit Rolle in diesem Projekt — sie bekommen nach dem Scharfschalten (LIST_ACCOUNT_CHECK=enforce) keine Post mehr:`,
 			...bericht.entries_without_account.map(
 				(e) =>
 					`    ${e.name} <${e.email || 'ohne Adresse'}> — ${e.reason}${e.groups.length > 0 ? ` (Gruppen: ${e.groups.join(', ')})` : ' (in keiner Gruppe)'}`,

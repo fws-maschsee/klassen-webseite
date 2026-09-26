@@ -1,51 +1,41 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
 	GrantsUnavailableError,
+	grantedAccounts,
 	resetGrantsConfig,
 	rolesForUser,
 } from '../../src/server/auth/grants.ts'
+import {
+	AUTHORIZATIONS_PATH,
+	authorizationsBody,
+	authorizationsResponse,
+} from '../helpers/authorizations.ts'
 
-describe('Rollen aus ZITADEL', () => {
-	const original = { ...process.env }
-
+describe('Rollen aus ZITADEL (Authorization Service v2)', () => {
 	beforeEach(() => {
-		process.env.ZITADEL_ISSUER = 'https://id.example.org'
-		process.env.ZITADEL_ORG_ID = 'org-1'
-		process.env.ZITADEL_PROJECT_ID = 'proj-1'
-		process.env.ZITADEL_SERVICE_TOKEN = 'tok'
+		vi.stubEnv('ZITADEL_ISSUER', 'https://id.example.org')
+		vi.stubEnv('ZITADEL_ORG_ID', 'org-1')
+		vi.stubEnv('ZITADEL_PROJECT_ID', 'proj-1')
+		vi.stubEnv('ZITADEL_SERVICE_KEY', '')
+		vi.stubEnv('ZITADEL_SERVICE_TOKEN', 'tok')
 		resetGrantsConfig()
 	})
 
 	afterEach(() => {
-		process.env = { ...original }
+		vi.unstubAllEnvs()
+		vi.unstubAllGlobals()
 		resetGrantsConfig()
-		vi.restoreAllMocks()
 	})
 
-	it('fragt die Grants des Projekts dieser Instanz ab', async () => {
-		const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+	it('fragt die Autorisierungen des eigenen Projekts ab', async () => {
+		const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+			expect(url).toBe(`https://id.example.org${AUTHORIZATIONS_PATH}`)
 			const body = JSON.parse(String(init.body))
-			// Nur nach Projekt gefiltert: `userIdQuery` liefert gegen echtes ZITADEL still null Zeilen.
-			expect(body.queries).toEqual([
-				{ projectIdQuery: { projectId: 'proj-1' } },
+			expect(body.filters).toEqual([{ projectId: { id: 'proj-1' } }])
+			return authorizationsResponse([
+				{ userId: 'sub-1', roleKeys: ['mitglied', 'admin'] },
+				{ userId: 'jemand-anderes', roleKeys: ['admin'] },
 			])
-			return new Response(
-				JSON.stringify({
-					result: [
-						{
-							userId: 'sub-1',
-							roleKeys: ['mitglied', 'admin'],
-							state: 'USER_GRANT_STATE_ACTIVE',
-						},
-						{
-							userId: 'jemand-anderes',
-							roleKeys: ['admin'],
-							state: 'USER_GRANT_STATE_ACTIVE',
-						},
-					],
-				}),
-				{ status: 200 },
-			)
 		})
 		vi.stubGlobal('fetch', fetchMock)
 		expect(await rolesForUser('sub-1')).toEqual(['mitglied', 'admin'])
@@ -55,45 +45,72 @@ describe('Rollen aus ZITADEL', () => {
 	it('gibt niemandem die Rollen eines anderen', async () => {
 		vi.stubGlobal(
 			'fetch',
-			vi.fn(
-				async () =>
-					new Response(
-						JSON.stringify({
-							result: [
-								{
-									userId: 'sub-1',
-									roleKeys: ['admin'],
-									state: 'USER_GRANT_STATE_ACTIVE',
-								},
-							],
-						}),
-						{ status: 200 },
-					),
+			vi.fn(async () =>
+				authorizationsResponse([{ userId: 'sub-1', roleKeys: ['admin'] }]),
 			),
 		)
 		expect(await rolesForUser('wer-anders')).toEqual([])
 	})
 
-	it('ignoriert inaktive Grants', async () => {
+	it('ignoriert inaktive Autorisierungen', async () => {
 		vi.stubGlobal(
 			'fetch',
-			vi.fn(
-				async () =>
-					new Response(
-						JSON.stringify({
-							result: [
-								{
-									userId: 'sub-2',
-									roleKeys: ['admin'],
-									state: 'USER_GRANT_STATE_INACTIVE',
-								},
-							],
-						}),
-						{ status: 200 },
-					),
+			vi.fn(async () =>
+				authorizationsResponse([
+					{ userId: 'sub-2', roleKeys: ['admin'], state: 'STATE_INACTIVE' },
+				]),
 			),
 		)
 		expect(await rolesForUser('sub-2')).toEqual([])
+	})
+
+	it('laesst Autorisierungen fremder Projekte nicht durch, auch wenn ZITADEL sie liefert', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () =>
+				authorizationsResponse([
+					{ userId: 'sub-3', roleKeys: ['admin'], projectId: 'proj-anders' },
+					{ userId: 'sub-3', roleKeys: ['mitglied'] },
+				]),
+			),
+		)
+		expect(await rolesForUser('sub-3')).toEqual(['mitglied'])
+	})
+
+	it('blaettert durch alle Seiten', async () => {
+		const alle = Array.from({ length: 450 }, (_, i) => ({
+			userId: `u-${i}`,
+			email: `p${i}@example.org`,
+			roleKeys: ['mitglied'],
+		}))
+		const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+			const { pagination } = JSON.parse(String(init.body))
+			const seite = authorizationsBody(
+				alle.slice(pagination.offset, pagination.offset + pagination.limit),
+			)
+			seite.pagination.totalResult = String(alle.length)
+			return Response.json(seite)
+		})
+		vi.stubGlobal('fetch', fetchMock)
+		const konten = await grantedAccounts()
+		expect(konten).toHaveLength(450)
+		expect(fetchMock).toHaveBeenCalledTimes(3)
+	})
+
+	it('nimmt die Anmeldeadresse als Mail, einen blossen Benutzernamen nicht', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () =>
+				authorizationsResponse([
+					{ userId: 'u1', email: 'Anna@Example.org', roleKeys: ['mitglied'] },
+					{ userId: 'u2', email: 'bert', roleKeys: ['mitglied'] },
+				]),
+			),
+		)
+		expect(await grantedAccounts()).toEqual([
+			{ userId: 'u1', email: 'anna@example.org', roles: ['mitglied'] },
+			{ userId: 'u2', email: '', roles: ['mitglied'] },
+		])
 	})
 
 	it('verweigert bei einer Stoerung, statt durchzuwinken', async () => {
@@ -116,30 +133,5 @@ describe('Rollen aus ZITADEL', () => {
 		await expect(rolesForUser('sub-4')).rejects.toBeInstanceOf(
 			GrantsUnavailableError,
 		)
-	})
-
-	it('nimmt Namen und Adressen aus der Antwort nicht mit', async () => {
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(
-				async () =>
-					new Response(
-						JSON.stringify({
-							result: [
-								{
-									userId: 'u1',
-									email: 'vorname.nachname@example.org',
-									firstName: 'Vorname',
-									lastName: 'Nachname',
-									roleKeys: ['mitglied'],
-									state: 'USER_GRANT_STATE_ACTIVE',
-								},
-							],
-						}),
-						{ status: 200 },
-					),
-			),
-		)
-		expect(await rolesForUser('u1')).toEqual(['mitglied'])
 	})
 })

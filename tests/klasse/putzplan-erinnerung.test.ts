@@ -29,6 +29,7 @@ import { erinnerungZuTermin } from '../../src/lib/db/putzplanReminders.ts'
 import { suppressAddress } from '../../src/lib/db/suppressions.ts'
 import type { SendInput } from '../../src/lib/email/transport.ts'
 import { resetGrantsConfig } from '../../src/server/auth/grants.ts'
+import { authorizationsResponse } from '../helpers/authorizations.ts'
 import { createTestDb } from '../helpers/db.ts'
 import { TESTKLASSE } from '../setup.ts'
 
@@ -297,23 +298,16 @@ describe('Familie ohne erreichbare Adresse', () => {
 		resetGrantsConfig()
 		vi.stubGlobal(
 			'fetch',
-			vi.fn(
-				async () =>
-					new Response(
-						JSON.stringify({
-							result: [
-								'anke@example.org',
-								'jens@example.org',
-								'mira@example.org',
-							].map((email, i) => ({
-								userId: `u-${i}`,
-								email,
-								roleKeys: ['mitglied'],
-								state: 'USER_GRANT_STATE_ACTIVE',
-							})),
+			vi.fn(async () =>
+				authorizationsResponse(
+					['anke@example.org', 'jens@example.org', 'mira@example.org'].map(
+						(email, i) => ({
+							userId: `u-${i}`,
+							email,
+							roleKeys: ['mitglied'],
 						}),
-						{ status: 200 },
 					),
+				),
 			),
 		)
 
@@ -517,19 +511,10 @@ describe('Konten-Prüfung: Meldung nur bei Befund', () => {
 		resetGrantsConfig()
 		vi.stubGlobal(
 			'fetch',
-			vi.fn(
-				async () =>
-					new Response(
-						JSON.stringify({
-							result: grants.map((g) => ({
-								userId: g.userId,
-								email: g.email,
-								roleKeys: ['mitglied'],
-								state: 'USER_GRANT_STATE_ACTIVE',
-							})),
-						}),
-						{ status: 200 },
-					),
+			vi.fn(async () =>
+				authorizationsResponse(
+					grants.map((g) => ({ ...g, roleKeys: ['mitglied'] })),
+				),
 			),
 		)
 	}

@@ -13,6 +13,7 @@ import {
 	type Ausgangslage,
 	aufZitadelWarten,
 	ausgangslageHerstellen,
+	dienstkontoAnlegen,
 	grantEntziehen,
 } from './zitadel.ts'
 
@@ -93,7 +94,12 @@ beforeAll(async () => {
 	process.env.ZITADEL_ISSUER = zugang.issuer
 	process.env.ZITADEL_ORG_ID = lage.orgId
 	process.env.ZITADEL_PROJECT_ID = lage.projectId
-	process.env.ZITADEL_SERVICE_TOKEN = zugang.token
+	process.env.ZITADEL_SERVICE_KEY = await dienstkontoAnlegen(
+		zugang,
+		lage.orgId,
+		lage.projectId,
+	)
+	delete process.env.ZITADEL_SERVICE_TOKEN
 	resetGrantsConfig()
 
 	db = createTestDb()
@@ -173,7 +179,7 @@ describe('(2) Rolle entzogen, enforce', () => {
 		const bericht = ergebnis.account_check
 		expect(bericht?.mode).toBe('enforce')
 		expect(bericht?.cut).toHaveLength(1)
-		expect(bericht?.cut[0]?.reason).toBe('role_missing')
+		expect(bericht?.cut[0]?.reason).toBe('no_role')
 		expect(bericht?.cut[0]?.email).not.toContain(lage.benutzer.entzug.email)
 		expect(bericht?.cut[0]?.email).toContain('***')
 	})

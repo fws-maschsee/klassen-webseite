@@ -22,7 +22,7 @@ export const registerAccountTools = (
 		{
 			title: 'Adressbuch und Konten gegenueberstellen',
 			description:
-				'Stellt die Adressbuch-Eintraege dieser Klasse den Konten gegenueber, die im ZITADEL-Projekt dieser Klasse einen aktiven Grant mit Leserolle haben, und MELDET beide Richtungen: `entries_without_account` (Eintrag ohne Konto — bekommt nach dem Scharfschalten von LIST_ACCOUNT_CHECK=enforce keine Post mehr; Grund: no_account, account_unknown, role_missing) und `accounts_without_entry` (Konto mit Rolle ohne Eintrag — gehoert dazu, bekommt aber nichts). AENDERT NICHTS: kein Eintrag wird angelegt, geaendert oder entfernt. Wer nach dem Bericht loeschen will, ruft delete_mitglied (nur der Eintrag) oder delete_account (Konto samt Eintrag). Ist ZITADEL nicht erreichbar, kommt ein FEHLER statt eines Berichts, in dem alle fehlen.',
+				'Stellt die Adressbuch-Eintraege dieser Klasse den Konten gegenueber, die im ZITADEL-Projekt dieser Klasse einen aktiven Grant mit Leserolle haben, und MELDET beide Richtungen: `entries_without_account` (Eintrag ohne Konto — bekommt nach dem Scharfschalten von LIST_ACCOUNT_CHECK=enforce keine Post mehr; Grund immer no_role: kein aktiver Grant mit Leserolle in DIESEM Projekt. Ob es das Konto anderswo in ZITADEL gibt, sieht dieser Dienstzugang bewusst nicht) und `accounts_without_entry` (Konto mit Rolle ohne Eintrag — gehoert dazu, bekommt aber nichts). AENDERT NICHTS: kein Eintrag wird angelegt, geaendert oder entfernt. Wer nach dem Bericht loeschen will, ruft delete_mitglied (nur der Eintrag) oder delete_account (Konto samt Eintrag). Ist ZITADEL nicht erreichbar oder kein Dienstzugang konfiguriert, kommt ein FEHLER statt eines Berichts, in dem alle fehlen.',
 			inputSchema: {},
 		},
 		async () => {

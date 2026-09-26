@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'vitest'
-import { healthReport, UNKNOWN } from '../../src/klasse/health.ts'
+import {
+	healthReport,
+	healthStatusCode,
+	UNKNOWN,
+} from '../../src/klasse/health.ts'
 
 const input = (
 	env: Record<string, string | undefined> = {},
@@ -74,9 +78,41 @@ describe('healthReport', () => {
 			'commit',
 			'instance',
 			'lists',
+			'serviceAccess',
 			'shared',
 			'status',
 		])
 		expect(Object.keys(report.lists).sort()).toEqual(['keyIds', 'schemes'])
+	})
+})
+
+describe('Dienstzugang im Health-Bericht', () => {
+	const mit = (status: 'ok' | 'failing' | 'not_configured') =>
+		healthReport({
+			...input(),
+			serviceAccess: {
+				status,
+				credential: status === 'not_configured' ? null : 'key',
+				checkedAt: status === 'not_configured' ? null : '2026-09-26T12:00:00Z',
+				error: status === 'failing' ? 'HTTP 400 invalid_grant' : null,
+			},
+		})
+
+	test('ohne Schluessel (Vorschau) bleibt es bei ok und 200', () => {
+		const report = healthReport(input())
+		expect(report.serviceAccess.status).toBe('not_configured')
+		expect(report.status).toBe('ok')
+		expect(healthStatusCode(report)).toBe(200)
+	})
+
+	test('ein gescheiterter Token-Tausch macht den Bericht rot: degraded und 503', () => {
+		const report = mit('failing')
+		expect(report.status).toBe('degraded')
+		expect(report.serviceAccess.error).toContain('invalid_grant')
+		expect(healthStatusCode(report)).toBe(503)
+	})
+
+	test('ein funktionierender Dienstzugang ist ok', () => {
+		expect(healthStatusCode(mit('ok'))).toBe(200)
 	})
 })

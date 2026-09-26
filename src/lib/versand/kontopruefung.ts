@@ -5,14 +5,13 @@ import {
 	GrantsConfigError,
 	GrantsUnavailableError,
 	grantedAccounts,
-	knownAccounts,
 } from '../../server/auth/grants.ts'
 import { canRead } from '../../server/auth/roles.ts'
 import { openDb } from '../db/index.ts'
 
 export type AccountCheckMode = 'report' | 'enforce'
 
-export type CutReason = 'no_account' | 'account_unknown' | 'role_missing'
+export type CutReason = 'no_role'
 
 export type CheckCandidate = {
 	email: string
@@ -123,7 +122,7 @@ export const pruefeKonten = async <T>(
 			unavailable: fehler.message,
 		}
 		console.warn(
-			`[kontopruefung] ${occasion}: ZITADEL nicht erreichbar (${fehler.message}) — in "report" wird trotzdem verschickt, die Pruefung ist blind.`,
+			`[kontopruefung] ${occasion}: Kontoliste nicht verfuegbar (${fehler.message}) — in "report" wird trotzdem verschickt, die Pruefung ist blind.`,
 		)
 		return { recipients: [...recipients], cut: [], report: bericht }
 	}
@@ -153,51 +152,16 @@ export const pruefeKonten = async <T>(
 
 	const behalten: T[] = []
 	const geschnitten: { recipient: T; reason: CutReason }[] = []
-	const offen: { recipient: T; email: string; sub: string | undefined }[] = []
 
 	for (const empfaenger of zuPruefen) {
 		const email = normalize(kandidat(empfaenger).email)
 		const sub = subJeMail.get(email)
 		// Erst der stabile `sub`, dann die Adresse: `sub` entsteht erst beim ersten Login und fehlt meist noch.
-		if (sub && subsMitRolle.has(sub)) {
+		if ((sub && subsMitRolle.has(sub)) || mailsMitRolle.has(email)) {
 			behalten.push(empfaenger)
 			continue
 		}
-		if (mailsMitRolle.has(email)) {
-			behalten.push(empfaenger)
-			continue
-		}
-		offen.push({ recipient: empfaenger, email, sub })
-	}
-
-	let bekannt: { subs: Set<string>; mails: Set<string> } | null = null
-	if (offen.length > 0) {
-		try {
-			const alle = await knownAccounts()
-			bekannt = {
-				subs: new Set(alle.map((k) => k.userId)),
-				mails: new Set(alle.map((k) => k.email).filter((m) => m !== '')),
-			}
-		} catch (fehler) {
-			if (
-				fehler instanceof GrantsUnavailableError ||
-				fehler instanceof GrantsConfigError
-			) {
-				if (mode === 'enforce') throw fehler
-				return blind(fehler)
-			}
-			throw fehler
-		}
-	}
-
-	const grund = (email: string, sub: string | undefined): CutReason => {
-		if (!bekannt) return 'no_account'
-		if (sub) return bekannt.subs.has(sub) ? 'role_missing' : 'account_unknown'
-		return bekannt.mails.has(email) ? 'role_missing' : 'no_account'
-	}
-
-	for (const { recipient, email, sub } of offen) {
-		geschnitten.push({ recipient, reason: grund(email, sub) })
+		geschnitten.push({ recipient: empfaenger, reason: 'no_role' })
 	}
 
 	const imAdressbuch = adressbuchMails(db)
@@ -258,7 +222,7 @@ export const hatBefund = (report: AccountCheckReport): boolean =>
 
 export const berichtAlsText = (report: AccountCheckReport): string => {
 	if (report.unavailable) {
-		return `Konten-Pruefung (${report.mode}): ZITADEL war nicht erreichbar (${report.unavailable}). Es wurde ohne Pruefung verschickt.`
+		return `Konten-Pruefung (${report.mode}): die Kontoliste war nicht verfuegbar (${report.unavailable}). Es wurde ohne Pruefung verschickt.`
 	}
 	const zeilen = [
 		`Konten-Pruefung (${report.mode}) fuer ${report.occasion}:`,

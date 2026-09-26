@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js'
 import express from 'express'
 import { type KlassenConfig, setKlassenConfig } from '../klasse/config.ts'
+import { purgeAuthSessions } from '../lib/db/authSessions.ts'
 import { openDb } from '../lib/db/index.ts'
 import { assertInstanceMatches, instanceLabel } from '../lib/db/instance.ts'
 import { loescheFaellige } from '../lib/db/mitbringen.ts'
@@ -111,6 +112,8 @@ export const startServer = async (
 				const n = loescheFaellige(db)
 				if (n > 0)
 					console.log(`[mitbringen] ${n} abgelaufene Liste(n) geloescht`)
+				const a = purgeAuthSessions(db)
+				if (a > 0) console.log(`[anmeldung] ${a} alte Sitzung(en) geloescht`)
 				const s = loescheFaelligeSchichtplaene(db)
 				if (s > 0)
 					console.log(`[schichten] ${s} abgelaufene(r) Plan/Plaene geloescht`)

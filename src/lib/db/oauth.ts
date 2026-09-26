@@ -525,6 +525,26 @@ export const revokeAllTokensForClientAndUser = (
 	return tx()
 }
 
+export const revokeAllTokensForUser = (
+	user_id: string,
+	db: Database = openDb(),
+): { access: number; refresh: number } => {
+	const tx = db.transaction(() => {
+		const access = db
+			.prepare<[string]>(
+				'UPDATE oauth_access_tokens SET revoked = 1 WHERE user_id = ? AND revoked = 0',
+			)
+			.run(user_id).changes
+		const refresh = db
+			.prepare<[string]>(
+				'UPDATE oauth_refresh_tokens SET revoked = 1 WHERE user_id = ? AND revoked = 0',
+			)
+			.run(user_id).changes
+		return { access, refresh }
+	})
+	return tx()
+}
+
 export const verifyClientSecret = (
 	client: OAuthClient,
 	providedSecret: string,

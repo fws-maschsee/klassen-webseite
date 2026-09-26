@@ -16,7 +16,7 @@ services:
 
   zitadel:
     # Dieselbe Fassung wie in Produktion (server-config); nur gemeinsam anheben.
-    image: ghcr.io/zitadel/zitadel:v4.16.2
+    image: ghcr.io/zitadel/zitadel:v4.19.1
     # Der Masterkey muss genau 32 Zeichen haben; Testwert, kein Geheimnis.
     command: 'start-from-init --masterkey MasterkeyNeedsToHave32Characters --tlsMode disabled'
     environment:

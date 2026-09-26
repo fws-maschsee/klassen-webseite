@@ -70,6 +70,18 @@ export const GETEILTE_ROUTEN: readonly GeteilteRoute[] = [
 		grund: 'Abmelden bei App und IdP.',
 	},
 	{
+		pattern: '/auth/backchannel-logout',
+		entrypoint: geteilt('src/routes/auth/backchannelLogout.ts'),
+		grund:
+			'OIDC Back-Channel-Logout: ZITADEL meldet eine beendete Sitzung mit signiertem logout_token, die Sitzung hier endet sofort. Ohne Cookie, unter /auth/ und damit anmeldefrei.',
+	},
+	{
+		pattern: '/auth/zitadel-events',
+		entrypoint: geteilt('src/routes/auth/zitadelEvents.ts'),
+		grund:
+			'Webhook (ZITADEL Actions v2): gesperrte, geloeschte Konten und entzogene Grants beenden die Sitzungen sofort. HMAC-signiert (ZITADEL-Signature), ohne ZITADEL_WEBHOOK_SIGNING_KEY 404.',
+	},
+	{
 		pattern: '/api/lists/incoming',
 		entrypoint: geteilt('src/routes/api/lists/incoming.ts'),
 		grund:

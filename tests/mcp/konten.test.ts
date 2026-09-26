@@ -15,6 +15,7 @@ import {
 } from 'vitest'
 import { runMigrations } from '../../src/migrations.ts'
 import { resetGrantsConfig } from '../../src/server/auth/grants.ts'
+import { authorizationsResponse } from '../helpers/authorizations.ts'
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-konten-'))
 const dbFile = path.join(tmpDir, 'test.db')
@@ -49,18 +50,7 @@ const grantsAntworten = (
 ): void => {
 	vi.stubGlobal(
 		'fetch',
-		vi.fn(
-			async () =>
-				new Response(
-					JSON.stringify({
-						result: grants.map((g) => ({
-							...g,
-							state: 'USER_GRANT_STATE_ACTIVE',
-						})),
-					}),
-					{ status: 200 },
-				),
-		),
+		vi.fn(async () => authorizationsResponse(grants)),
 	)
 }
 

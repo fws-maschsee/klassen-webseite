@@ -6,9 +6,9 @@ ZITADEL anmelden, zurückspringen, Sitzung, geschützte Seite, Entzug.
 
 ## Warum es sie gibt
 
-`src/server/auth/oidc.ts` (Anmeldung, Sitzung, Verlängerung) und
-`src/server/auth/grants.ts` (Rollen aus der Management-API) sind die beiden
-Dateien, an denen der Zugang hängt. Die Tests unter `tests/auth/` prüfen ihre
+`src/server/auth/oidc.ts` (Anmeldung, Rollen aus dem Token, Sitzung,
+Verlängerung) und `src/server/auth/grants.ts` (Kontoliste über den
+Authorization Service v2) sind die beiden Dateien, an denen der Zugang hängt. Die Tests unter `tests/auth/` prüfen ihre
 Regeln gegen Attrappen — also gegen Annahmen darüber, wie ZITADEL antwortet.
 Diese Annahmen waren schon mehrfach falsch, und es steht in den Quellen
 nachlesbar: `userIdQuery` liefert gegen diese Instanz zuverlässig null Zeilen,
@@ -51,8 +51,11 @@ Zeitlimit bei zehn Minuten — als Reißleine, nicht als Budget.
 | (a) | Geschützter Pfad ohne Sitzung liefert keinen Inhalt: eine Seite wird mit PKCE und `state` zu ZITADEL geschickt, alles andere bekommt 401. | Nichts. Eine Seite, die ohne Anmeldung ausliefert, sieht für den Angemeldeten genauso aus wie vorher. |
 | (b) | Der vollständige OIDC-Ablauf trägt bis zur geschützten Seite: Code-Tausch, Signaturprüfung des ID-Tokens, `nonce`, Sitzungs-Cookie, Rückkehr auf den ursprünglichen Pfad. | Jede Anmeldung schlägt fehl — das fällt sofort auf, aber erst in Produktion. |
 | (c) | Wer sich bei ZITADEL **erfolgreich** anmeldet, aber keinen Grant im Projekt dieser Klasse hat, kommt NICHT hinein. | Nichts. Das ist die Trennung „hat ein Konto" gegen „gehört zu dieser Klasse", und beide Fälle sehen bis zum Rücksprung identisch aus. |
-| (d) | Wird der Grant WÄHREND einer bestehenden Sitzung entzogen, endet der Zugang, ohne dass die Person etwas tut. | Nichts, bis jemand nachsieht. In der abgelösten PocketBase-Gruppe hatten sechs Personen weiterhin Zugriff. |
-| (e) | `/public/health` bleibt ohne Anmeldung erreichbar. | Kubernetes nimmt den Pod aus dem Service. Die Seite ist dann nicht langsam, sie ist weg. |
+| (d) | Wird der Grant WÄHREND einer bestehenden Sitzung entzogen, endet der Zugang beim nächsten Refresh, ohne dass die Person etwas tut. Der Aufbau setzt die Token-Lebensdauer dafür auf 20 s. | Nichts, bis jemand nachsieht. In der abgelösten PocketBase-Gruppe hatten sechs Personen weiterhin Zugriff. |
+| (e) | `/public/health` bleibt ohne Anmeldung erreichbar und meldet ohne Dienstzugang `not_configured`. | Kubernetes nimmt den Pod aus dem Service. Die Seite ist dann nicht langsam, sie ist weg. |
+| (f) | Abmelden löscht die Sitzung auf dem Server: ein aufgehobener Keks öffnet danach nichts mehr. | Nichts — der Keks sähe weiter gültig aus. |
+| (g) | Ein signiertes Ereignis an `/auth/zitadel-events` (`user.locked`) beendet die Sitzung sofort; ein falsch signiertes nicht. | Nichts, bis der nächste Refresh kommt. |
+| (h) | Ein neuer Grant wirkt beim nächsten Refresh, ohne neue Anmeldung. | Eltern melden „kein Zugriff", obwohl freigeschaltet. |
 
 Zusätzlich prüft ein sechster Fall, dass der Einrichtungsschritt einen Benutzer
 auch wieder **löschen** kann. Das ist kein Nachweis über die Anwendung, sondern
@@ -63,8 +66,9 @@ der Prüfstein für `benutzerLoeschen()` — den Handgriff, mit dem
 
 Echt: `startServer()` aus `src/server/app.ts` — derselbe Aufruf, den das
 `server.ts` einer Klasse macht —, die Middleware aus `src/klasse/middleware.ts`,
-`authenticate()`/`resolveSession()` aus `oidc.ts`, `rolesForUser()` aus
-`grants.ts`, die drei Anmelderouten und `/public/health`. Angesprochen wird
+`authenticate()`/`resolveSession()` aus `oidc.ts` (mit `private_key_jwt`),
+die Anmelderouten samt `/auth/zitadel-events` und `/public/health`. Die
+Anmeldung läuft **ohne** Dienstzugang. Angesprochen wird
 alles über HTTP, mit Cookies, ohne Abkürzung im Prozess.
 
 Attrappe ist genau zweierlei:
@@ -90,17 +94,16 @@ Die zweite Datei in diesem Verzeichnis. Sie beweist „ohne Konto, keine E-Mail"
 | | Nachweis | Fällt sonst auf durch |
 |---|---|---|
 | (1) | Konto vorhanden und Rolle da → die Mail geht raus, samt der Sammeladresse ohne Adressbuch-Eintrag. | Nichts, bis eine Klasse auf `enforce` steht und plötzlich niemand mehr Post bekommt. |
-| (2) | Rolle entzogen, `enforce` → die Adresse wird geschnitten UND gemeldet, mit dem Grund `role_missing`. | Nichts. Eine leere Empfängerliste sieht im Protokoll aus wie eine erledigte Zustellung. |
+| (2) | Rolle entzogen, `enforce` → die Adresse wird geschnitten UND gemeldet, mit dem Grund `no_role`. | Nichts. Eine leere Empfängerliste sieht im Protokoll aus wie eine erledigte Zustellung. |
 | (3) | Rolle entzogen, `report` → es wird zugestellt und trotzdem gemeldet. | Die Vorgabe-Betriebsart wäre ungeprüft — also genau die, die überall läuft. |
 | (4) | ZITADEL nicht erreichbar, `enforce` → kein Versand, Ergebnis `unavailable` (HTTP 503). In `report` wird verteilt, die Prüfung ist blind. | Eine Störung bei ZITADEL verteilte an alle — oder hielte umgekehrt jede Elternmail auf. |
 
-Warum das ein echtes ZITADEL braucht: Die Prüfung baut auf zwei Annahmen auf,
-die eine Attrappe nur bestätigen kann. Dass die Grant-Antwort die
-**Anmeldeadresse** mitliefert — daran hängt die Verbindung zum Adressbuch,
-solange `mitglieder.user_sub` bei fast allen leer ist. Und dass ein Konto nach
-dem Entzug seines Grants aus der Projekt-Abfrage verschwindet, ohne aus der
-Benutzerliste zu verschwinden — daran hängt die Unterscheidung „Grant entzogen"
-gegen „Konto gelöscht".
+Warum das ein echtes ZITADEL braucht: Die Prüfung baut darauf, dass ein
+Dienstkonto mit nur `PROJECT_OWNER_VIEWER` über den Authorization Service v2
+die Autorisierungen **seines** Projekts samt Anmeldename bekommt — daran hängt
+die Verbindung zum Adressbuch, solange `mitglieder.user_sub` bei fast allen
+leer ist. Der Aufbau legt dieses Dienstkonto mit JSON-Key an
+(`dienstkontoAnlegen()`), genau wie in Produktion.
 
 Attrappe ist hier einzig der SMTP-Transport: Er sammelt, was SES bekommen hätte.
 Ein Mailpit daneben (siehe unten, früherer Plan) würde denselben Satz beweisen
@@ -115,29 +118,24 @@ das ganze Adressbuch den Grants gegenüberstellt und **beide Richtungen** meldet
 
 | | Nachweis | Fällt sonst auf durch |
 |---|---|---|
-| (1) | Ein Eintrag ohne Konto wird erkannt — und der Grund unterschieden: `no_account` (nie eines gehabt), `role_missing` (Grant entzogen), `account_unknown` (Konto gelöscht). | Nichts. Die drei sehen im Adressbuch identisch aus, verlangen vom Menschen aber drei verschiedene Handgriffe. |
+| (1) | Ein Eintrag ohne Grant wird erkannt — nie gehabt, entzogen oder Konto gelöscht, alle mit Grund `no_role`. Mehr sieht ein Dienstzugang, der nur das eigene Projekt lesen darf, nicht. | Nichts. Die Einträge sehen im Adressbuch aus wie alle anderen. |
 | (2) | Ein Konto **mit** Rolle ohne Adressbuch-Eintrag wird erkannt, im Klartext. | Nichts — in einer Zustellung fehlt niemand, den man vermissen könnte. Die Familie wartet auf Post, die nie kommt. |
 | (3) | Deckt sich alles, meldet der Abgleich nichts. | Ein Bericht, der im grünen Fall Namen nennt, wird nach dem dritten Mal nicht mehr gelesen. |
 | (4) | Ist ZITADEL nicht erreichbar, kommt ein **Fehler** — kein Bericht, in dem alle fehlen. | Das ist der gefährliche Fall: Eine Störung sieht aus wie „alle ausgetreten", und wer daraufhin aufräumt, löscht den Verteiler. |
 
-Warum das ein echtes ZITADEL braucht: Die Unterscheidung zwischen entzogenem
-Grant und gelöschtem Konto hängt daran, dass ein Konto nach dem Entzug aus der
-**Projekt-Abfrage** verschwindet, aus der **Benutzerliste** aber nicht. Das kann
-keine Attrappe beweisen, sie kann es nur behaupten.
+### Webhook
 
-### Hier stand einmal: „Webhook-Kaskade, vorbereitet, nicht gebaut"
+Die Löschung eines Kontos meldet ZITADEL nicht an die Kaskade — gelöscht wird
+nur, was ein Mensch verlangt. `POST /auth/zitadel-events` beendet dagegen
+Sitzungen (Fall (g) oben). Ein echtes Target lässt sich hier nicht verdrahten,
+weil der ZITADEL-Container den Testserver nicht erreicht; der Test signiert
+deshalb selbst, im Format aus `pkg/actions/signing.go`.
 
-Der Plan war, ZITADEL die Löschung eines Benutzers per Actions v2 melden zu
-lassen. Er ist **aufgegeben**, und die Route dazu ist entfernt: In der Instanz
-gibt es überhaupt keine Actions-v2-Targets — der Empfänger hat nie einen Aufruf
-gesehen. Und er hätte das Falsche gemeldet: `user.removed` ist das gelöschte
-Konto, der Normalfall aber ist der entzogene Grant, und der löst gar kein
-Ereignis aus. An seine Stelle tritt der Abgleich oben, der **fragt** statt zu
-warten.
+## Beim Heben: Aufrufe
 
-`benutzerLoeschen()` in `zitadel.ts` bleibt und wird jetzt wirklich gebraucht:
-Es ist der Handgriff, mit dem `abgleich.test.ts` den Fall `account_unknown`
-herstellt.
+Der Aufbau spricht ZITADEL über die v2-Dienste (Connect-RPC). Einzige Ausnahme:
+`tokenLebensdauerSetzen()` nutzt `PUT /admin/v1/settings/oidc`, weil v4.19
+dafür keine v2-Schnittstelle hat.
 
 ## Erledigt: Prüfung beim Mailversand
 
