@@ -210,7 +210,7 @@ export const handleZitadelEvent = (
 		return {
 			action: 'revoke_sessions',
 			sub,
-			sessions: revokeAuthSessionsBySub(sub, db()),
+			sessions: revokeAuthSessionsBySid(aggregateId, db()),
 		}
 	}
 

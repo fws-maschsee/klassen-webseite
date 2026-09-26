@@ -269,9 +269,10 @@ describe('ZITADEL-Ereignisse', () => {
 		expect(activeAuthSession(handle, db)?.accessExpiresAt).toBe(0)
 	})
 
-	test('eine beendete ZITADEL-Sitzung beendet alle Sitzungen ihres Kontos', () => {
+	test('eine beendete ZITADEL-Sitzung beendet nur die Sitzungen mit ihrer sid', () => {
 		const eins = sitzung({ sid: 'sid-1' })
-		const zwei = sitzung({ sid: 'sid-2' })
+		const einsZweitesFenster = sitzung({ sid: 'sid-1' })
+		const anderesGeraet = sitzung({ sid: 'sid-2' })
 		const fremd = sitzung({ sub: 'u-bert', sid: 'sid-3' })
 		expect(
 			handleZitadelEvent(
@@ -281,7 +282,8 @@ describe('ZITADEL-Ereignisse', () => {
 			),
 		).toEqual({ action: 'revoke_sessions', sub: 'u-anna', sessions: 2 })
 		expect(activeAuthSession(eins.handle, db)).toBeNull()
-		expect(activeAuthSession(zwei.handle, db)).toBeNull()
+		expect(activeAuthSession(einsZweitesFenster.handle, db)).toBeNull()
+		expect(activeAuthSession(anderesGeraet.handle, db)).not.toBeNull()
 		expect(activeAuthSession(fremd.handle, db)).not.toBeNull()
 	})
 
