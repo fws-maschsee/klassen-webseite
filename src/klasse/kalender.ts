@@ -2,31 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { type KlassenConfig, PUBLIC_PATHS } from './config.ts'
 
-/**
- * Die Kalenderprüfung, die sieben Monate lang gefehlt hat.
- *
- * In `klasse-christophers` verschob die Umstellung von Docusaurus auf Astro die
- * Kalenderdatei von `static/public/<name>.ics` nach `public/<name>.ics`. Damit
- * wanderte die URL von `/public/<name>.ics` auf `/<name>.ics`, und JEDES
- * bestehende Abo hörte still auf zu aktualisieren: Eine Kalender-App meldet
- * einen 404 niemandem, sie zeigt einfach keine neuen Termine mehr. Aufgefallen
- * ist es sieben Monate später, von Hand.
- *
- * Die Prüfung gehört ins Package, weil der Fehler nicht klassenspezifisch ist —
- * er wiederholt sich in jeder neuen Klasse. Die Kalenderdatei selbst bleibt im
- * Klassen-Repo (sie enthält die Termine der Klasse), deshalb ist das hier eine
- * Funktion und kein Test: der Test steht in der Klasse und ist vier Zeilen lang.
- *
- * Eine Prüfung zur Laufzeit wäre das falsche Werkzeug: ein `throw` im Modulkopf
- * der Middleware feuert weder beim Bauen noch beim Start, weil Astro im
- * `middleware`-Modus das Modul erst bei der ersten passenden Anfrage lädt —
- * gemessen, nicht vermutet.
- */
-
 export type KalenderBefund = {
-	/** Leer, wenn alles stimmt. Sonst ein Satz pro Problem. */
 	fehler: string[]
-	/** Alle `.ics`-Dateien unter `public/`, relativ zur Projektwurzel. */
 	gefundeneDateien: string[]
 }
 
@@ -41,10 +18,6 @@ export const pruefeKalender = (
 	const { calendarPath } = config
 	const calendarLegacyPath = config.calendarLegacyPath ?? null
 
-	// Unter der alten Adresse darf KEINE Datei liegen. Läge dort eine, lieferte
-	// `express.static` sie aus, bevor die Umleitung greift — und das Repository
-	// hätte zwei Kalender, die auseinanderlaufen, sobald jemand einen Termin nur
-	// in einem davon nachträgt. Genau der Zustand, aus dem der Ausfall entstand.
 	if (calendarLegacyPath !== null) {
 		const alt = path.join(statisch, calendarLegacyPath)
 		if (fs.existsSync(alt)) {
@@ -69,9 +42,6 @@ export const pruefeKalender = (
 		)
 	}
 
-	// Astro spiegelt `public/` nach `dist/client/`, die URL ist also der Pfad
-	// unterhalb von `public/`. Genau diese Zuordnung ist bei der
-	// Astro-Umstellung zerbrochen.
 	const datei = path.join(statisch, calendarPath)
 	const relativ = path.relative(projektWurzel, datei)
 
@@ -84,8 +54,6 @@ export const pruefeKalender = (
 	}
 
 	if (gefundeneDateien.length > 1) {
-		// Zwei Dateien fuer denselben Kalender laufen auseinander, sobald jemand
-		// einen Termin nur in einer davon nachtraegt.
 		fehler.push(
 			`Es gibt mehr als eine Kalenderdatei (${gefundeneDateien.join(', ')}). Erwartet wird genau ${relativ}.`,
 		)
@@ -94,7 +62,6 @@ export const pruefeKalender = (
 	return { fehler, gefundeneDateien }
 }
 
-/** `webcal://`-Adresse zum Abonnieren, oder `null` ohne Kalender. */
 export const webcalUrl = (
 	config: Pick<KlassenConfig, 'domain' | 'calendarPath'>,
 ): string | null =>

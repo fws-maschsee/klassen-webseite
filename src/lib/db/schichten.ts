@@ -2,27 +2,14 @@ import { randomBytes } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import { dbTimestamp, openDb } from './index.ts'
 
-/**
- * Schichtplaene: wer uebernimmt welche Schicht.
- *
- * Ein admin legt den Plan mit seinen Schichten ueber MCP an, die Familien
- * tragen sich selbst ein — mit Konto oder ohne. Wer aendern darf, entscheidet
- * `darfEintragAendern`; wann ein Plan verschwindet, `delete_at`.
- *
- * Feldnamen sind englisch, weil sie in Datenbank und JSON stehen; was ein
- * Mensch liest, ist deutsch.
- */
-
 export type PlanStatus = 'open' | 'closed'
 
 export type Schichtplan = {
 	id: string
 	title: string
-	/** `JJJJ-MM-TT` oder `null`. */
 	event_date: string | null
 	description: string | null
 	shifts: string[]
-	/** Plaetze je Schicht, `null` = beliebig viele. */
 	capacity: number | null
 	status: PlanStatus
 	retention_days: number
@@ -46,7 +33,6 @@ export type Schichteintrag = {
 
 export type EintragMitSchluessel = Schichteintrag & { edit_token: string }
 
-/** Wer gerade handelt — Sitzung, Browser-Schluessel oder admin. */
 export type Handelnde = {
 	sub?: string | null
 	editToken?: string | null
@@ -57,7 +43,6 @@ export const VORGABE_AUFBEWAHRUNG_TAGE = 180
 
 const TAG_MS = 24 * 60 * 60 * 1000
 
-/** 16 Zeichen base64url — nicht erratbar, denn der Link ist der Zugang. */
 export const neuePlanId = (): string => randomBytes(12).toString('base64url')
 
 const neuerSchluessel = (): string => randomBytes(18).toString('base64url')
@@ -117,10 +102,6 @@ const pruefeCapacity = (capacity: number | null): void => {
 		throw new Error('Plätze je Schicht sind eine ganze Zahl, mindestens 1.')
 }
 
-// ---------------------------------------------------------------------------
-// Plaene
-// ---------------------------------------------------------------------------
-
 export type NeuerPlan = {
 	title: string
 	shifts: readonly string[]
@@ -175,7 +156,6 @@ const zeileLesen = (id: string, db: Database): Schichtplan | null => {
 	return z ? zeileZuPlan(z) : null
 }
 
-/** Ein faelliger Plan ist fuer alle schon weg, auch vor dem Aufraeumlauf. */
 export const planLesen = (
 	id: string,
 	db: Database = openDb(),
@@ -271,7 +251,6 @@ export const aenderePlan = (
 export const loeschePlan = (id: string, db: Database = openDb()): boolean =>
 	db.prepare('DELETE FROM shift_lists WHERE id = ?').run(id).changes > 0
 
-/** Raeumt faellige Plaene samt Eintraegen ab. */
 export const loescheFaellige = (
 	db: Database = openDb(),
 	jetzt: Date = new Date(),
@@ -279,10 +258,6 @@ export const loescheFaellige = (
 	db
 		.prepare('DELETE FROM shift_lists WHERE delete_at <= ?')
 		.run(dbTimestamp(jetzt)).changes
-
-// ---------------------------------------------------------------------------
-// Eintraege
-// ---------------------------------------------------------------------------
 
 const EINTRAG_SPALTEN =
 	'id, list_id, name, shift, note, owner_sub, created_at, updated_at'
@@ -342,7 +317,6 @@ const pruefeEintrag = (
 	return { name, shift, note }
 }
 
-/** Eine volle Schicht nimmt niemanden mehr — ein admin darf trotzdem. */
 const pruefePlatz = (
 	plan: Schichtplan,
 	shift: string,
@@ -399,7 +373,6 @@ export const trageEin = (
 	return e
 }
 
-/** admin, die angemeldete Person selbst, oder der Browser mit dem Schluessel. */
 export const darfEintragAendern = (
 	eintrag: { owner_sub: string | null; edit_token: string },
 	handelnde: Handelnde,
@@ -473,10 +446,6 @@ export const loescheEintrag = (
 	return true
 }
 
-// ---------------------------------------------------------------------------
-// Fuer die Seite
-// ---------------------------------------------------------------------------
-
 export type Stand = {
 	list: Pick<
 		Schichtplan,
@@ -490,7 +459,6 @@ export type Stand = {
 		| 'revision'
 	>
 	entries: Omit<Schichteintrag, 'owner_sub' | 'list_id'>[]
-	/** Je Schicht, wie viele eingeteilt sind und ob sie voll ist. */
 	counts: { shift: string; count: number; full: boolean }[]
 }
 
@@ -526,6 +494,5 @@ export const standLesen = (
 	}
 }
 
-/** Absolute Adresse der Planseite. */
 export const planUrl = (siteUrl: string, id: string): string =>
 	`${siteUrl.replace(/\/$/, '')}/public/schichten/${id}`

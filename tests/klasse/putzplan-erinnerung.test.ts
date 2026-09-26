@@ -1,20 +1,3 @@
-/**
- * Der Erinnerungsdienst des Putzplans.
- *
- * Geprüft wird mit GESTELLTER UHR und nicht mit Warten: Ein Test, der auf
- * Sonntag 17 Uhr wartet, läuft einmal pro Woche. `vi.setSystemTime` stellt die
- * Uhr, die der Produktivcode über `new Date()` liest — der Weg durch den Code
- * ist derselbe wie im Betrieb.
- *
- * Die Datenquelle ist eine Attrappe. `naechsterPutztermin` und
- * `familienEmpfaenger` entstehen gerade in `src/klasse/putzplan.ts`; der
- * Erinnerungsdienst hängt am Vertrag, nicht an dessen Implementierung. Was hier
- * geprüft wird, ist auch mit der echten Quelle dasselbe: WANN verschickt wird,
- * WIE OFT und was passiert, wenn niemand erreichbar ist.
- *
- * DATENSCHUTZ: alle Namen und Adressen sind erfunden. Eine echte Einteilung
- * nennt die Familien einer bestimmten Klasse und gehört in kein Repository.
- */
 import type { Database } from 'better-sqlite3'
 import {
 	afterAll,
@@ -49,22 +32,11 @@ import { resetGrantsConfig } from '../../src/server/auth/grants.ts'
 import { createTestDb } from '../helpers/db.ts'
 import { TESTKLASSE } from '../setup.ts'
 
-/**
- * Die Testklasse mit hinterlegtem Kontaktnamen — der steht in der Mail
- * („sagt … Bescheid"), und `TESTKLASSE` hat keinen.
- */
 const KLASSE = defineKlassenConfig({
 	...TESTKLASSE,
 	contactName: 'Ludwig Muster',
 })
 
-/**
- * Ein Termin am Freitag, 21.08.2026, und der Sonntag davor um 17 Uhr Berliner
- * Zeit — im Sommer sind das 15 Uhr UTC.
- *
- * Die Wochentage stehen nicht nur im Namen der Konstanten: Ein falsch
- * abgeschriebenes Datum würde jede Aussage dieser Datei unbemerkt entwerten.
- */
 const FREITAG = new Date('2026-08-21T00:00:00.000Z')
 const SONNTAG_17_UHR = new Date('2026-08-16T15:00:00.000Z')
 const SONNTAG_16_59_UHR = new Date('2026-08-16T14:59:00.000Z')
@@ -81,17 +53,10 @@ test('die Testdaten liegen auf den Wochentagen, die sie behaupten', () => {
 
 let db: Database
 let sent: SendInput[]
-/** Adressen, bei denen der Versand scheitert. */
 let scheitert: Set<string>
 let termine: PutzTermin[]
 let familien: Record<string, FamilienEmpfaenger[]>
 
-/**
- * Die Attrappe ist ABSICHTLICH großzügig: Sie liefert einen Termin, solange
- * dessen Tag nicht vorbei ist — auch am Termintag selbst. Damit entscheidet
- * über „zu spät" der Produktivcode und nicht die Attrappe; wie eng die echte
- * `naechsterPutztermin` filtert, ist dann egal.
- */
 const EIN_TAG_MS = 24 * 60 * 60 * 1000
 
 const quelle: PutzplanQuelle = {
@@ -110,18 +75,11 @@ const transport = {
 	},
 }
 
-/** Einmal nachsehen, mit der Uhr auf `jetzt`. */
 const nachsehen = (jetzt: Date) => {
 	vi.setSystemTime(jetzt)
 	return sendeFaelligeErinnerung({ quelle, db, transport })
 }
 
-/**
- * Die Mails an die Familien — die Meldung an den Betrieb gehört nicht dazu und
- * die Quittung an den Betreiber ebenso wenig. Beide gehen an eine Adresse, die
- * in keiner Familiengruppe steht; ohne diesen Abzug zählte jede von ihnen als
- * eine Familie mehr.
- */
 const anFamilien = () =>
 	sent
 		.filter(
@@ -131,7 +89,6 @@ const anFamilien = () =>
 		)
 		.map((m) => m.to)
 
-/** Die Meldungen an den Betrieb. */
 const anBetrieb = () => sent.filter((m) => m.to === KLASSE.contactMail)
 
 beforeEach(() => {
@@ -140,9 +97,6 @@ beforeEach(() => {
 	db = createTestDb()
 	sent = []
 	scheitert = new Set()
-	// Die Quittung ist ein Schalter im Deployment. Sie hier ausdruecklich zu
-	// loeschen haelt die uebrigen Tests von ihr frei — sonst zaehlte eine
-	// stehengebliebene Umgebungsvariable in `anFamilien()` als Familie.
 	delete process.env.REMINDER_RECEIPT_TO
 	termine = [{ datum: FREITAG, gruppen: ['probst-vogel', 'sonnenschein'] }]
 	familien = {
@@ -152,9 +106,6 @@ beforeEach(() => {
 		],
 		sonnenschein: [{ email: 'mira@example.org', name: 'Mira Sonnenschein' }],
 	}
-	// Der Anzeigename kommt aus dem Label der Gruppe. Einmal MIT und einmal OHNE
-	// „Familie"-Präfix, weil beides vorkommt und in der Mail genau einmal
-	// „Familie" stehen soll.
 	upsertGroup({ key: 'probst-vogel', label: 'Familie Probst/Vogel' }, db)
 	upsertGroup({ key: 'sonnenschein', label: 'Sonnenschein' }, db)
 })
@@ -183,18 +134,12 @@ describe('Fälligkeit', () => {
 	})
 
 	test('im Winter dieselbe Wanduhrzeit, eine andere UTC-Stunde', () => {
-		// Freitag, 04.12.2026 — Winterzeit. 17 Uhr Berlin sind dann 16 Uhr UTC.
-		// Genau diese Zeile fällt um, wenn jemand mit einer festen
-		// Stundenverschiebung rechnet: Im Sommer stimmte sie trotzdem, ein halbes
-		// Jahr lang.
 		const winter = sendezeitFuer(new Date('2026-12-04T00:00:00.000Z'))
 		expect(winter.toISOString()).toBe('2026-11-29T16:00:00.000Z')
 		expect(winter.getUTCHours()).not.toBe(sendezeitFuer(FREITAG).getUTCHours())
 	})
 
 	test('ein vorgezogener Donnerstagstermin nimmt denselben Sonntag', () => {
-		// Kommt im Plan vor, wenn der Freitag ein Feiertag ist. „Der Sonntag
-		// davor" gilt weiter; „minus fünf Tage" wäre hier ein Montag.
 		expect(
 			sendezeitFuer(new Date('2026-10-01T00:00:00.000Z')).toISOString(),
 		).toBe('2026-09-27T15:00:00.000Z')
@@ -229,8 +174,6 @@ describe('Versand', () => {
 		expect(mail.subject).toBe(
 			'Putzen am Freitag, 21.08. — Probst/Vogel und Sonnenschein',
 		)
-		// ALLE eingeteilten Familien stehen in JEDER Mail: Wer liest, soll sehen,
-		// mit wem er zusammen dran ist.
 		expect(mail.text).toContain('    Familie Probst/Vogel')
 		expect(mail.text).toContain('    Familie Sonnenschein')
 		expect(mail.text).toContain('am kommenden Freitag, dem 21. August')
@@ -246,8 +189,6 @@ describe('Versand', () => {
 			terminDate: '2026-08-21',
 		})
 		expect(sent).toHaveLength(0)
-		// Und nichts gebucht: Ein Eintrag hier würde den echten Sendetermin
-		// stillschweigend verschlucken.
 		expect(erinnerungZuTermin('2026-08-21', db)).toBeUndefined()
 	})
 
@@ -268,8 +209,6 @@ describe('Versand', () => {
 
 	test('nach einem Neustart nicht noch einmal', async () => {
 		await nachsehen(SONNTAG_17_UHR)
-		// Ein Neustart ist genau das: neuer Prozess, kein Modulzustand, dieselbe
-		// Datenbank. Deshalb steht die Buchung dort und nicht in einer Variablen.
 		expect(await nachsehen(DIENSTAG_DANACH)).toEqual({
 			kind: 'already_sent',
 			terminDate: '2026-08-21',
@@ -278,15 +217,12 @@ describe('Versand', () => {
 	})
 
 	test('holt einen verpassten Sonntag nach', async () => {
-		// Der Prozess lag sonntagabends im Deploy. Dienstagmorgen kommt er hoch.
 		const ergebnis = await nachsehen(DIENSTAG_DANACH)
 		expect(ergebnis).toMatchObject({ kind: 'sent', recipients: 3 })
 		expect((sent[0] as SendInput).text).toContain('am kommenden Freitag')
 	})
 
 	test('am Termintag selbst nicht mehr', async () => {
-		// „Am kommenden Freitag" wäre am Freitag falsch, und eine Mail mit dem
-		// falschen Tag ist schlimmer als keine.
 		expect(await nachsehen(FREITAG_FRUEH)).toEqual({
 			kind: 'not_due',
 			terminDate: '2026-08-21',
@@ -313,8 +249,6 @@ describe('Familie ohne erreichbare Adresse', () => {
 			unreached: ['sonnenschein'],
 		})
 
-		// Die erreichbare Familie bekommt ihre Erinnerung trotzdem: Eine fehlende
-		// Adresse ist kein Grund, auch noch die anderen im Dunkeln zu lassen.
 		expect(anFamilien().sort()).toEqual([
 			'anke@example.org',
 			'jens@example.org',
@@ -326,7 +260,6 @@ describe('Familie ohne erreichbare Adresse', () => {
 		expect(text).toContain('Familie Sonnenschein')
 		expect(text).toContain('sonnenschein')
 		expect(text).toContain('keine Adresse hinterlegt')
-		// Die Meldung geht an den Betrieb und NICHT an den Verteiler.
 		expect((meldung[0] as SendInput).to).toBe(KLASSE.contactMail)
 	})
 
@@ -340,23 +273,11 @@ describe('Familie ohne erreichbare Adresse', () => {
 			recipients: 0,
 			unreached: ['probst-vogel', 'sonnenschein'],
 		})
-		// Kein stiller Versand an niemanden — eine Meldung.
 		expect(anFamilien()).toHaveLength(0)
 		expect(anBetrieb()).toHaveLength(1)
 	})
 
 	test('ist alles in Ordnung, geht KEINE Meldung an den Betrieb', async () => {
-		// „das will ich nicht andauernd bekommen. ich will nur fehler sehen."
-		// (Levin, 15.08.) — Der Erinnerungsdienst laeuft JEDEN Sonntag von
-		// selbst. Eine Meldung mit lauter Nullen kaeme woechentlich, und wer sie
-		// dreimal weggeklickt hat, klickt die vierte mit weg, in der etwas steht.
-		// Was jemanden aktiv erreicht, braucht einen Anlass.
-		//
-		// Hier ist die Lage sauber: alle drei Adressen erreichbar UND alle drei
-		// mit Konto und Leserolle in ZITADEL. Die Konten-Pruefung laeuft also und
-		// findet nichts — genau der Fall, in dem geschwiegen gehoert.
-		// Dieselben drei Adressen stehen auch im Adressbuch — sonst meldete die
-		// Pruefung zu Recht drei Konten OHNE Eintrag, und das waere ein Anlass.
 		for (const [id, email] of [
 			['anke', 'anke@example.org'],
 			['jens', 'jens@example.org'],
@@ -396,14 +317,10 @@ describe('Familie ohne erreichbare Adresse', () => {
 
 		expect(ergebnis).toMatchObject({ kind: 'sent', recipients: 3 })
 		expect(anFamilien()).toHaveLength(3)
-		// Und niemand bekommt einen Bericht darueber, dass nichts zu berichten war.
 		expect(anBetrieb()).toHaveLength(0)
 	})
 
 	test('eine gesperrte Adresse zählt nicht als erreicht', async () => {
-		// Harter Bounce oder Beschwerde: Die Adresse steht in der Sperrliste, die
-		// Mail käme dort nie an. Für die Familie ist das dasselbe wie „keine
-		// Adresse" — also dieselbe Meldung.
 		suppressAddress(
 			{ email: 'mira@example.org', reason: 'bounce', list_address: '*' },
 			db,
@@ -442,8 +359,6 @@ describe('Störungen beim Versand', () => {
 			kind: 'retry_later',
 			terminDate: '2026-08-21',
 		})
-		// Nichts gebucht: sonst hätte eine halbe Stunde SMTP-Ausfall die
-		// Erinnerung dieser Woche für immer verschluckt.
 		expect(erinnerungZuTermin('2026-08-21', db)).toBeUndefined()
 
 		scheitert = new Set()
@@ -470,16 +385,12 @@ describe('Wortlaut', () => {
 		expect(text).toContain(`${KLASSE.siteUrl}/docs/putzen/checkliste`)
 		expect(text).toContain(`${KLASSE.siteUrl}/docs/putzen/vorbereitung`)
 		expect(text).toContain(`${KLASSE.siteUrl}/docs/putzen/putzplan`)
-		// Name UND Adresse: Der Name allein ist kein Weg, die Adresse allein
-		// nennt niemanden.
 		expect(text).toContain(
 			'sagt Ludwig Muster Bescheid (verwaltung@example.org)',
 		)
 	})
 
 	test('ohne hinterlegten Namen bleibt die Adresse allein stehen', () => {
-		// `contactName` ist optional. Einen Namen zu erfinden hieße, in der einen
-		// Klasse den Namen der anderen zu nennen.
 		setKlassenConfig(TESTKLASSE)
 		const { text } = baueErinnerungstext(FREITAG, ['Sonnenschein'])
 		expect(text).toContain('sagt unter verwaltung@example.org Bescheid')
@@ -487,15 +398,9 @@ describe('Wortlaut', () => {
 	})
 
 	test('drei Familien werden mit Komma und „und" verbunden', () => {
-		// Seit ein Termin zu dritt besetzt sein darf, ist das kein Randfall mehr,
-		// sondern eine Besetzung, die wirklich vorkommt.
-		//
-		// Ein Schrägstrich gehört zu EINER Familie mit zwei Nachnamen und trennt
-		// keine zwei — wer hier mit „/" verbindet, macht aus dreien eine.
 		const { subject, text } = baueErinnerungstext(FREITAG, ['A', 'B/C', 'D'])
 		expect(subject).toContain('A, B/C und D')
 		expect(subject).not.toContain('A und B/C und D')
-		// Im Rumpf steht jede Familie auf einer eigenen Zeile, auch die dritte.
 		for (const name of ['A', 'B/C', 'D']) {
 			expect(text).toContain(`    Familie ${name}`)
 		}
@@ -506,23 +411,10 @@ describe('Wortlaut', () => {
 		for (const mail of sent) {
 			expect(mail.headers?.['Auto-Submitted']).toBe('auto-generated')
 		}
-		// Antworten („wir können nicht") müssen bei einem Menschen landen.
 		expect((sent[0] as SendInput).replyTo).toBe(KLASSE.contactMail)
 	})
 })
 
-/**
- * Die Quittung: „habe gerade soundso erinnert".
- *
- * Sie ist das Gegenteil der Meldung — die kommt, wenn etwas schiefging, die
- * Quittung kommt, WEIL nichts schiefging. Der Betreiber hat sie ausdrücklich
- * bestellt, um zu sehen, dass der Dienst überhaupt läuft, und ausdrücklich
- * vorläufig. Deshalb hängt sie an `REMINDER_RECEIPT_TO`: Wer sie loswerden
- * will, leert eine Zeile im Deployment und fasst keinen Code an.
- *
- * Diese Tests halten die Grenze fest, an der aus einer bestellten Nachricht
- * Lärm würde: NUR wenn wirklich verschickt wurde.
- */
 describe('Quittung an den Betreiber', () => {
 	const QUITTUNG_AN = 'betreiber@example.org'
 	const quittungen = () => sent.filter((m) => m.to === QUITTUNG_AN)
@@ -534,16 +426,12 @@ describe('Quittung an den Betreiber', () => {
 		expect(ergebnis.kind).toBe('sent')
 		expect(quittungen()).toHaveLength(1)
 		const quittung = quittungen()[0] as SendInput
-		// Die Klasse gehoert in den BETREFF: Dieselbe Adresse bekommt am selben
-		// Sonntag die Quittungen beider Klassen.
 		expect(quittung.subject).toContain(KLASSE.label)
 		expect(quittung.subject).toContain('Probst/Vogel und Sonnenschein')
 		expect(quittung.subject).toContain('21.08.')
 		expect(quittung.text).toContain('Zugestellt: 3 Adresse(n)')
-		// Keine Abwesenheitsnotiz zurueck an die Kontaktadresse der Klasse.
 		expect(quittung.headers?.['Auto-Submitted']).toBe('auto-generated')
 
-		// Und die Familien haben ihre Mail trotzdem und unverändert bekommen.
 		expect(anFamilien().sort()).toEqual([
 			'anke@example.org',
 			'jens@example.org',
@@ -552,15 +440,12 @@ describe('Quittung an den Betreiber', () => {
 	})
 
 	test('ohne gesetzte Adresse gibt es keine', async () => {
-		// Der Weg, auf dem der Betreiber sie wieder loswird.
 		delete process.env.REMINDER_RECEIPT_TO
 		await nachsehen(SONNTAG_17_UHR)
 		expect(quittungen()).toHaveLength(0)
 	})
 
 	test('eine leere Adresse zaehlt wie keine', async () => {
-		// So sieht eine geleerte Zeile im Deployment aus — nicht als entfernter
-		// Schluessel, sondern als leerer Wert.
 		process.env.REMINDER_RECEIPT_TO = '   '
 		await nachsehen(SONNTAG_17_UHR)
 		expect(quittungen()).toHaveLength(0)
@@ -574,8 +459,6 @@ describe('Quittung an den Betreiber', () => {
 	})
 
 	test('ein zweiter Tick quittiert nicht noch einmal', async () => {
-		// Sonst kaeme alle paar Minuten eine — genau der Laerm, den die Quittung
-		// nicht sein soll.
 		process.env.REMINDER_RECEIPT_TO = QUITTUNG_AN
 		await nachsehen(SONNTAG_17_UHR)
 		sent = []
@@ -585,8 +468,6 @@ describe('Quittung an den Betreiber', () => {
 	})
 
 	test('eine gescheiterte Quittung macht den Versand nicht kaputt', async () => {
-		// Sie ist eine Nachricht ÜBER den Versand. Die Familien haben ihre Mail
-		// dann schon — `sent` bleibt wahr, und der Fehlschlag steht im Protokoll.
 		process.env.REMINDER_RECEIPT_TO = QUITTUNG_AN
 		scheitert.add(QUITTUNG_AN)
 		const protokoll = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -619,19 +500,6 @@ describe('Quittung an den Betreiber', () => {
 	})
 })
 
-/**
- * Der Bericht der Konten-Prüfung erreicht nur dann jemanden, wenn er etwas zu
- * melden hat.
- *
- * Diese Erinnerung läuft JEDEN Sonntag. Ginge der Bericht auch bei sauberer
- * Lage raus — und sie ist heute in beiden Klassen sauber —, wäre das
- * wöchentlich eine Mail, in der nichts steht. Solche Mails lernt man
- * wegzuklicken, und danach klickt man die weg, in der etwas steht. Der Wortlaut
- * des Betreibers: „das will ich nicht andauernd bekommen. ich will nur fehler
- * sehen."
- *
- * Am Rückgabewert hängt der Bericht weiterhin immer — das liest nur, wer fragt.
- */
 describe('Konten-Prüfung: Meldung nur bei Befund', () => {
 	const original = { ...process.env }
 
@@ -662,7 +530,6 @@ describe('Konten-Prüfung: Meldung nur bei Befund', () => {
 		)
 	}
 
-	/** Dieselben drei Adressen wie die Familien — im Adressbuch. */
 	const adressbuchFuellen = (): void => {
 		for (const [id, email] of [
 			['anke', 'anke@example.org'],
@@ -692,8 +559,6 @@ describe('Konten-Prüfung: Meldung nur bei Befund', () => {
 		expect(ergebnis.kind).toBe('sent')
 		expect(anFamilien()).toHaveLength(3)
 		expect(anBetrieb()).toHaveLength(0)
-		// Der Bericht ist trotzdem da — am Rückgabewert, wo ihn nur liest, wer
-		// fragt. Das ist der ganze Unterschied.
 		if (ergebnis.kind !== 'sent') throw new Error('nicht verschickt')
 		expect(ergebnis.account_check?.checked).toBe(3)
 		expect(ergebnis.account_check?.cut).toEqual([])
@@ -701,7 +566,6 @@ describe('Konten-Prüfung: Meldung nur bei Befund', () => {
 
 	test('eine Abweichung: dann geht der Bericht raus wie bisher', async () => {
 		adressbuchFuellen()
-		// Mira fehlt der Grant — in `report` wird sie zugestellt und gemeldet.
 		zitadelAntwortet([
 			{ userId: 'u-anke', email: 'anke@example.org' },
 			{ userId: 'u-jens', email: 'jens@example.org' },
@@ -714,15 +578,11 @@ describe('Konten-Prüfung: Meldung nur bei Befund', () => {
 		expect(meldung).toHaveLength(1)
 		const text = (meldung[0] as SendInput).text as string
 		expect(text).toContain('Konten-Pruefung')
-		// Obfuskiert: Diese Meldung läuft über ein Postfach.
 		expect(text).not.toContain('mira@example.org')
 		expect(text).toContain('***')
 	})
 
 	test('eine blinde Prüfung ist kein Befund — ZITADEL weg heisst nicht "melden"', async () => {
-		// In `report` wird dann normal verschickt, und die Störung gehört ins
-		// Protokoll. Eine wöchentliche Mail „die Prüfung lief nicht" wäre genau
-		// die, die man wegzuklicken lernt.
 		adressbuchFuellen()
 		process.env.ZITADEL_ISSUER = 'https://id.example.org'
 		process.env.ZITADEL_ORG_ID = 'org-1'

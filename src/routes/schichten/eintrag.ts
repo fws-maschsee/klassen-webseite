@@ -9,13 +9,6 @@ import { besucherLesen, handelnde, nameFuer } from '../besucher.ts'
 
 export const prerender = false
 
-/**
- * `POST /public/schichten/<id>/eintrag` — Schicht übernehmen, ändern, abgeben.
- *
- * Ein Endpunkt fuer alle drei ueber `aktion`, weil ein HTML-Formular nur POST
- * kann und die Seite auch ohne JavaScript funktionieren soll: dann kommt eine
- * Umleitung zurueck, mit `?fehler=` im schlimmsten Fall.
- */
 export const POST: APIRoute = async ({ params, request }) => {
 	const listId = params.id ?? ''
 	const form = await request.formData()
@@ -57,9 +50,6 @@ export const POST: APIRoute = async ({ params, request }) => {
 					},
 					wer,
 				)
-				// Der Bearbeitungsschluessel geht genau einmal an den Browser, der
-				// eingetragen hat. Ohne JavaScript geht er verloren — dann kann nur
-				// noch ein admin den Eintrag aendern.
 				return willJson ? antwort({ ok: true, entry: e }) : zurueck()
 			}
 			case 'ändern': {

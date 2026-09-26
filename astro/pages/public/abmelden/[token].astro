@@ -11,26 +11,6 @@ import {
 
 export const prerender = false
 
-/**
- * Abmelden — die einzige Sache, die hier ohne Anmeldung geht.
- *
- * Das ist die Gegenstelle zum `List-Unsubscribe`-Header. Jedes Mailprogramm
- * bietet dafür einen Knopf an, und wer ihn drückt, will raus — nicht erst ein
- * Konto anlegen. Alles ANDERE (Abo wieder an, Umgang mit der eigenen Post)
- * liegt hinter dem Login unter `/einstellungen`; ein zweiter Weg dorthin wäre
- * ein zweiter Anmeldemechanismus, nur per Mail statt per Konto.
- *
- * Der Schlüssel steht deshalb ausschließlich im Header und niemals im Rumpf
- * einer Rundmail: Im Rumpf ginge er beim ersten Zitat einer Antwort an alle
- * Empfänger, und wer ihn liest, könnte diese eine Person abmelden.
- *
- * ABGEMELDET WIRD ERST AUF KNOPFDRUCK, nicht beim Aufrufen. Virenscanner und
- * Vorschaufunktionen rufen Links in Mails von sich aus ab; eine Abmeldung durch
- * ein GET käme von einem Programm und nicht von einem Menschen. (Genau deshalb
- * gibt es auch kein `List-Unsubscribe-Post` — ein Fehlklick würde sonst ohne
- * Rückfrage wirken.)
- */
-
 const { label: klasse, contactMail, contactName, siteUrl } = klassenConfig()
 const db = openDb()
 
@@ -45,9 +25,6 @@ if (adresse && liste && Astro.request.method === 'POST') {
 	setzeEinstellung(
 		liste.address,
 		adresse,
-		// Die Versand-Einstellung bleibt, wie sie war: Wer abgemeldet ist, darf
-		// weiter an den Verteiler schreiben — und meldet er sich später wieder an,
-		// steht seine alte Wahl noch da.
 		{ ...einstellungFuer(liste.address, adresse, db), subscribed: false },
 		db,
 	)

@@ -5,35 +5,12 @@ import type { ListMessageRow, MailingListRow } from '../db/types.ts'
 import { listEnvelopeFrom, mailFromName } from '../email/config.ts'
 import type { EmailTransport, SendInput } from '../email/transport.ts'
 
-/**
- * Die Quittung an die Absenderin: „Deine Rundmail ist durch."
- *
- * Wer sie bekommt, hat für diese Liste `bestaetigung` eingestellt und bekommt
- * dafür die eigene Mail NICHT mehr zurück. Das ist der Tausch: Statt die eigene
- * Nachricht ein zweites Mal im Posteingang zu haben, steht dort eine Zeile, die
- * die Frage beantwortet, um die es wirklich geht — hat es geklappt?
- *
- * Deshalb kommt sie ERST, wenn die Warteschlange die Liste durch hat, und nicht
- * bei der Annahme. Eine Eingangsbestätigung sagt nur, dass die Berechtigung
- * stimmte; ob dreißig Familien die Mail wirklich haben, steht dann noch nicht
- * fest. Der Preis sind ein paar Sekunden bis Minuten Wartezeit.
- *
- * Sie nennt Zahlen und im Fehlerfall auch die betroffenen Adressen. Das ist
- * kein Datenschutzproblem, sondern der Zweck: Die Absenderin ist berechtigt, an
- * diese Liste zu schreiben, sie kennt die Empfänger — und eine gescheiterte
- * Zustellung ist nur dann behebbar, wenn jemand weiß, WEN es getroffen hat.
- */
-
 export type QuittungsZahlen = {
-	/** Zugestellt. */
 	sent: number
-	/** Endgültig gescheitert. */
 	error: number
-	/** Adressen der gescheiterten Zustellungen, für die Fehlersuche. */
 	gescheiterteAdressen: readonly string[]
 }
 
-/** Betreff und Rumpf der Quittung. Rein, damit die Formulierung prüfbar ist. */
 export const buildQuittung = (
 	message: ListMessageRow,
 	list: MailingListRow,
@@ -57,8 +34,6 @@ export const buildQuittung = (
 				: `${zahlen.error} Zustellungen sind gescheitert:`,
 			...zahlen.gescheiterteAdressen.map((adresse) => `  - ${adresse}`),
 			'',
-			// Nicht „bitte melde dich": Die Absenderin kann daran nichts machen.
-			// Wer es kann, steht in der KlassenConfig.
 			`Das liegt fast immer an der Adresse selbst (Tippfehler, Postfach voll, Konto aufgelöst) und nicht an deiner Mail. Wenn es sich wiederholt, sag ${klassenConfig().contactName ?? klassenConfig().contactMail} Bescheid.`,
 		)
 	}
@@ -77,15 +52,6 @@ export const buildQuittung = (
 	}
 }
 
-/**
- * Baut die versendbare Quittung. `To` ist die Absenderin, `From` die
- * Absenderadresse der Klasse — bewusst NICHT die Liste: Die Quittung geht an
- * genau einen Menschen und hat mit dem Verteiler nichts zu tun.
- *
- * `Auto-Submitted: auto-replied` gehört dazu (RFC 3834). Ohne den Header
- * beantwortet eine Abwesenheitsnotiz die Quittung, die Quittung liegt wieder im
- * Postfach, und im schlechtesten Fall dreht sich das im Kreis.
- */
 export const buildQuittungsMail = (
 	message: ListMessageRow,
 	list: MailingListRow,
@@ -96,9 +62,6 @@ export const buildQuittungsMail = (
 	return {
 		from: `"${mailFromName()}" <${envelopeFrom}>`,
 		to: message.from_email,
-		// Antworten auf eine Quittung gehen an die Kontaktadresse der Klasse und
-		// nicht an `noreply@` — dort liest niemand, und „Bei welcher Adresse ist
-		// es gescheitert?" ist eine Frage, auf die jemand antworten koennen muss.
 		replyTo: klassenConfig().contactMail,
 		sender: envelopeFrom,
 		envelope: { from: envelopeFrom, to: message.from_email },
@@ -114,7 +77,6 @@ export const buildQuittungsMail = (
 	}
 }
 
-/** Zahlen und Adressen aus der Warteschlange dieser Nachricht. */
 export const quittungsZahlen = (
 	messageId: number,
 	db: Database,
@@ -128,25 +90,11 @@ export const quittungsZahlen = (
 	}
 }
 
-/**
- * Ist die Rundmail durch? Solange auch nur eine Zeile `queued` oder `sending`
- * ist, wäre jede Zahl vorläufig — und eine Quittung mit vorläufigen Zahlen ist
- * schlimmer als keine.
- */
 export const istFertig = (messageId: number, db: Database): boolean =>
 	listOutboundForMessage(messageId, db).every(
 		(z) => z.status === 'sent' || z.status === 'error',
 	)
 
-/**
- * Sichert sich das Recht, die Quittung zu verschicken — genau einmal.
- *
- * Der `UPDATE ... WHERE receipt_sent_at IS NULL` ist die ganze Absicherung: Wer
- * damit eine Zeile ändert, hat den Zuschlag, alle anderen bekommen 0. Ohne das
- * schickte jeder Arbeiter, der die letzte Zustellung abschließt, seine eigene
- * Quittung — und nach einem Neustart mitten in der Warteschlange käme sie noch
- * einmal.
- */
 export const beanspruchtQuittung = (messageId: number, db: Database): boolean =>
 	db
 		.prepare(
@@ -156,15 +104,6 @@ export const beanspruchtQuittung = (messageId: number, db: Database): boolean =>
 		)
 		.run(messageId).changes === 1
 
-/**
- * Verschickt die Quittung, wenn sie fällig ist. Rückgabe sagt, ob eine
- * rausging — für Tests und für das Protokoll.
- *
- * Ein Fehler beim Verschicken wird geschluckt und NICHT nach oben gereicht: Die
- * Rundmail selbst ist zu diesem Zeitpunkt zugestellt. Eine geplatzte Quittung
- * darf die Zustellung nicht nachträglich als gescheitert erscheinen lassen und
- * schon gar nicht einen erneuten Versuch der ganzen Liste auslösen.
- */
 export const sendeQuittungFallsFaellig = async (
 	message: ListMessageRow,
 	list: MailingListRow,

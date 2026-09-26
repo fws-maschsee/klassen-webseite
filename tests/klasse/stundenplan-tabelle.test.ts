@@ -9,14 +9,6 @@ import {
 	remarkStundenplanTabelle,
 } from '../../src/remark/stundenplanTabelle.ts'
 
-/**
- * Geprueft wird am ERGEBNIS — an dem HTML, das die Seite ausliefert — und nicht
- * am Baum dazwischen. Der Grund ist derselbe wie beim Styling: Ein Plugin, das
- * saubere `data.hProperties` setzt, die `mdast-util-to-hast` dann doch nicht
- * uebernimmt, laesst jeden Build gruen und die Seite unformatiert aussehen.
- * Genau diese Luecke schliesst der Weg durch die echte unified-Kette.
- */
-
 const html = async (markdown: string): Promise<string> =>
 	String(
 		await unified()
@@ -43,9 +35,6 @@ describe('Erkennung', () => {
 	})
 
 	test('jede andere Tabelle bleibt unangetastet', async () => {
-		// Die Erkennung haengt an der Kopfzeile. Waere sie loser — etwa „irgendeine
-		// Zelle heisst wie ein Fach" —, faerbte sie die Putzplan-Tabelle mit ein,
-		// sobald dort jemand „Sport" schreibt.
 		const andere = `
 | Familie | Datum | Anmerkungen |
 | --- | --- | --- |
@@ -73,14 +62,10 @@ describe('Bereiche', () => {
 		expect(ergebnis).toContain('class="fach fach-sprache">Englisch')
 		expect(ergebnis).toContain('class="fach fach-kunst">Musik')
 		expect(ergebnis).toContain('class="fach fach-bewegung">Sport')
-		// Klassenlehrerstunde gehoert zum Hauptunterricht — derselbe Ton, damit der
-		// Block am Morgen als Block zu sehen ist.
 		expect(ergebnis).toContain('class="fach fach-haupt">Klassenlehrerstunde')
 	})
 
 	test('ein Fach ohne Bereich bleibt ungefaerbt, statt den Aufbau anzuhalten', async () => {
-		// Religion steht bewusst in keinem Bereich: ein Fach allein ist keiner, und
-		// ein fuenfter Ton waere einer zu viel.
 		expect(await html(PLAN)).toContain('class="fach">Religion')
 		expect(BEREICH_JE_FACH.Religion).toBeUndefined()
 	})
@@ -90,9 +75,6 @@ describe('Bereiche', () => {
 	})
 
 	test('kein Regenbogen: hoechstens vier Toene', async () => {
-		// Die Grenze ist der Punkt der ganzen Uebung. Ein Ton je Fach waere ein
-		// Kinderzimmer; wer einen fuenften Bereich einfuehren will, soll hier
-		// vorbeikommen und es begruenden.
 		const bereiche = new Set(Object.values(BEREICH_JE_FACH))
 		expect(bereiche.size).toBeLessThanOrEqual(4)
 		expect([...bereiche].sort()).toEqual([
@@ -113,8 +95,6 @@ describe('Raeume in der Zelle', () => {
 `
 
 	test('der Raum wird ein eigenes, leiseres Element', async () => {
-		// CSS kann keinen Teil eines Textknotens ansprechen. Damit der Raum leiser
-		// gesetzt werden kann, muss er hier ein eigenes Element werden.
 		const ergebnis = await html(MIT_RAUM)
 		expect(ergebnis).toContain(
 			'Englisch<span class="stundenplan-raum">Klassenzimmer 5A</span>',
@@ -122,17 +102,12 @@ describe('Raeume in der Zelle', () => {
 	})
 
 	test('der Ton richtet sich nach dem Fach, nicht nach der ganzen Zelle', async () => {
-		// Ohne das Abtrennen des Raums fände die Zuordnung „Englisch (Klassenzimmer
-		// 5A)" in keiner Bereichsliste — und KEINE Zelle eines Plans mit Raeumen
-		// waere eingefaerbt.
 		const ergebnis = await html(MIT_RAUM)
 		expect(ergebnis).toContain('class="fach fach-sprache"')
 		expect(ergebnis).toContain('class="fach fach-bewegung"')
 	})
 
 	test('eine Klammer mit Doppelpunkten und Punkten bleibt beisammen', async () => {
-		// Die Religionsgruppen der 5A stehen so in der Zelle. Der Raumteil ist hier
-		// laenger als der Fachname — das ist erlaubt.
 		const ergebnis = await html(MIT_RAUM)
 		expect(ergebnis).toContain(
 			'Religion<span class="stundenplan-raum">cg: Klassenz. 5A · ev: Klassenz. 5B</span>',
@@ -151,12 +126,6 @@ describe('Pausen', () => {
 		const ergebnis = await html(PLAN)
 		expect(ergebnis).toContain('colspan="6"')
 		expect(ergebnis).toContain('class="stundenplan-band"')
-		// Und die fuenf ueberdeckten Zellen sind ausgezeichnet, damit das
-		// Stylesheet sie ausblenden kann. Sie zu loeschen bringt nichts:
-		// `mdast-util-to-hast` fuellt jede Zeile wieder auf die Spaltenzahl der
-		// Kopfzeile auf und erzeugt sie ohne Klasse neu — dann schoebe das Band sie
-		// vor sich her und die Zeile waere breiter als die Tabelle. Genau daran ist
-		// die erste Fassung dieses Plugins gescheitert.
 		const pausenzeile = /<tr class="stundenplan-pause">(.*?)<\/tr>/s.exec(
 			ergebnis,
 		)
@@ -187,11 +156,6 @@ describe('Hinweiszeilen', () => {
 `
 
 	test('eine Zeile ohne Uhrzeit in der Zeitspalte ist ein Hinweis', async () => {
-		// Erkannt an der Zeitspalte und nicht an einer Liste erlaubter
-		// Beschriftungen: Die Spalte heisst „Zeit", also steht in einer
-		// Unterrichtszeile eine Zeit darin. Eine Pflegeliste („Unterrichtsschluss",
-		// „Betreuung danach", …) waere eine zweite Stelle, an der die naechste
-		// Klasse etwas nachtragen muesste.
 		const ergebnis = await html(MIT_HINWEIS)
 		expect(ergebnis).toContain('<tr class="stundenplan-hinweis">')
 		expect(ergebnis).toContain(
@@ -201,8 +165,6 @@ describe('Hinweiszeilen', () => {
 	})
 
 	test('eine Hinweiszeile bekommt keinen Fachton', async () => {
-		// Sonst waere eine Betreuungsangabe „Musik" ploetzlich rosé eingefaerbt —
-		// die Farbe haette dort nichts einzuordnen.
 		const mitFachwort = `
 | Zeit | Montag | Dienstag |
 | --- | --- | --- |
@@ -223,17 +185,6 @@ describe('Hinweiszeilen', () => {
 
 describe('Rahmen', () => {
 	test('die Tabelle steckt in einem Rollbereich, der `not-prose` traegt', async () => {
-		// Zwei Zusicherungen in einer Zeile Markup, und beide sind gemessen:
-		//
-		// Ohne den Rahmen zieht shipyards Regel fuer Markdown-Tabellen
-		// (`display: block; overflow-x: auto`) die Tabelle auf ihre Inhaltsbreite
-		// zusammen — sechs Spalten am linken Rand statt ueber die volle Breite.
-		//
-		// Ohne `not-prose` gewinnt `@tailwindcss/typography`: seine Regeln liegen
-		// in Tailwind 4 in der Cascade Layer `utilities` und schlagen damit JEDE
-		// Regel des Schul-Stylesheets in `components`, ganz gleich wie spezifisch
-		// sie ist. Im Browser gemessen sah das so aus: `text-align: start` statt
-		// mittig, Innenrand 8px von Typography statt der eigenen 12px.
 		const ergebnis = await html(PLAN)
 		expect(ergebnis).toContain(
 			'<div class="stundenplan-rahmen not-prose"><table class="stundenplan">',
@@ -250,10 +201,6 @@ describe('Rahmen', () => {
 
 describe('Schwarz-Weiss-Ausdruck', () => {
 	test('in jeder Zelle steht das Fach ausgeschrieben', async () => {
-		// Die harte Bedingung des ganzen Entwurfs: Die meisten Eltern drucken auf
-		// einem Laserdrucker. Die Farbe darf einordnen, aber niemals die einzige
-		// Information sein. Dieser Test faellt, sobald jemand ein Fach durch ein
-		// Kuerzel oder einen farbigen Punkt ersetzt.
 		const ergebnis = await html(PLAN)
 		for (const fach of Object.keys(BEREICH_JE_FACH)) {
 			if (!PLAN.includes(fach)) continue

@@ -1,19 +1,3 @@
-/**
- * Die Anbieterkennzeichnung im Footer.
- *
- * Diese Seiten werden privat betrieben und nicht von der Schule, deren Klassen
- * sie tragen. Wer sie verantwortet, muss auf jeder Seite erkennbar sein — das
- * ist keine Gestaltungsfrage, sondern der Grund, warum der Wert überhaupt
- * gesetzt wird.
- *
- * Deshalb wird er hier bewacht: Ohne `footer.copyright` schreibt shipyard nur
- * „© <Jahr>" ohne jeden Namen, und eine Seite ohne Anbieterangabe fällt niemandem
- * auf, weil sie normal aussieht. Genau die Sorte Fehler, die kein Build meldet.
- *
- * Der zweite Test hält die Zeichenkette selbst fest. Er ist absichtlich stumpf:
- * Er soll rot werden, wenn jemand die Anschrift „nebenbei" ändert, damit die
- * Änderung eine Entscheidung ist und kein Tippfehler.
- */
 import { describe, expect, test, vi } from 'vitest'
 import { TESTKLASSE } from '../setup.ts'
 
@@ -50,9 +34,6 @@ describe('Anbieterkennzeichnung', () => {
 	})
 
 	test('trägt nicht die Klasse und nicht die Schule', () => {
-		// Der Vorgänger setzte hier `© <Klassenname>, <Jahr>`. Das verschleierte,
-		// wer die Seite betreibt — die Klasse ist keine Rechtsperson und die
-		// Schule ist es nicht.
 		const zeile = shipyardOptionen().footer?.copyright ?? ''
 		expect(zeile).not.toContain(TESTKLASSE.label)
 		expect(zeile).not.toMatch(/waldorfschule/i)

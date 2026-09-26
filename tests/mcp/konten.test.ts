@@ -16,23 +16,6 @@ import {
 import { runMigrations } from '../../src/migrations.ts'
 import { resetGrantsConfig } from '../../src/server/auth/grants.ts'
 
-/**
- * Die beiden Konten-Werkzeuge ueber MCP.
- *
- * `reconcile_accounts` MELDET, `delete_account` LOESCHT — und dass beides
- * getrennt ist, ist der Kern: Eine Stoerung bei ZITADEL sieht aus wie „alle
- * ausgetreten". Ein Werkzeug, das den Befund gleich vollstreckte, loeschte dann
- * den Verteiler. Hier wird geprueft, dass der Abgleich bei einer Stoerung einen
- * FEHLER meldet und nichts anfasst, und dass das Loeschen genau eine benannte
- * Person trifft.
- *
- * Die Kaskade selbst ist in `tests/konten/kaskade.test.ts` geprueft, die Regel
- * des Abgleichs in `tests/konten/abgleich.test.ts`. Hier steht nur, was am
- * Werkzeug haengt: Rollen und die Antwort an den Aufrufer.
- *
- * Alle Namen und Adressen sind frei erfunden.
- */
-
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-konten-'))
 const dbFile = path.join(tmpDir, 'test.db')
 
@@ -143,8 +126,6 @@ describe('reconcile_accounts', () => {
 			accounts_without_entry: { user_id: string }[]
 		}
 
-		// Die Grossmutter steht im Adressbuch und hat kein Konto; Emil hat ein
-		// Konto mit Rolle und steht nicht im Adressbuch.
 		expect(bericht.entries_without_account.map((e) => e.mitglied_id)).toEqual([
 			'oma-beispiel',
 		])
@@ -152,8 +133,6 @@ describe('reconcile_accounts', () => {
 			'u-emil',
 		])
 
-		// Und nach dem Bericht steht das Adressbuch unveraendert da. Melden heisst
-		// melden.
 		const db = new Database(dbFile)
 		expect(db.prepare('SELECT COUNT(*) AS n FROM mitglieder').get()).toEqual({
 			n: 2,
@@ -176,8 +155,6 @@ describe('reconcile_accounts', () => {
 
 		expect((ergebnis as { isError?: boolean }).isError).toBe(true)
 		expect(textOf(ergebnis)).toContain('Abgleich nicht moeglich')
-		// Insbesondere steht in der Antwort KEINE Liste, die alle Eintraege als
-		// kontolos ausweist — sonst raeumte der naechste Leser sie weg.
 		expect(textOf(ergebnis)).not.toContain('oma-beispiel')
 		await client.close()
 	})

@@ -9,20 +9,6 @@ import { besucherLesen, handelnde, nameFuer } from './gemeinsam.ts'
 
 export const prerender = false
 
-/**
- * `POST /public/mitbringen/<id>/eintrag` — eintragen, aendern, loeschen.
- *
- * Ein Endpunkt fuer alle drei, unterschieden ueber `aktion`
- * (`eintragen` | `ändern` | `löschen`), weil ein HTML-Formular nur POST kann
- * und die Seite auch ohne JavaScript funktionieren soll. Mit JavaScript schickt
- * die Seite dasselbe Formular per `fetch` und bekommt JSON; ohne bekommt sie
- * eine Umleitung zurueck auf die Liste, mit `?fehler=` im schlimmsten Fall.
- *
- * Wer aendern darf, entscheidet `darfEintragÄndern` in der Datenbankschicht —
- * hier wird nur eingesammelt, wer da ist: Sitzung (falls vorhanden) und der
- * Bearbeitungsschluessel aus dem Formular, den der Browser beim Eintragen
- * bekommen und behalten hat.
- */
 export const POST: APIRoute = async ({ params, request }) => {
 	const listId = params.id ?? ''
 	const form = await request.formData()
@@ -58,7 +44,6 @@ export const POST: APIRoute = async ({ params, request }) => {
 				const e = trageEin(
 					listId,
 					{
-						// Angemeldet: der Kontoname, nicht das Formular (nameFuer).
 						name: nameFuer(besucher, feld('name'), undefined) ?? '',
 						item: feld('item') ?? '',
 						category: feld('category'),
@@ -66,10 +51,6 @@ export const POST: APIRoute = async ({ params, request }) => {
 					},
 					wer,
 				)
-				// Der Bearbeitungsschluessel geht GENAU EINMAL an den Browser, der
-				// eingetragen hat. Ohne JavaScript geht er verloren — dann kann nur
-				// noch ein admin den Eintrag aendern; das ist der Preis des
-				// Formulars ohne Skript, nicht ein Fehler.
 				return willJson ? antwort({ ok: true, entry: e }) : zurueck()
 			}
 			case 'ändern': {

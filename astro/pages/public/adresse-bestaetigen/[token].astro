@@ -9,27 +9,6 @@ import { openDb } from '../../../../src/lib/db/index.ts'
 
 export const prerender = false
 
-/**
- * „Ja, die Post soll an diese Adresse gehen."
- *
- * OHNE ANMELDUNG erreichbar, deshalb unter `/public/`. Der Klick passiert im
- * Mailprogramm, und das oeffnet Links gern in einem anderen Browser als dem, in
- * dem die Sitzung liegt — auf dem Telefon fast immer. Eine Bestaetigungsseite
- * hinter dem Login waere eine, die man erst nach einer Anmeldung sieht, die man
- * gerade nicht hat.
- *
- * Der Schluessel im Link IST der Nachweis: Wer die Mail an der neuen Adresse
- * lesen kann, gehoert zu ihr. Mehr behauptet diese Seite nicht, und mehr
- * braucht es auch nicht — die Aenderung wurde ja hinter dem Login angestossen.
- *
- * BESTAETIGT WIRD ERST AUF KNOPFDRUCK, nicht beim Aufrufen — dieselbe
- * Ueberlegung wie bei `/public/abmelden/[token]`: Virenscanner und
- * Vorschaufunktionen rufen Links in Mails von sich aus ab. Bei einem Schluessel,
- * der nur EINMAL gilt, waere das besonders aergerlich: Das Programm haette ihn
- * verbraucht, und der Mensch bekaeme „schon eingeloest" zu sehen, ohne je
- * geklickt zu haben.
- */
-
 const { label: klasse, contactMail, contactName, siteUrl } = klassenConfig()
 const db = openDb()
 
@@ -46,7 +25,6 @@ if (Astro.request.method === 'POST') {
 	else fehler = ergebnis.grund
 }
 
-/** Ohne POST: Was waere zu tun? Dieselben Faelle, nur noch nicht eingelöst. */
 const offen =
 	anforderung !== null &&
 	!anforderung.confirmed_at &&

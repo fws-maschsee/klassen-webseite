@@ -18,8 +18,6 @@ import {
 } from '../../src/lib/db/members.ts'
 import { createTestDb } from '../helpers/db.ts'
 
-/** Alle Namen und Adressen in diesen Tests sind frei erfunden. */
-
 let db: Database
 
 beforeEach(() => {
@@ -29,18 +27,6 @@ beforeEach(() => {
 
 describe('Schema des Adressbuchs', () => {
 	test('kennt nur Name, E-Mail, Zeitstempel und den Bezug zum Konto', () => {
-		// Die frueheren Spalten `salutation`, `phone`, `notes` und
-		// `zitadel_user_id` sind alle wieder gefallen. Dass hier eine
-		// ABGESCHLOSSENE Liste steht und kein `toContain`, ist der Punkt: eine
-		// neue Spalte im Adressbuch soll auffallen und begruendet werden muessen.
-		//
-		// `user_sub` ist am 15.08. dazugekommen und ist genau so eine begruendete
-		// Ausnahme: Sie sagt, welches ANMELDEKONTO diesen Eintrag verwaltet — und
-		// nichts darueber, wer Post bekommt. Sie traegt keine Zugehoerigkeit, wird
-		// nur fuer die Person gesetzt, die gerade selbst angemeldet ist, und ist
-		// die Kette, an der die Loesch-Kaskade haengt. Die ausfuehrliche
-		// Abgrenzung zur entfernten Spiegelung steht in
-		// `tests/auth/getrennte-datenschichten.test.ts`.
 		const columns = db
 			.prepare<[], { name: string }>('PRAGMA table_info(mitglieder)')
 			.all()
@@ -57,10 +43,6 @@ describe('Schema des Adressbuchs', () => {
 	})
 
 	test('listMitglieder gibt genau die Spalten des Adressbuchs heraus', () => {
-		// Die Abfragen zaehlen ihre Spalten auf, statt `SELECT *` zu nehmen. Diese
-		// Zusicherung ist das Gegenstueck dazu: eine kuenftige Spalte erscheint
-		// nicht von selbst in der Oberflaeche und in MCP-Antworten. So ist die
-		// Spalte `zitadel_user_id` nie nach draussen gelangt, solange es sie gab.
 		upsertMitglied({ id: 'p1', first_name: 'Anna', last_name: 'Beispiel' }, db)
 		expect(Object.keys(listMitglieder(db)[0] ?? {})).toEqual([
 			'id',
@@ -84,10 +66,6 @@ describe('Schema des Adressbuchs', () => {
 	})
 
 	test('der Tabellen-Neubau hat die Gruppenzuordnungen nicht mitgerissen', () => {
-		// Der Neubau in der Migration laeuft mit abgeschalteten
-		// Fremdschluesseln — sonst wuerde das DROP TABLE alle
-		// `group_memberships` per CASCADE mitnehmen. Danach muessen sie wieder
-		// scharf sein, sonst faellt es erst produktiv auf.
 		upsertMitglied(
 			{
 				id: 'p1',

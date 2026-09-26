@@ -9,15 +9,6 @@ import {
 } from '../../src/lib/db/saatdaten.ts'
 import { createTestDb } from '../helpers/db.ts'
 
-/**
- * Die Saat der Vorschau-Umgebungen.
- *
- * Der wichtigste Test in dieser Datei ist NICHT der, dass die Saat funktioniert
- * — sondern der, dass sie eine Datenbank mit Inhalt in Ruhe laesst. Genau das
- * ist die Zusage, mit der `SEED_DEMO_DATA` ueberhaupt existieren darf: In der
- * Produktion stehen rund hundert echte Familien, und der Schalter darf dort
- * unter keinen Umstaenden etwas anfassen.
- */
 describe('Saatdaten fuer die Vorschau', () => {
 	it('befuellt eine frisch migrierte Datenbank', () => {
 		const db = createTestDb()
@@ -31,8 +22,6 @@ describe('Saatdaten fuer die Vorschau', () => {
 	})
 
 	it('erkennt eine frisch migrierte Datenbank trotz der Systemgruppe `eltern`', () => {
-		// `create_groups` legt die Gruppe `eltern` an. Wuerde die Sicherung
-		// stumpf "null Zeilen ueberall" verlangen, liefe die Saat nie.
 		const db = createTestDb()
 
 		expect(abweichungGegenFrisch(db)).toBeNull()
@@ -48,13 +37,10 @@ describe('Saatdaten fuer die Vorschau', () => {
 
 		expect(ergebnis.gesaet).toBe(false)
 		expect(ergebnis.grund?.tabelle).toBe('mitglieder')
-		// Und zwar wirklich unberuehrt: kein Datensatz dazu, keiner weg.
 		expect(listMitglieder(db).map((m) => m.id)).toEqual(['echt-person'])
 	})
 
 	it('laesst eine Datenbank unberuehrt, die schon eine Instanz kennt', () => {
-		// Das ist der Produktionsfall: `app_meta.instance` wird beim allerersten
-		// Start geschrieben und steht danach fuer immer drin.
 		const db = createTestDb()
 		db.prepare(
 			"INSERT INTO app_meta (key, value) VALUES ('instance', 'klasse-wiesen')",
@@ -78,9 +64,6 @@ describe('Saatdaten fuer die Vorschau', () => {
 	})
 
 	it('erzeugt einen vollstaendigen Putzplan', () => {
-		// Geprueft wird, dass gesaet WURDE — nicht, ob die Einteilung "richtig"
-		// ist. Darueber urteilt nichts mehr; die Klasse entscheidet, wie ihr Plan
-		// aussieht, und die Vorschau ahmt das nur nach.
 		const db = createTestDb()
 
 		seedDemoData(db)
@@ -115,9 +98,6 @@ describe('Saatdaten fuer die Vorschau', () => {
 			.map((g) => g.key)
 			.filter((key) => key.startsWith('familie-'))
 		expect(familien.length).toBe(10)
-		// Der Verteiler `eltern` loest ueber die Hierarchie auf. Ohne diese
-		// Kanten waere die Liste in der Vorschau leer — und die Vorschau zeigte
-		// eine Mechanik, die es im Echtbetrieb so nicht gibt.
 		expect(listChildGroups('eltern', db).sort()).toEqual(familien.sort())
 	})
 

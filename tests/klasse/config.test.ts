@@ -3,12 +3,6 @@ import { describe, expect, test } from 'vitest'
 import { defineKlassenConfig, PUBLIC_PATHS } from '../../src/klasse/config.ts'
 import { listKeyIdFromPem } from '../../src/lib/lists/signatureEd25519.ts'
 
-/**
- * Der Konfigurationsvertrag ist die einzige Stelle, an der sich zwei Klassen
- * noch unterscheiden dürfen. Was er durchlässt, läuft ungeprüft in den Betrieb
- * — deshalb prüft dieser Test die Ablehnungen und nicht die Vorgaben.
- */
-
 const gueltig = {
 	slug: 'klasse-beispiel',
 	label: 'Klasse Beispiel',
@@ -33,10 +27,6 @@ describe('defineKlassenConfig', () => {
 	})
 
 	test('laesst sich jeden abgeleiteten Wert einzeln ueberschreiben', () => {
-		// Der Fall aus der Wirklichkeit: `klasse-wiesen` laeuft unter
-		// `klasse-wiesen.fws-maschsee-test.de`, zaehlt in Plausible aber weiter
-		// unter `klasse-poellmann.de` — sonst faengt die Statistik bei Null an.
-		// `domain` folgt dem Ingress, `analyticsDomain` der Geschichte.
 		const config = defineKlassenConfig({
 			...gueltig,
 			domain: 'alte-domain.example.org',
@@ -51,8 +41,6 @@ describe('defineKlassenConfig', () => {
 	})
 
 	test('lehnt einen Kalender ausserhalb der oeffentlichen Pfade ab', () => {
-		// Der Sieben-Monats-Fehler: aus `/public/x.ics` wurde `/x.ics`, und jedes
-		// Abo hoerte still auf zu aktualisieren.
 		expect(() =>
 			defineKlassenConfig({ ...gueltig, calendarPath: '/beispiel.ics' }),
 		).toThrow(/oeffentlichen Pfad/)
@@ -69,8 +57,6 @@ describe('defineKlassenConfig', () => {
 	})
 
 	test('nimmt eine alte Kalenderadresse auf', () => {
-		// `klasse-christophers`: Wer zwischen der Astro-Umstellung und deren
-		// Korrektur abonniert hat, haengt an `/beispiel.ics`.
 		expect(
 			defineKlassenConfig({ ...gueltig, calendarLegacyPath: '/beispiel.ics' })
 				.calendarLegacyPath,
@@ -97,7 +83,6 @@ describe('defineKlassenConfig', () => {
 	})
 
 	test('lehnt einen slug ab, der als Maildomain nicht funktioniert', () => {
-		// Der Slug wird Teil von `<liste>@<slug>.lists...` und eines Dateinamens.
 		expect(() =>
 			defineKlassenConfig({ ...gueltig, slug: 'Klasse Beispiel' }),
 		).toThrow(/slug/)
@@ -113,8 +98,6 @@ describe('defineKlassenConfig', () => {
 	})
 
 	test('bringt den Schluessel des Dispatchers als Vorgabe mit', () => {
-		// Kein Geheimnis, derselbe Wert fuer alle Klassen — und die Id dazu ist
-		// nachgerechnet, nicht abgeschrieben.
 		const config = defineKlassenConfig(gueltig)
 		expect(config.listPublicKeyPem).toContain('BEGIN PUBLIC KEY')
 		expect([...config.listKeyIds]).toEqual([
@@ -123,10 +106,6 @@ describe('defineKlassenConfig', () => {
 	})
 
 	test('lehnt eine Key-Id ab, die nicht zum Schluessel passt', () => {
-		// Der Fehler, gegen den das geschrieben ist: ein neuer Schluessel
-		// eingecheckt, die Id dazu vergessen. Jede Elternmail bliebe mit
-		// "Unbekannte Key-Id" beim absendenden Server haengen — tagelang, ohne
-		// Meldung an irgendjemanden.
 		const pem = generateKeyPairSync('ed25519')
 			.publicKey.export({ format: 'pem', type: 'spki' })
 			.toString()
@@ -152,8 +131,6 @@ describe('defineKlassenConfig', () => {
 	})
 
 	test('nennt alle Fehler auf einmal', () => {
-		// Eine Klasse, die drei Felder falsch hat, soll sie in einem Durchgang
-		// erfahren und nicht in drei Fehlversuchen.
 		try {
 			defineKlassenConfig({
 				...gueltig,
@@ -173,25 +150,11 @@ describe('defineKlassenConfig', () => {
 
 describe('PUBLIC_PATHS', () => {
 	test('enthaelt genau die zwei Pfade, die ohne Cookie auskommen muessen', () => {
-		// Diese Liste zu erweitern heisst, Protokolle zu veroeffentlichen.
-		//
-		// `/api/zitadel/` stand hier vom 15.08. bis zum selben Tag: der Empfaenger
-		// fuer ZITADEL Actions v2 (`user.removed`). Er ist wieder weg, weil das
-		// Target dazu nie angelegt wurde — ein oeffentlicher Pfad, hinter dem nie
-		// ein Aufruf ankam. Sein Nachfolger, der Abgleich, FRAGT bei ZITADEL nach
-		// und braucht deshalb gar keinen anmeldefreien Pfad. Was hier nicht steht
-		// und auch nicht dazukommt, ist ein Pfad, der Inhalte ausliefert.
 		expect([...PUBLIC_PATHS]).toEqual(['/public/', '/api/lists/'])
 	})
 })
 
 describe('blaetter', () => {
-	/**
-	 * Ein Blatt unter `/public/` wäre ohne Anmeldung abrufbar — und genau das
-	 * soll dieser Weg verhindern. Die Prüfung gehört ins Bauen und nicht in eine
-	 * Anleitung: Der Fehler macht nichts kaputt, was auffiele. Die Seite
-	 * funktioniert, das Blatt liegt nur offen.
-	 */
 	test('ein Blatt unter einem oeffentlichen Pfad wird abgelehnt', () => {
 		expect(() =>
 			defineKlassenConfig({
@@ -208,8 +171,6 @@ describe('blaetter', () => {
 	})
 
 	test('eine Quelle ausserhalb von src/ wird abgelehnt', () => {
-		// Nur `src/` kommt ins Laufzeit-Image. Eine Quelle daneben fehlt im
-		// Container, und der Fehler zeigt sich erst beim ersten Abruf.
 		expect(() =>
 			defineKlassenConfig({
 				...gueltig,

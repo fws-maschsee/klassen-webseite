@@ -1,11 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { nameFuer } from '../../src/routes/mitbringen/gemeinsam.ts'
 
-/**
- * Wer angemeldet ist, traegt unter dem Kontonamen ein — was im Formular steht,
- * zaehlt dann nicht. Gaeste tippen selbst; ein admin, der fremde Eintraege
- * korrigiert, ueberschreibt deren Namen nicht mit seinem.
- */
 describe('nameFuer', () => {
 	const konto = { sub: 'sub-a', name: 'Familie Konto', admin: false }
 	const gast = { sub: null, name: null, admin: false }

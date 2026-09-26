@@ -1,37 +1,5 @@
 import { inflateSync } from 'node:zlib'
 
-/**
- * Den sichtbaren Text aus einem PDF ziehen — so viel davon, dass ein Test
- * behaupten kann, ein Name stehe darin.
- *
- * Warum von Hand und nicht mit einer Bibliothek: Die Frage, die dieser Helfer
- * beantwortet, ist „steht dieser Familienname wirklich im PDF" — und darauf
- * darf nicht eine Attrappe antworten, die dasselbe Modul benutzt, das den Text
- * hineingeschrieben hat. Ein Leser, der nur die PDF-Bytes kennt, prüft das
- * ERGEBNIS. Ausserdem wäre die naheliegende Bibliothek (pdfjs) eine
- * Abhängigkeit von der Grössenordnung des ganzen übrigen Testbaums.
- *
- * Wie ein Typst-PDF seinen Text ablegt, und warum ein `grep` nicht reicht: Die
- * Schrift ist eingebettet und auf die benutzten Zeichen eingedampft. Im
- * Inhaltsstrom stehen deshalb keine Buchstaben, sondern zwei Byte breite
- * GLYPHEN-NUMMERN dieser eingedampften Schrift — für „a" je nach Dokument eine
- * andere. Die Übersetzung zurück steht als `/ToUnicode`-CMap beim jeweiligen
- * Font, und genau diesen Weg geht der Leser hier:
- *
- *   1. Alle indirekten Objekte einsammeln (Typst schreibt sie unkomprimiert,
- *      ohne Objekt-Ströme).
- *   2. Aus jedem `/Font<</f0 12 0 R …>>` die Zuordnung Ressourcenname → Objekt.
- *   3. Aus dem Font-Objekt die `/ToUnicode`-CMap, daraus Code → Zeichen.
- *   4. Die Inhaltsströme entpacken und durchgehen: `/f0 … Tf` schaltet die
- *      Schrift um, `Tj`/`TJ` zeigen Text.
- *
- * Der Leser deckt genau das ab, was Typst erzeugt, und nicht die ganze
- * PDF-Spezifikation. Kommt eine Fassung, deren Ausgabe er nicht mehr versteht,
- * werden die Tests rot statt still zu bestehen — dafür sorgt der Test, der
- * einen Text erwartet, den er selbst hineingegeben hat.
- */
-
-/** Ein indirektes Objekt: sein Wörterbuch und, wenn vorhanden, sein Strom. */
 type PdfObjekt = {
 	dict: string
 	strom: Buffer | null
@@ -67,8 +35,6 @@ const objektLesen = (
 	const stromStart = start + stromMarke.index + stromMarke[0].length
 	const stromEnde = text.indexOf('endstream', stromStart)
 	const roh = pdf.subarray(stromStart, stromEnde === -1 ? ende : stromEnde)
-	// Typst packt alle Ströme mit Flate. Was sich nicht entpacken lässt, ist für
-	// diesen Leser uninteressant (Schriftdaten, ICC-Profile).
 	try {
 		return { dict, strom: inflateSync(roh) }
 	} catch {
@@ -76,7 +42,6 @@ const objektLesen = (
 	}
 }
 
-/** Code → Zeichen aus einer `/ToUnicode`-CMap. */
 const cmapLesen = (cmap: string): Map<number, string> => {
 	const zuordnung = new Map<number, string>()
 
@@ -107,7 +72,6 @@ const cmapLesen = (cmap: string): Map<number, string> => {
 	return zuordnung
 }
 
-/** Ein UTF-16BE-Hexwert der CMap als Zeichenkette. */
 const zeichenAus = (hex: string): string => {
 	let ergebnis = ''
 	for (let i = 0; i + 3 < hex.length + 1; i += 4) {
@@ -116,7 +80,6 @@ const zeichenAus = (hex: string): string => {
 	return ergebnis
 }
 
-/** Ressourcenname (`f0`) → Code-Zuordnung seiner Schrift. */
 const schriften = (
 	alle: Map<number, PdfObjekt>,
 ): Map<string, Map<number, string>> => {
@@ -139,15 +102,6 @@ const schriften = (
 	return nachName
 }
 
-/**
- * Ein Inhaltsstrom, Zeichen für Zeichen: Zeichenketten sammeln, Schriftwechsel
- * merken.
- *
- * Ein richtiger Abtaster und kein regulaerer Ausdruck, weil eine PDF-Zeichen-
- * kette runde Klammern enthalten darf — geschachtelt oder mit Backslash
- * geschuetzt. Ein Ausdruck, der bei der ersten `)` aufhoert, verliert genau die
- * Zeilen, in denen etwas Ungewoehnliches steht, und das sind die interessanten.
- */
 const stromText = (
 	strom: Buffer,
 	schriftNachName: Map<string, Map<number, string>>,
@@ -210,10 +164,6 @@ const stromText = (
 			continue
 		}
 
-		// Ein Wörterbuch (`<</MCID 0>>`) ist keine Hex-Zeichenkette. Beide fangen
-		// mit `<` an, und wer das nicht unterscheidet, liest die Marken der
-		// getaggten Struktur als Text — sie tauchen dann als Buchstabensalat vor
-		// jeder Zeile auf.
 		if (zeichen === '<' && daten[i + 1] === '<') {
 			i += 2
 			continue
@@ -248,10 +198,6 @@ const stromText = (
 			if (operator === 'Tf') {
 				aktuell = schriftNachName.get(letzterName)
 			}
-			// Nach jedem Textblock ein Trenner: Typst setzt jede Tabellenzelle als
-			// eigenen Block. Ohne Trenner klebte die letzte Zelle einer Zeile an der
-			// ersten der naechsten, und ein Test koennte einen Text finden, den
-			// niemand so sieht.
 			if (operator === 'ET' && stueck !== '') {
 				ausgabe.push(stueck)
 				stueck = ''
@@ -267,7 +213,6 @@ const stromText = (
 	return ausgabe.join('\n')
 }
 
-/** Der Text aller Seiten, Blöcke durch Zeilenumbrüche getrennt. */
 export const pdfText = (pdf: Buffer): string => {
 	const alle = objekte(pdf)
 	const schriftNachName = schriften(alle)
@@ -276,8 +221,6 @@ export const pdfText = (pdf: Buffer): string => {
 	for (const objekt of alle.values()) {
 		if (!objekt.strom) continue
 		const daten = objekt.strom.toString('latin1')
-		// Inhaltsströme erkennt man daran, dass sie Text zeigen. CMaps und
-		// Metadaten tun das nicht.
 		if (!/\bTf\b/.test(daten) || !/\bBT\b/.test(daten)) continue
 		teile.push(stromText(objekt.strom, schriftNachName))
 	}
@@ -285,18 +228,5 @@ export const pdfText = (pdf: Buffer): string => {
 	return teile.join('\n')
 }
 
-/**
- * Derselbe Text mit zusammengefasstem Weissraum.
- *
- * Fuer Behauptungen ueber einen SATZ. Ein Satz, den der Satzlauf umbrochen hat,
- * steht im PDF in zwei Bloecken — „vorgezogen wegen der" und „Ferien" —, und
- * ein Test, der `toContain('vorgezogen wegen der Ferien')` sagt, waere daran
- * rot, ohne dass etwas falsch waere.
- *
- * Der Preis: Ueber eine Blockgrenze hinweg koennte ein Text zusammenwachsen,
- * den niemand so sieht. Fuer die Behauptungen hier ist das ungefaehrlich — sie
- * nennen ganze Namen und Saetze, und die entstehen nicht aus zwei Zellen, die
- * zufaellig nebeneinanderstehen.
- */
 export const pdfTextFlach = (pdf: Buffer): string =>
 	pdfText(pdf).replace(/\s+/g, ' ')

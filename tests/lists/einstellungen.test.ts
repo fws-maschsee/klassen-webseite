@@ -1,13 +1,3 @@
-/**
- * Was jede Adresse von einer Liste bekommt — und die Quittung an die Absenderin.
- *
- * Vier Zustaende, die sich gegenseitig ausschliessen; geprueft wird hier vor
- * allem, was sie fuer die ZUSTELLUNG bedeuten. Ein Fehler an dieser Stelle ist
- * still: Wer faelschlich abgemeldet ist, bekommt keine Fehlermeldung, sondern
- * einfach nichts mehr — und merkt es erst, wenn etwas fehlt.
- *
- * Alle Namen und Adressen sind frei erfunden.
- */
 import type { Database } from 'better-sqlite3'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { upsertGroup } from '../../src/lib/db/groups.ts'
@@ -61,7 +51,6 @@ beforeEach(() => {
 	}
 })
 
-/** Nur das Abo umstellen, die eigene Post lassen, wie sie war. */
 const abo = (liste: string, mail: string, an: boolean) =>
 	setzeEinstellung(
 		liste,
@@ -70,7 +59,6 @@ const abo = (liste: string, mail: string, an: boolean) =>
 		db,
 	)
 
-/** Nur den Umgang mit der eigenen Post umstellen. */
 const eigene = (
 	liste: string,
 	mail: string,
@@ -90,9 +78,6 @@ describe('Die Einstellung einer Adresse', () => {
 	})
 
 	test('Abo und eigene Post sind unabhaengig voneinander', () => {
-		// Der Grund fuer die Trennung: Wer abgemeldet ist, darf weiter an den
-		// Verteiler schreiben — und will dann womoeglich gerade DESHALB eine
-		// Bestaetigung. In einem Feld mit vier Werten war das nicht ausdrueckbar.
 		liste()
 		eigene('eltern', 'vera@example.org', 'confirmation')
 		abo('eltern', 'vera@example.org', false)
@@ -165,9 +150,6 @@ describe('Abgemeldete bekommen keine Post', () => {
 	})
 
 	test('eine Sperre bleibt eine Sperre — auch bei aktivem Abo', () => {
-		// Die beiden Ebenen sind getrennt: Was das System festgestellt hat
-		// (Bounce), hebt keine Einstellung auf. Sonst holte sich jemand mit einem
-		// Klick eine tote Adresse zurueck in den Verteiler.
 		const l = liste()
 		suppressAddress(
 			{ email: 'anna@example.org', list_address: 'eltern', source: 'bounce' },
@@ -183,7 +165,7 @@ describe('Abgemeldete bekommen keine Post', () => {
 describe('Der Schluessel der Einstellungsseite', () => {
 	test('wird beim ersten Mal gewuerfelt und bleibt danach gleich', () => {
 		const erster = tokenFuer('vera@example.org', db)
-		expect(erster).toHaveLength(43) // 32 Byte base64url
+		expect(erster).toHaveLength(43)
 		expect(tokenFuer('vera@example.org', db)).toBe(erster)
 	})
 
@@ -206,8 +188,6 @@ describe('Der Schluessel der Einstellungsseite', () => {
 
 describe('Die Einstellungsseite zeigt alle aktiven Listen', () => {
 	test('auch die, von denen jemand abgemeldet ist', () => {
-		// Sonst verschwaende die Liste aus der Uebersicht, sobald jemand sie
-		// abbestellt — und der Weg zurueck waere weg.
 		liste()
 		upsertMailingList(
 			{

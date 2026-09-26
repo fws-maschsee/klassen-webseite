@@ -15,24 +15,6 @@ import {
 } from '../../src/server/auth/roles.ts'
 import { TESTKLASSE } from '../setup.ts'
 
-/**
- * Wer Freigaben vergibt und Abmeldungen eintraegt — und warum das kein Text
- * im geteilten Code ist.
- *
- * Die Klassen-Repos nannten an drei Stellen „die Klassenelternvertretung":
- * in der Ablehnungsmeldung (`roles.ts`), auf der Seite fuer angemeldete, aber
- * nicht freigeschaltete Eltern (`oidc.ts`) und auf der Verteiler-Seite. Dass
- * das nicht mehr stimmte, fiel erst auf, als jemand danach schrieb; geaendert
- * wurde es dann in beiden Klassen-Repos einzeln und gleichlautend.
- *
- * Genau diese Doppelpflege ist der Grund fuer dieses Package — und der Grund,
- * warum hier nicht der neue Name steht, sondern ein Konfigurationsfeld: Beide
- * Klassen tragen heute denselben Wert ein, aber „wer ist zustaendig" ist eine
- * Absprache in der Klasse. Stuende der Name im geteilten Code, nennte die
- * dritte Klasse den Namen der ersten neben der eigenen Adresse — und es fiele
- * niemandem auf, weil die Adresse ja stimmt.
- */
-
 const OHNE_NAME = defineKlassenConfig({
 	slug: 'klasse-namenlos',
 	label: 'Klasse Namenlos',
@@ -42,7 +24,6 @@ const OHNE_NAME = defineKlassenConfig({
 	calendarPath: null,
 })
 
-/** Vorlage fuer Faelle, in denen nur `teacher`/`grade` variieren sollen. */
 const ROHDATEN = {
 	slug: 'klasse-benannt',
 	label: 'Klasse Benannt',
@@ -62,9 +43,6 @@ const MIT_NAME = defineKlassenConfig({
 	calendarPath: null,
 })
 
-// Die Setup-Datei hinterlegt TESTKLASSE fuer alle uebrigen Tests. Wer sie hier
-// austauscht, muss sie zurueckstellen — sonst haengt das Ergebnis anderer
-// Testdateien an der Reihenfolge.
 afterEach(() => {
 	setKlassenConfig(TESTKLASSE)
 })
@@ -76,8 +54,6 @@ describe('zustaendigkeit()', () => {
 	})
 
 	test('nennt nur die Adresse, wenn kein Name hinterlegt ist', () => {
-		// Kein Platzhalter und keine leere Klammer: Eine Klasse, die nur eine
-		// Funktionsadresse hat, soll keinen erfundenen Namen angezeigt bekommen.
 		setKlassenConfig(OHNE_NAME)
 		expect(zustaendigkeit()).toBe('verwaltung@example.org')
 	})
@@ -95,15 +71,11 @@ describe('deniedMessage()', () => {
 			const text = deniedMessage(capability)
 			expect(text).toContain('Alex Beispiel (ansprechpartner@example.org)')
 			expect(text).toContain('kann sie vergeben')
-			// Die Meldung muss ausserdem benennen, WAS fehlt — sonst klingt eine
-			// abgelehnte Anfrage nach einem Serverfehler.
 			expect(text).toContain('"admin"')
 		}
 	})
 
 	test('folgt einem Wechsel der Zustaendigkeit ohne Codeaenderung', () => {
-		// Der Punkt der Uebung: Ein Wechsel ist ein Wert in site.config.ts der
-		// Klasse und keine neue Paketversion.
 		setKlassenConfig(OHNE_NAME)
 		expect(deniedMessage('bearbeiten')).toContain('verwaltung@example.org')
 		setKlassenConfig(MIT_NAME)
@@ -126,15 +98,10 @@ describe('notAMemberPage()', () => {
 		)
 		expect(html).toContain('schreibe an')
 		expect(html).toContain('mailto:ansprechpartner@example.org')
-		// Kein zweiter Weg daneben: Wer hier zwei Stellen nennt, schickt Eltern
-		// an die, die nicht freischalten kann.
 		expect(html).not.toMatch(/melde Dich bei/i)
 	})
 
 	test('sagt ZUERST, wessen Seite das ist', () => {
-		// Der haeufigste Grund fuer diese Seite ist der Link einer fremden
-		// Klasse, nicht die fehlende Freigabe. Steht die Klasse in der
-		// Ueberschrift, erkennt die Person selbst, dass die Absage richtig ist.
 		const html = notAMemberPage(
 			'eltern@example.org',
 			'Frau Benannt, 3C',
@@ -142,8 +109,6 @@ describe('notAMemberPage()', () => {
 		)
 		const ueberschrift = /<h1>([^<]*)<\/h1>/.exec(html)?.[1] ?? ''
 		expect(ueberschrift).toContain('Frau Benannt, 3C')
-		// Und der Hinweis auf den falschen Link fehlt nicht — ohne ihn bleibt die
-		// Person ratlos, obwohl alles richtig funktioniert.
 		expect(html).toMatch(/anderen Klasse/i)
 	})
 })
@@ -161,18 +126,11 @@ describe('wemGehoertDieSeite()', () => {
 	})
 
 	test('faellt auf den Anzeigenamen zurueck, wenn beides fehlt', () => {
-		// Eine neue Klasse muss ohne diese Felder starten koennen. Die Meldung
-		// wird dann blasser, aber sie bleibt richtig.
 		setKlassenConfig(defineKlassenConfig(ROHDATEN))
 		expect(wemGehoertDieSeite()).toBe(ROHDATEN.label)
 	})
 })
 
-/**
- * Die Gegenprobe zu allem oben: Der geteilte Code darf die Zustaendigkeit
- * nirgends fest verdrahten. Ein Test auf die drei bekannten Stellen haette das
- * naechste Vorkommen nicht verhindert.
- */
 describe('geteilter Code verdrahtet keine Zustaendigkeit', () => {
 	const WURZEL = fileURLToPath(new URL('../..', import.meta.url))
 
@@ -189,15 +147,10 @@ describe('geteilter Code verdrahtet keine Zustaendigkeit', () => {
 	].sort()
 
 	test('es gibt ueberhaupt Dateien zu pruefen', () => {
-		// Ohne diese Zusicherung waere ein kaputtes `dateien()` ein gruener Test
-		// ueber die leere Menge.
 		expect(geteilt.length).toBeGreaterThan(50)
 	})
 
 	test('nennt keine feste Stelle als zustaendig', () => {
-		// `Klassenelternvertretung` war der Wert, der in beiden Klassen-Repos
-		// einzeln ersetzt werden musste. Er darf nicht zurueckkommen — auch nicht
-		// in einem Kommentar, denn dann beschreibt der Kommentar den Code falsch.
 		const treffer = geteilt
 			.filter((datei) =>
 				/Klassenelternvertretung/.test(fs.readFileSync(datei, 'utf-8')),
@@ -207,13 +160,6 @@ describe('geteilter Code verdrahtet keine Zustaendigkeit', () => {
 	})
 
 	test('verdrahtet keine Mailadresse in einem mailto-Link', () => {
-		// Die allgemeine Fassung: Jede Adresse, die eine Oberflaeche dieses
-		// Packages anbietet, muss aus der Konfiguration oder aus der Datenbank
-		// kommen. `mailto:${...}` ist erlaubt, `mailto:jemand@example.org` nicht.
-		//
-		// Absichtlich nicht auf Adress-Literale allgemein geprueft: `mailFrom`
-		// in `src/klasse/config.ts` ist eine schulweite Vorgabe und gehoert dort
-		// als Literal hin.
 		const treffer = geteilt
 			.filter((datei) =>
 				/mailto:[^\s'"`${]*@/.test(fs.readFileSync(datei, 'utf-8')),

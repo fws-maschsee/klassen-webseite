@@ -6,21 +6,6 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { TESTKLASSE } from '../setup.ts'
 
-/**
- * Was unter `public/` der Klasse liegt, ist NICHT oeffentlich.
- *
- * Dieser Test ist gegen einen gemessenen Zustand der laufenden Seite
- * geschrieben, nicht gegen eine Befuerchtung: `/` und `/verteiler` antworteten
- * mit 401, `/dokumente/stundenplan.pdf` mit 200 — weil `express.static` vor dem
- * Astro-Handler lief und die Anmelde-Middleware fuer Dateien damit nie
- * drankam.
- *
- * Geprueft werden beide Richtungen, denn eine Sperre, die alles sperrt, ist
- * genauso kaputt: Der Kalender unter `/public/` MUSS ohne Anmeldung erreichbar
- * bleiben — eine Kalender-App bringt kein Cookie mit, und ein 401 dort laesst
- * jedes Abo still veralten.
- */
-
 const ENTRY_FIXTURE = fileURLToPath(
 	new URL('../fixtures/astro-entry.mjs', import.meta.url),
 )
@@ -33,7 +18,6 @@ afterEach(async () => {
 	vi.unstubAllEnvs()
 })
 
-/** Startet die App mit einem bestueckten `dist/client` und gibt die Basis-URL. */
 const starte = async (): Promise<string> => {
 	const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'statisch-'))
 	aufraeumen.push(() => fs.rmSync(tmp, { recursive: true, force: true }))
@@ -51,8 +35,6 @@ const starte = async (): Promise<string> => {
 	vi.stubEnv('PORT', '0')
 	vi.stubEnv('DB_PATH', path.join(tmp, 'klasse-beispiel.db'))
 	vi.stubEnv('MCP_INSTANCE_NAME', undefined)
-	// Der Schalter, den die Tests sonst setzen, ist hier genau das Gegenteil
-	// dessen, was geprueft wird.
 	vi.stubEnv('DISABLE_AUTH', undefined)
 
 	vi.resetModules()
@@ -83,10 +65,6 @@ const starte = async (): Promise<string> => {
 }
 
 describe('statische Dateien', () => {
-	// Die Frist ist hoeher als die Vorgabe, weil `vi.resetModules()` vor dem
-	// ersten Start die ganze Serverkette neu laedt (Express, MCP-SDK, SQLite)
-	// und die Migrationen mitlaufen — das dauert auf einem kalten Lauf
-	// mehrere Sekunden und hat mit dem, was hier geprueft wird, nichts zu tun.
 	test('eine Datei unter /dokumente/ bekommt ohne Anmeldung keine 200', {
 		timeout: 30_000,
 	}, async () => {
@@ -96,9 +74,6 @@ describe('statische Dateien', () => {
 			redirect: 'manual',
 		})
 
-		// Kein `toBe(401)`: Ob 401 oder eine Umleitung zum Login kommt, haengt
-		// am `Accept`-Kopf. Die Behauptung ist die, auf die es ankommt — der
-		// Inhalt geht nicht heraus.
 		expect(antwort.status).not.toBe(200)
 		expect(await antwort.text()).not.toContain('%PDF')
 	})

@@ -2,44 +2,14 @@ import type { Database } from 'better-sqlite3'
 import { klassenConfig } from '../../klasse/config.ts'
 import { openDb } from './index.ts'
 
-/**
- * Instanz-Identitaet: welche KLASSE ist das hier?
- *
- * Es gibt ein Deployment pro Klasse (`klasse-wiesen`, `klasse-christophers`,
- * ...) mit jeweils eigener SQLite-Datei. Das ist Absicht: Die Eltern der einen
- * Klasse sollen in den Daten der anderen strukturell nicht auftauchen koennen.
- *
- * Damit dieser Schutz nicht an einer falsch gesetzten Env-Variable haengt,
- * gibt es zwei Quellen, die zusammenpassen muessen:
- *
- *   1. `MCP_INSTANCE_NAME` — was das DEPLOYMENT zu sein glaubt.
- *   2. `app_meta.instance` — was in der DATEI steht. Wird beim ersten Start
- *      einmalig aus (1) geschrieben und danach nie wieder veraendert.
- *
- * Weichen beide voneinander ab, ist entweder die falsche Datei gemountet oder
- * die falsche Env gesetzt. In beiden Faellen ist der naechste Versand ein
- * Versand in die falsche Klasse — deshalb faehrt der Server dann gar nicht
- * erst hoch (`assertInstanceMatches`).
- */
-
 const META_KEY = 'instance'
 
-/**
- * Technischer Instanz-/Servername (MCP `name`).
- *
- * Env schlaegt Konfiguration, weil `MCP_INSTANCE_NAME` im Deployment sitzt und
- * die Konfiguration im Repo — bei einem Umzug ist zuerst das Deployment richtig.
- * Eine dritte Quelle mit einem festen Klassennamen gibt es nicht mehr: dieser
- * Wert entscheidet, an welche Elternschaft Post geht.
- */
 export const instanceName = (): string =>
 	process.env.MCP_INSTANCE_NAME?.trim() || klassenConfig().slug
 
-/** Menschlich lesbares Label fuer die Anzeige im MCP-Client. */
 export const instanceLabel = (): string =>
 	process.env.MCP_INSTANCE_LABEL?.trim() || klassenConfig().label
 
-/** Der in der DB-Datei hinterlegte Instanzname, oder `null` wenn noch keiner. */
 export const getRecordedInstance = (db: Database = openDb()): string | null =>
 	db
 		.prepare<[string], { value: string }>(
@@ -47,11 +17,6 @@ export const getRecordedInstance = (db: Database = openDb()): string | null =>
 		)
 		.get(META_KEY)?.value ?? null
 
-/**
- * Schreibt den Instanznamen in die Datei, falls noch keiner drinsteht.
- * Ueberschreibt NIE einen bestehenden Wert — ein bestehender Wert ist die
- * Wahrheit ueber die Datei, die Env ist nur eine Behauptung darueber.
- */
 export const recordInstanceIfEmpty = (
 	name: string = instanceName(),
 	db: Database = openDb(),
@@ -65,11 +30,8 @@ export const recordInstanceIfEmpty = (
 }
 
 export type InstanceCheck = {
-	/** Name aus der Env (`MCP_INSTANCE_NAME`). */
 	configured: string
-	/** Name aus der DB-Datei (`app_meta.instance`), `null` bei frischer Datei. */
 	recorded: string | null
-	/** `false` nur, wenn beide gesetzt sind und sich unterscheiden. */
 	ok: boolean
 }
 
@@ -83,10 +45,6 @@ export const checkInstance = (db: Database = openDb()): InstanceCheck => {
 	}
 }
 
-/**
- * Bootstrap-Pruefung fuer den Serverstart: schreibt den Namen in eine frische
- * Datei und wirft, wenn eine bestehende Datei zu einer anderen Klasse gehoert.
- */
 export const assertInstanceMatches = (
 	db: Database = openDb(),
 ): InstanceCheck => {

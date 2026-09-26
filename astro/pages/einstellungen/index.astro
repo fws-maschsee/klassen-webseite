@@ -23,38 +23,9 @@ import { sendeBestaetigung } from '../../../src/lib/email/adresswechsel.ts'
 
 export const prerender = false
 
-/**
- * Was bekomme ich, und wohin? Drei Fragen auf einer Seite, hinter dem Login.
- *
- *   1. An WELCHE Adresse geht die Post?      (Zustelladresse, mit Bestätigung)
- *   2. Bekomme ich die Post dieses Verteilers? (an / aus)
- *   3. Was passiert mit MEINER eigenen Nachricht, wenn ich an den Verteiler
- *      schreibe?                              (Kopie / Bestätigung / nichts)
- *
- * 2 und 3 sind unabhängig voneinander, und deshalb stehen sie nicht in einer
- * Liste von vier Möglichkeiten: Wer abgemeldet ist, darf weiter an den
- * Verteiler schreiben — und will dann womöglich gerade DESHALB eine
- * Bestätigung, weil er das Ergebnis sonst nirgends zu sehen bekommt.
- *
- * WELCHE ADRESSE HIER GILT — und das hat sich geändert: die ZUSTELLADRESSE aus
- * dem Adressbuch, nicht die Anmeldeadresse. Beim ersten Anmelden wird sie von
- * dort übernommen, danach ist sie frei änderbar (Frage 1). Ständen die
- * Einstellungen weiter an der Anmeldeadresse, wäre jede von ihnen nach der
- * ersten Adressänderung wirkungslos — eingestellt für eine Adresse, die keine
- * Post bekommt.
- *
- * Was sich NICHT geändert hat: Der Bezug sagt, welchen Eintrag dieses Konto
- * verwaltet. Er sagt nicht, wer Post bekommt. Das entscheidet weiterhin die
- * Gruppenzugehörigkeit, und die setzt ein Mensch — wer in keiner Gruppe steht,
- * liest das hier oben als Erstes.
- */
-
 const { label: klasse, contactMail, contactName } = klassenConfig()
 const db = openDb()
 
-// `Astro.locals.user` setzt die Anmelde-Middleware; sie hält dort auch den
-// Bezug zum Adressbuch fest. Ohne Anmeldung kommt hier niemand an — dieser Pfad
-// steht nicht in `PUBLIC_PATHS`.
 const sub = Astro.locals.user?.sub ?? ''
 const anmeldeAdresse = normalizeEmail(Astro.locals.user?.email ?? '')
 let mitglied = sub ? (mitgliedFuerKonto(sub, db) ?? null) : null
@@ -67,17 +38,12 @@ let adressFehler: string | null = null
 
 if (Astro.request.method === 'POST') {
 	const formular = await Astro.request.formData()
-	// Zwei Formulare auf einer Seite. Der WERT ist englisch, die Beschriftung
-	// daneben deutsch — dieselbe Trennlinie wie überall sonst.
 	const form = formular.get('form')
 
 	if (form === 'address' && mitglied) {
 		const gewuenscht = String(formular.get('new_email') ?? '')
 		try {
 			const anforderung = beantrageAdresswechsel(mitglied.id, gewuenscht, db)
-			// ERST die Mail, DANN die Erfolgsmeldung: Wenn der Versand scheitert,
-			// hat die Person einen Schlüssel in der Datenbank, von dem sie nie
-			// erfährt — und wartet auf eine Mail, die nicht kommt.
 			await sendeBestaetigung(anforderung.new_email, anforderung.token, TAGE)
 			angefordert = anforderung.new_email
 		} catch (fehler) {
@@ -94,8 +60,6 @@ if (Astro.request.method === 'POST') {
 				liste.address,
 				adresse,
 				{
-					// Eine nicht angekreuzte Box schickt gar nichts mit — Abwesenheit
-					// IST hier die Angabe „aus".
 					subscribed: formular.get(`abo:${liste.address}`) === 'an',
 					ownMail: istEigenePost(eigene) ? eigene : VORGABE.ownMail,
 				},
@@ -105,8 +69,6 @@ if (Astro.request.method === 'POST') {
 		gespeichert = true
 	}
 
-	// Nach dem Schreiben neu lesen: Die Adresse kann sich (durch eine
-	// Bestätigung in einem anderen Browser) inzwischen geändert haben.
 	mitglied = sub ? (mitgliedFuerKonto(sub, db) ?? null) : mitglied
 }
 
@@ -118,10 +80,6 @@ const listen = zustellAdresse
 	? einstellungenFuer(zustellAdresse, listMailingLists(db), db)
 	: []
 
-/**
- * Die Beschriftungen. Sie sind deutsch, die WERTE daneben englisch — das ist
- * die Trennlinie: `copy` liest das Programm, „Kopie an mich" liest ein Mensch.
- */
 const BEZEICHNUNG: Record<(typeof EIGENE_POST)[number], string> = {
 	copy: 'Kopie an mich',
 	confirmation: 'Bestätigung, sobald sie zugestellt ist',
@@ -277,9 +235,6 @@ const ERKLAERUNG: Record<(typeof EIGENE_POST)[number], string> = {
 							<span>Post von diesem Verteiler bekommen</span>
 						</label>
 
-						{/* Die zweite Frage steht bewusst NICHT unter der ersten als deren
-						    Unterpunkt: Sie gilt auch für Abgemeldete, weil die weiter an
-						    den Verteiler schreiben dürfen. */}
 						<fieldset class="mt-5 border-t border-base-300 pt-4">
 							<legend class="text-sm font-semibold px-1">
 								Wenn ich selbst an diesen Verteiler schreibe

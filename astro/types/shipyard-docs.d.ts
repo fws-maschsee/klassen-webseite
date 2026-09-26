@@ -1,7 +1,5 @@
 import type { AstroIntegration } from 'astro'
 
-/** Siehe `shipyard-base.d.ts` für den Grund dieser Deklaration. */
-
 declare const shipyardDocs: (config?: {
 	routeBasePath?: string
 	collectionName?: string
@@ -11,7 +9,6 @@ declare const shipyardDocs: (config?: {
 	prerender?: boolean
 }) => AstroIntegration
 
-/** Loader plus Schema für eine Docs-Sammlung, relativ zur Projektwurzel. */
 export declare const createDocsCollection: (
 	basePath: string,
 	pattern?: string,

@@ -15,13 +15,6 @@ import {
 import type { McpAuth } from '../guard.ts'
 import { registerPersonalDataTool, registerWriteTool } from '../guard.ts'
 
-/**
- * Schichtplaene ueber MCP — „Leg die Grillschichten fürs Sommerfest an".
- *
- * Ein admin legt den Plan an und bekommt den Link; eintragen tun die Familien
- * selbst auf der Seite. Lesen haengt an `admin`, weil dort Namen stehen.
- */
-
 const toJson = (value: unknown): string => JSON.stringify(value, null, 2)
 
 const DatumSchema = z

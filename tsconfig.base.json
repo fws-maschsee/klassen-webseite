@@ -1,9 +1,6 @@
 {
 	"compilerOptions": {
 		"target": "ES2022",
-		// DOM steht hier nicht fuer einen Browser, sondern fuer `Request`,
-		// `Response` und `Headers`. Der geteilte Code arbeitet durchgehend mit
-		// diesen Web-Typen, weil Astro sie in seinen Handlern liefert.
 		"lib": ["ES2023", "DOM", "DOM.Iterable"],
 		"types": ["node"],
 		"strict": true,
@@ -13,39 +10,13 @@
 		"isolatedModules": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
-		// Die Stubs für shipyard, siehe `astro/types/shipyard-base.d.ts`. Sie
-		// stehen im GEMEINSAMEN Teil und nicht mehr nur im Astro-Projekt, weil
-		// `tests/klasse/styling.test.ts` und `markdown.test.ts` die Integration
-		// aufrufen und damit shipyard auch in den Nodeteil ziehen. Ohne die
-		// Zuordnung liest tsc dort shipyards rohes TypeScript und scheitert an
-		// dessen endungslosen Importen (TS2835) — ein Fehler in shipyard, den
-		// diese Stubs abfangen.
-		//
-		// Ohne `baseUrl`: TypeScript 7 hat die Option entfernt (TS5102). Sie
-		// stand hier nur auf `"."` und diente allein dazu, die Ziele unten
-		// aufzuloesen — ohne sie loest tsc sie relativ zu DIESER Datei auf, und
-		// die liegt im selben Verzeichnis. Die Pfade bleiben deshalb wie sie
-		// sind; wer sie aendert, misst ab hier, nicht ab dem erbenden tsconfig.
 		"paths": {
 			"@levino/shipyard-base": ["./astro/types/shipyard-base.d.ts"],
 			"@levino/shipyard-blog": ["./astro/types/shipyard-blog.d.ts"],
 			"@levino/shipyard-docs": ["./astro/types/shipyard-docs.d.ts"]
 		},
-		// Dieser Code wird nicht mehr kompiliert, sondern von
-		// `node --experimental-strip-types` gelesen. Node loescht Typen und
-		// schreibt KEINE Specifier um: die Dateien heissen `.ts`, also muss im
-		// Import `.ts` stehen. Genau das erlaubt diese Option — und `noEmit`
-		// unten ist ihre Voraussetzung.
 		"allowImportingTsExtensions": true,
 		"noEmit": true,
-		// Der Waechter fuer strip-types. Node loescht Typen, es fuehrt keine
-		// Transformation aus: `enum`, `namespace` mit Laufzeitinhalt,
-		// Parameter-Properties und Decorators braeuchten erzeugten Code und
-		// scheitern zur Laufzeit. Ohne diese Option faellt so etwas erst beim
-		// Start einer Klasse auf, nicht in der Typpruefung hier.
-		//
-		// Die beiden `namespace App` in `astro/env.d.ts` sind davon nicht
-		// betroffen: sie stehen in `declare global` und sind reiner Typ.
 		"erasableSyntaxOnly": true
 	}
 }

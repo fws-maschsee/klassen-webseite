@@ -10,38 +10,12 @@ import { handleIncomingListMail } from '../../src/lib/lists/incoming.ts'
 import { processListBatch } from '../../src/lib/lists/queue.ts'
 import { createTestDb } from '../helpers/db.ts'
 
-/**
- * Das Stunden-Cap ist ein GLEITENDES Fenster ueber die letzte Stunde. Es
- * schuetzt die verifizierte Absenderdomain vor dem Sendelimit bei SES — nicht
- * mehr, und vor allem nicht laenger.
- *
- * Anlass ist ein Fall aus dem Betrieb: drei Mails an den Verteiler kamen erst
- * um 3 Uhr morgens an. Die Uhrzeit war der Hinweis. Gezaehlt wurde
- * `sent_at >= datetime('now','-1 hour')`, und das vergleicht zwei verschiedene
- * Schreibweisen als TEXT:
- *
- *   gespeichert  2026-08-11T21:00:00.000Z   (strftime, mit T und Z)
- *   verglichen   2026-08-11 20:30:00        (datetime, mit Leerzeichen)
- *
- * An Stelle 10 steht 'T' (0x54) gegen ' ' (0x20). 'T' ist groesser, also gilt
- * JEDE Zustellung des laufenden UTC-Tages als „in der letzten Stunde". Aus dem
- * Stunden-Cap wurde damit ein Tages-Cap, und es fiel erst, wenn die Grenze
- * ueber Mitternacht UTC rollte — um 01:00 UTC, in der Sommerzeit also
- * 03:00 Ortszeit. Genau da flossen die gestauten Mails ab.
- *
- * Deshalb bekommen beide Zaehler hier ein `now` von aussen: nur so ist der
- * Test unabhaengig von der Uhrzeit, zu der er laeuft.
- *
- * Alle Namen und Adressen sind frei erfunden.
- */
-
 let db: Database
 
 const STUNDE = 60 * 60 * 1000
 const JETZT = new Date('2026-08-11T21:30:00.000Z')
 const vor = (ms: number): string => new Date(JETZT.getTime() - ms).toISOString()
 
-/** Eine erledigte Zustellung in BEIDEN Warteschlangen — sie teilen sich das Cap. */
 const eintragen = (sentAt: string, id: number): void => {
 	upsertMitglied(
 		{
@@ -89,9 +63,6 @@ describe('Das Stunden-Cap zaehlt eine Stunde', () => {
 	})
 
 	test('gezaehlt wird ueber Mitternacht hinweg, nicht bis Mitternacht', () => {
-		// 00:30 UTC: die Zustellung von 23:45 des Vortages liegt 45 Minuten
-		// zurueck und gehoert ins Fenster. Der Kalendertag hat damit nichts zu
-		// tun — sonst faellt das Cap um Mitternacht und nicht nach einer Stunde.
 		const kurzNachMitternacht = new Date('2026-08-12T00:30:00.000Z')
 		eintragen('2026-08-11T23:45:00.000Z', 1)
 
@@ -102,8 +73,6 @@ describe('Das Stunden-Cap zaehlt eine Stunde', () => {
 
 describe('Eine Listenmail nach dem Tagespensum', () => {
 	test('geht sofort raus statt bis 3 Uhr morgens zu warten', async () => {
-		// 300 Zustellungen von heute frueh — mehr als das Cap von 250, aber
-		// alle laenger als eine Stunde her.
 		for (let i = 0; i < 300; i++) eintragen(vor(8 * STUNDE), i)
 
 		upsertGroup({ key: 'eltern', label: 'Eltern' }, db)

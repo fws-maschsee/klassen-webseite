@@ -8,23 +8,6 @@ import {
 import type { McpAuth } from '../guard.ts'
 import { registerPersonalDataTool, registerWriteTool } from '../guard.ts'
 
-/**
- * Was ist aus einer Mail an einen Verteiler geworden?
- *
- * Diese Frage war bis hierher nicht zu beantworten. Der Eingang
- * (`/api/lists/incoming`) quittiert dem Cloudflare-Worker mit 202, sobald die
- * Mail in der Queue liegt — ab da gibt es keine SMTP-Antwort mehr, an der ein
- * Absender etwas merken koennte. Scheitert der Versand danach, bekommt niemand
- * eine Unzustellbarkeitsnachricht: die Mail ist still weg. Genau dieser Fall
- * kam aus dem Betrieb, und die einzige Auskunft darueber lagen in den Logs des
- * Pods.
- *
- * Fuer Rundmails gibt es das Gegenstueck seit jeher — `get_send_log` und
- * `retry_failed_sends`. Diese Datei ist dasselbe fuer Listenmails, mit
- * denselben Rollen: Empfaengeradressen und Fehlermeldungen sind Personendaten
- * (`admin`), das Nachreichen ist ein Schreibzugriff (`admin`).
- */
-
 const toJson = (value: unknown): string => JSON.stringify(value, null, 2)
 
 export const registerListQueueTools = (

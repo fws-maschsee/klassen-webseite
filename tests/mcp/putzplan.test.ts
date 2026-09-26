@@ -7,23 +7,6 @@ import Database from 'better-sqlite3'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { runMigrations } from '../../src/migrations.ts'
 
-/**
- * Der Putzplan ueber MCP.
- *
- * Zwei Fragen stehen hier, und nur die beiden: Kommt eine Ablehnung LESBAR beim
- * Aufrufer an — und haengt das Lesen wirklich an `admin`?
- *
- * Die Einteilung selbst wird nirgends geprueft. Es gibt keine Planregeln mehr:
- * Was eine sinnvolle Einteilung ist, entscheidet die Klasse. Abgelehnt wird nur
- * noch, was die Daten kaputt machte — eine Gruppe, die es nicht gibt.
- *
- * Der Plan nennt Familiennamen und sagt, wer wann wo ist. Deshalb ist auch das
- * LESEN `admin` und nicht `mitglied`: Die Seite `/docs/putzen/putzplan` ist die
- * Auskunft an die Eltern, dieses Werkzeug ist es nicht.
- *
- * Alle Namen sind frei erfunden.
- */
-
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-putzplan-'))
 const dbFile = path.join(tmpDir, 'test.db')
 
@@ -109,9 +92,6 @@ describe('get_putzplan', () => {
 	})
 
 	it('verweigert das Lesen ohne die Rolle admin', async () => {
-		// Der Plan sagt, welche Familie wann in der Schule ist. Dass er frueher
-		// fuer jedes angemeldete Mitglied auf einer Seite stand, macht ihn nicht
-		// zu weniger als Personendaten.
 		const client = await connect(['mitglied'])
 		const result = await client.callTool({
 			name: 'get_putzplan',
@@ -142,8 +122,6 @@ describe('set_putztermin', () => {
 	})
 
 	it('nimmt eine Einteilung an, ohne sie zu beurteilen', async () => {
-		// Eine einzelne Familie an einem Termin: frueher ein Verstoss, heute eine
-		// Einteilung wie jede andere. Die Klasse entscheidet, nicht der Code.
 		const client = await connect(['admin'])
 		const result = await client.callTool({
 			name: 'set_putztermin',
@@ -155,9 +133,6 @@ describe('set_putztermin', () => {
 	})
 
 	it('lehnt eine unbekannte Gruppe mit einem lesbaren Satz ab', async () => {
-		// Kein Stacktrace und kein "FOREIGN KEY constraint failed": Der Mensch vor
-		// dem Client soll lesen koennen, WAS nicht geht. Das ist Integritaet und
-		// keine Regel — diesen Group-Key gibt es schlicht nicht.
 		const client = await connect(['admin'])
 		const result = await client.callTool({
 			name: 'set_putztermin',
@@ -353,9 +328,6 @@ describe('update_putztermin', () => {
 
 describe('replace_putzplan', () => {
 	it('haelt an, wenn schon ein Plan in der Datenbank steht', async () => {
-		// Der Schutz gegen den unbemerkten Ueberschreiber: Ein Aufruf ersetzt den
-		// GANZEN Plan. `beforeEach` hat einen Termin angelegt, also ist er nicht
-		// leer.
 		const client = await connect(['admin'])
 		const result = await client.callTool({
 			name: 'replace_putzplan',
@@ -415,9 +387,6 @@ describe('replace_putzplan', () => {
 	})
 
 	it('legt mitgegebene Familien als Gruppen an', async () => {
-		// Aus einem Group-Key laesst sich der Anzeigename nicht zurueckrechnen —
-		// deshalb kommt er aus `families` und wird nicht geraten. Sonst stuende
-		// "probst-vogel" auf der Elternseite.
 		const client = await connect(['admin'])
 		await client.callTool({
 			name: 'replace_putzplan',

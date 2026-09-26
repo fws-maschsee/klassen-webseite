@@ -15,17 +15,6 @@ import {
 import type { McpAuth } from '../guard.ts'
 import { registerPersonalDataTool, registerWriteTool } from '../guard.ts'
 
-/**
- * Mitbringlisten ueber MCP — "Leg eine Liste fürs Grillfest am 12.9. an".
- *
- * Ein admin legt den ANLASS an und bekommt den Link. Eintragen tun die
- * Familien selbst auf der Seite hinter dem Link, mit oder ohne Konto; dafuer
- * gibt es hier absichtlich kein Werkzeug. Was es gibt: Listen anlegen,
- * aendern, schliessen, loeschen — und den Stand lesen, samt Namen. Deshalb
- * haengt auch das Lesen an `admin`: Wer was mitbringt, ist eine Auskunft an
- * die Klasse, kein Datensatz fuer jeden Client.
- */
-
 const toJson = (value: unknown): string => JSON.stringify(value, null, 2)
 
 const DatumSchema = z

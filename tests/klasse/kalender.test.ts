@@ -4,11 +4,6 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { pruefeKalender, webcalUrl } from '../../src/klasse/kalender.ts'
 
-/**
- * Die Prüfung, die in `klasse-christophers` sieben Monate lang gefehlt hat.
- * Sie steht im Package, damit sie in jeder Klasse vier Zeilen kostet.
- */
-
 let wurzel: string
 const ICS = 'BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR\n'
 
@@ -30,8 +25,6 @@ describe('pruefeKalender', () => {
 	})
 
 	test('faengt die verschobene Datei', () => {
-		// Genau der Vorfall: aus public/public/k.ics wurde public/k.ics, die URL
-		// wanderte von /public/k.ics auf /k.ics.
 		fs.writeFileSync(path.join(wurzel, 'public/k.ics'), ICS)
 		const befund = pruefeKalender(wurzel, { calendarPath: '/public/k.ics' })
 		expect(befund.fehler.join(' ')).toMatch(/liegt keine Datei/)
@@ -44,8 +37,6 @@ describe('pruefeKalender', () => {
 	})
 
 	test('faengt zwei Kalenderdateien', () => {
-		// Zwei Dateien fuer denselben Kalender laufen auseinander, sobald jemand
-		// einen Termin nur in einer davon nachtraegt.
 		fs.writeFileSync(path.join(wurzel, 'public/public/k.ics'), ICS)
 		fs.writeFileSync(path.join(wurzel, 'public/alt.ics'), ICS)
 		const befund = pruefeKalender(wurzel, { calendarPath: '/public/k.ics' })
@@ -70,8 +61,6 @@ describe('pruefeKalender', () => {
 	})
 
 	test('meldet nichts, wenn unter der alten Adresse keine Datei liegt', () => {
-		// Der Normalfall in `klasse-christophers`: die alte Adresse leitet um, die
-		// Datei liegt nur an der neuen Stelle.
 		fs.writeFileSync(path.join(wurzel, 'public/public/k.ics'), ICS)
 		expect(
 			pruefeKalender(wurzel, {
@@ -82,9 +71,6 @@ describe('pruefeKalender', () => {
 	})
 
 	test('faengt eine Datei, die die Umleitung der alten Adresse verdeckt', () => {
-		// `express.static` liefert eine vorhandene Datei aus, bevor die Umleitung
-		// greift. Dann haette das Repository zwei Kalender — der Zustand, aus dem
-		// der Ausfall entstanden ist.
 		fs.writeFileSync(path.join(wurzel, 'public/public/k.ics'), ICS)
 		fs.writeFileSync(path.join(wurzel, 'public/k.ics'), ICS)
 		const befund = pruefeKalender(wurzel, {

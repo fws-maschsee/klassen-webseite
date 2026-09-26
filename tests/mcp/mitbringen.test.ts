@@ -7,11 +7,6 @@ import Database from 'better-sqlite3'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { runMigrations } from '../../src/migrations.ts'
 
-/**
- * Mitbringlisten ueber MCP: Anlegen ist admin, Lesen ist admin (die Liste
- * nennt Familiennamen), und was zurueckkommt, ist der Link fuer die Eltern.
- */
-
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-mitbringen-'))
 const dbFile = path.join(tmpDir, 'test.db')
 
@@ -20,7 +15,7 @@ process.env.MCP_INSTANCE_NAME = 'klasse-eins'
 
 // biome-ignore lint/suspicious/noExplicitAny: erst nach dem Setzen von DB_PATH importiert
 let buildMcpServer: any
-// biome-ignore lint/suspicious/noExplicitAny: dito
+// biome-ignore lint/suspicious/noExplicitAny: erst nach dem Setzen von DB_PATH importiert
 let trageEin: any
 
 const connect = async (roles: string[]): Promise<Client> => {

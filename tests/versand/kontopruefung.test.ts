@@ -3,15 +3,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { resetGrantsConfig } from '../../src/server/auth/grants.ts'
 import { createTestDb } from '../helpers/db.ts'
 
-/**
- * Die Konten-Pruefung vor dem Versand — die Regel gegen Attrappen.
- *
- * Was hier NICHT geprueft wird: ob ZITADEL wirklich so antwortet. Das kann nur
- * ein echtes ZITADEL beweisen und steht deshalb in
- * `tests/integration/kontopruefung.test.ts`. Hier steht die Regel: wer bleibt,
- * wer faellt, was gemeldet wird und was bei einer Stoerung passiert.
- */
-
 const { accountCheckMode, berichtAlsText, hatBefund, obfuscate, pruefeKonten } =
 	await import('../../src/lib/versand/kontopruefung.ts')
 
@@ -22,7 +13,6 @@ const kandidat = (r: Kandidat) => ({
 	from_address_book: r.mitglied_id !== null,
 })
 
-/** Antwort auf `/users/grants/_search` bzw. `/users/_search`. */
 const zitadelAntwortet = (
 	grants: { userId: string; email?: string; roleKeys: string[] }[],
 	konten: { id: string; email: string }[] = [],
@@ -102,9 +92,6 @@ describe('Konten-Pruefung vor dem Versand', () => {
 		})
 
 		test('ein Tippfehler faellt auf "report" zurueck und nicht auf "enforce"', () => {
-			// Die beiden Fehlschluesse sind nicht gleichwertig: Aus `enforc` still
-			// ein `enforce` zu machen hiesse, wegen eines Tippfehlers Post nicht
-			// zuzustellen.
 			process.env.LIST_ACCOUNT_CHECK = 'enforc'
 			const warnung = vi.spyOn(console, 'warn').mockImplementation(() => {})
 			expect(accountCheckMode()).toBe('report')
@@ -145,8 +132,6 @@ describe('Konten-Pruefung vor dem Versand', () => {
 			expect(ergebnis.recipients.map((r) => r.email)).toEqual([
 				'anna@example.org',
 			])
-			// Bert HAT ein Konto, ihm fehlt der Grant. Das ist ein anderer Handgriff
-			// als „gar kein Konto", und der Bericht muss ihn unterscheiden.
 			expect(ergebnis.cut).toEqual([
 				{
 					recipient: { email: 'bert@example.org', mitglied_id: 'bert' },
@@ -156,9 +141,6 @@ describe('Konten-Pruefung vor dem Versand', () => {
 		})
 
 		test('`user_sub` schlaegt die Adresse — eine Adressaenderung wirft niemanden raus', async () => {
-			// Der Grund fuer zwei Schluessel: Der `sub` ueberlebt eine
-			// Adressaenderung, die Adresse nicht. Wer sich einmal angemeldet hat,
-			// wird darueber wiedererkannt.
 			mitglied('clara', 'clara-neu@example.org', 'u-clara')
 			vi.stubGlobal(
 				'fetch',
@@ -221,8 +203,6 @@ describe('Konten-Pruefung vor dem Versand', () => {
 
 	describe('extra_recipients', () => {
 		test('Einzeladressen ohne Adressbuch-Eintrag passieren die Pruefung', async () => {
-			// Sonst fliegen die Sammeladressen der Schule aus den Verteilern, ohne
-			// dass es jemand merkt. Sie haben per Definition kein Konto.
 			mitglied('gustav', 'gustav@example.org')
 			vi.stubGlobal('fetch', zitadelAntwortet([], []))
 
@@ -282,9 +262,6 @@ describe('Konten-Pruefung vor dem Versand', () => {
 
 	describe('die andere Richtung', () => {
 		test('Konten mit Rolle ohne Adressbuch-Eintrag werden gemeldet', async () => {
-			// Diese Personen gehoeren dazu und bekommen trotzdem nichts. Das faellt
-			// in keiner Zustellung auf — dort fehlt niemand, den man vermissen
-			// koennte.
 			mitglied('ida', 'ida@example.org')
 			vi.stubGlobal(
 				'fetch',
@@ -344,8 +321,6 @@ describe('Konten-Pruefung vor dem Versand', () => {
 		})
 
 		test('fehlende Konfiguration ist in enforce ebenfalls ein Stopp', async () => {
-			// Ein Deployment ohne `ZITADEL_SERVICE_TOKEN` weiss nichts ueber Grants.
-			// In `enforce` darf das nicht heissen „also alle durchlassen".
 			mitglied('lena', 'lena@example.org')
 			process.env.ZITADEL_SERVICE_TOKEN = ''
 			resetGrantsConfig()
@@ -393,7 +368,6 @@ describe('Konten-Pruefung vor dem Versand', () => {
 				kandidat,
 				{ db, mode: 'enforce', occasion: 'Test' },
 			)
-			// Grants + Konten: die zweite Abfrage nennt den GRUND des Schnitts.
 			expect(fetchMock).toHaveBeenCalledTimes(2)
 		})
 	})
@@ -407,18 +381,6 @@ describe('Konten-Pruefung vor dem Versand', () => {
 	})
 })
 
-/**
- * WER DEN BERICHT UNGEFRAGT BEKOMMT.
- *
- * Der Bericht haengt an jedem Rueckgabewert und steht in jedem Protokoll — das
- * kostet niemanden etwas. Eine MAIL braucht einen Anlass, und dieser Anlass ist
- * eine Abweichung. Der Wortlaut des Betreibers, nachdem er einen Abgleich mit
- * lauter Nullen bekommen hatte: „das will ich nicht andauernd bekommen. ich
- * will nur fehler sehen."
- *
- * Die Putz-Erinnerung laeuft jeden Sonntag; ohne diese Regel waere das
- * woechentlich eine Mail, in der nichts steht.
- */
 describe('Meldung nur bei Befund', () => {
 	const bericht = (
 		teile: Partial<Parameters<typeof hatBefund>[0]>,
@@ -447,17 +409,12 @@ describe('Meldung nur bei Befund', () => {
 	})
 
 	test('jemandem fehlt der Adressbuch-Eintrag: Befund', () => {
-		// Die andere Richtung zaehlt genauso. Diese Person gehoert dazu und
-		// bekommt nichts — das faellt in keiner Zustellung auf.
 		expect(
 			hatBefund(bericht({ accounts_without_entry: ['n***@***mple.org'] })),
 		).toBe(true)
 	})
 
 	test('eine blinde Pruefung ist KEIN Befund', () => {
-		// Sie hat niemanden uebergangen und niemanden vermisst. Eine Stoerung von
-		// ZITADEL gehoert ins Protokoll; in `enforce` faellt sie ohnehin dadurch
-		// auf, dass nichts verschickt wird.
 		expect(hatBefund(bericht({ unavailable: 'ECONNREFUSED' }))).toBe(false)
 	})
 })

@@ -16,18 +16,6 @@ import { merkeAnmeldung } from '../../src/lib/db/users.ts'
 import { buildBestaetigung } from '../../src/lib/email/adresswechsel.ts'
 import { createTestDb } from '../helpers/db.ts'
 
-/**
- * Die Zustelladresse aendert sich erst nach Bestaetigung — und die Mail dafuer
- * geht an die NEUE Adresse.
- *
- * Ohne diesen Schritt koennte jemand die Post einer anderen Familie auf die
- * eigene Adresse umleiten, und die Betroffenen merkten es erst daran, dass
- * nichts mehr kommt. Diese Datei prueft die drei Faelle, in denen ein Link
- * NICHT wirken darf: unbekannt, abgelaufen, schon benutzt.
- *
- * Alle Namen und Adressen sind frei erfunden.
- */
-
 let db: Database
 const JETZT = new Date('2026-08-15T10:00:00.000Z')
 const spaeter = (sekunden: number): Date =>
@@ -55,7 +43,6 @@ describe('Adressaenderung', () => {
 			JETZT,
 		)
 
-		// Normalisiert gespeichert, aber eben NUR in der eigenen Tabelle.
 		expect(anforderung.new_email).toBe('vera.privat@example.org')
 		expect(getMitglied('vera-beispiel', db)?.email).toBe('vera@example.org')
 		expect(offeneAnforderung('vera-beispiel', db, JETZT)?.token).toBe(
@@ -92,8 +79,6 @@ describe('Adressaenderung', () => {
 			JETZT,
 		)
 
-		// Eine Sekunde nach Ablauf. Die Grenze selbst ist kein Sonderfall, den man
-		// erraten muesste: `expires_at <= jetzt` heisst vorbei.
 		const ergebnis = bestaetigeAdresswechsel(
 			token,
 			db,
@@ -102,7 +87,6 @@ describe('Adressaenderung', () => {
 
 		expect(ergebnis).toEqual({ ok: false, grund: 'expired' })
 		expect(getMitglied('vera-beispiel', db)?.email).toBe('vera@example.org')
-		// Und er bleibt tot, auch wenn jemand es sofort noch einmal versucht.
 		expect(anforderungZuToken(token, db)?.confirmed_at).toBeNull()
 	})
 
@@ -115,9 +99,6 @@ describe('Adressaenderung', () => {
 		)
 		bestaetigeAdresswechsel(token, db, spaeter(60))
 
-		// Zwischendurch zieht die Person weiter. Ein wiederverwendbarer Link waere
-		// jetzt eine Zeitmaschine: Er setzte die Adresse auf einen Stand zurueck,
-		// den niemand mehr will.
 		const zweiter = beantrageAdresswechsel(
 			'vera-beispiel',
 			'vera@neu.example.org',
@@ -142,8 +123,6 @@ describe('Adressaenderung', () => {
 	})
 
 	test('eine neue Anforderung entwertet die alte', () => {
-		// Sonst waeren zwei Links gleichzeitig scharf, und der aeltere zeigte auf
-		// eine Adresse, die sich die Person anders ueberlegt hat.
 		const alt = beantrageAdresswechsel(
 			'vera-beispiel',
 			'falsch@example.org',
@@ -167,9 +146,6 @@ describe('Adressaenderung', () => {
 	})
 
 	test('die Verteiler-Einstellungen ziehen mit zur neuen Adresse', () => {
-		// Sie haengen an der ADRESSE. Ohne diesen Schritt staende, wer die
-		// Elterndiskussion abbestellt hat, nach einem Umzug wieder darin — weil
-		// fuer die neue Adresse nichts hinterlegt ist und dann die Vorgabe gilt.
 		setzeEinstellung(
 			'eltern',
 			'vera@example.org',
@@ -189,7 +165,6 @@ describe('Adressaenderung', () => {
 			subscribed: false,
 			ownMail: 'none',
 		})
-		// Und an der alten Adresse haengt nichts mehr.
 		expect(einstellungFuer('eltern', 'vera@example.org', db)).toEqual({
 			subscribed: true,
 			ownMail: 'copy',
@@ -197,9 +172,6 @@ describe('Adressaenderung', () => {
 	})
 
 	test('der Bezug zum Konto ueberlebt den Adresswechsel', () => {
-		// Die Anmeldeadresse und die Zustelladresse duerfen auseinanderlaufen —
-		// genau das ist der Zweck. Der Bezug haengt am `sub` und nicht an der
-		// Adresse, sonst waere er nach dem ersten Wechsel weg.
 		const bezug = merkeAnmeldung(
 			{ sub: '299834712', email: 'vera@example.org', name: 'Vera Beispiel' },
 			db,
@@ -233,8 +205,6 @@ describe('Die Bestaetigungsmail', () => {
 		expect(subject).toContain('bestätigen')
 		expect(text).toContain('vera.privat@example.org')
 		expect(text).toContain('/public/adresse-bestaetigen/abc123')
-		// Wer die Mail unerwartet bekommt, muss lesen koennen, dass Nichtstun
-		// genuegt — sonst klickt er aus Unsicherheit.
 		expect(text).toMatch(/nicht warst, brauchst du nichts zu tun/)
 	})
 })

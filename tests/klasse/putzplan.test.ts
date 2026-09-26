@@ -11,23 +11,9 @@ import {
 	putzplanZeilen,
 } from '../../src/klasse/putzplan.ts'
 
-/**
- * Der Putzplan ist der erste Fall von „strukturierte Daten als Sammlung": die
- * Einteilung liegt als eine einzige YAML-Datei im Klassen-Repo, die Tabelle wird
- * daraus erzeugt, und es gibt sie kein zweites Mal.
- *
- * Der Schaden, gegen den diese Tests geschrieben sind, ist nicht ein roter
- * Build. Er ist eine Tabelle, die vollständig AUSSIEHT und einen Termin nicht
- * nennt — dann erfährt eine Familie nichts von ihrem Einsatz, und auf der Seite
- * ist nichts zu sehen, was den Verdacht weckt. Deshalb steht die Zählung im
- * Mittelpunkt, und deshalb steht die Anzahl der Termine in keinem dieser Tests
- * als Zahl: sie wird aus der Datei ausgezählt.
- */
-
 const FIXTURE = new URL('../fixtures/', import.meta.url)
 const FIXTURE_DATEI = 'putzplan.yaml'
 
-/** Wie viele Termine die Fixture-Datei nennt — ausgezählt, nicht geglaubt. */
 const termineInDerDatei = (): string[] =>
 	readFileSync(fileURLToPath(new URL(FIXTURE_DATEI, FIXTURE)), 'utf-8')
 		.split('\n')
@@ -38,17 +24,6 @@ const termineInDerDatei = (): string[] =>
 
 type Protokoll = { stufe: string; text: string }
 
-/**
- * Lädt die Sammlung so, wie Astro sie lädt: durch den echten Loader, mit Astros
- * eigenem YAML-Parser und dem echten Schema.
- *
- * Eine Attrappe des `LoaderContext` statt eines `astro build`: geprüft werden
- * soll die Kette Datei → YAML → Schema → Zeilen, und genau die läuft hier
- * vollständig. Ein Build würde dieselbe Aussage für ein Vielfaches an Laufzeit
- * treffen und dazu ein Klassen-Repo brauchen, das dieses Repository nicht hat.
- * Die Attrappe deckt nur die Felder ab, die `file()` wirklich benutzt — ein
- * Vollausbau wäre eine zweite, mitzupflegende Fassung von Astro.
- */
 const sammlungLaden = async (
 	pfad: string,
 	wurzel: URL = FIXTURE,
@@ -74,11 +49,9 @@ const sammlungLaden = async (
 			debug: notiz('debug'),
 		},
 		config: { root: wurzel },
-		// Astro validiert an dieser Stelle gegen das Schema der Sammlung. Genau
-		// das tut diese Attrappe auch — sonst prüfte der Test das Schema nicht mit.
 		parseData: async ({ data }: { data: unknown }) =>
 			putzplanSchema.parseAsync(data),
-		// biome-ignore lint/suspicious/noExplicitAny: Attrappe eines LoaderContext, siehe Kopfkommentar
+		// biome-ignore lint/suspicious/noExplicitAny: Attrappe eines LoaderContext
 	} as any)
 
 	return {
@@ -107,9 +80,6 @@ describe('putzplanSchema', () => {
 	})
 
 	test('nimmt `datum` als Date UND als String', () => {
-		// YAML liefert je nach Parser das eine oder das andere. `z.coerce.date()`
-		// nimmt beides; `z.date()` hätte den String abgelehnt, und die Klasse hätte
-		// es erst im Build gemerkt.
 		const alsString = putzplanSchema.parse(gueltig).datum
 		const alsDate = putzplanSchema.parse({
 			...gueltig,
@@ -129,17 +99,12 @@ describe('putzplanSchema', () => {
 	})
 
 	test('lehnt einen Termin ohne eine einzige Familie ab', () => {
-		// Ein Termin, an dem niemand putzt, ist keine Einteilung — er ist eine
-		// vergessene Zeile.
 		expect(putzplanSchema.safeParse({ ...gueltig, familien: [] }).success).toBe(
 			false,
 		)
 	})
 
 	test('lässt einen Termin mit nur EINER Familie zu', () => {
-		// Über die Anzahl der Familien je Termin sagt niemand etwas — weder das
-		// Schema noch die Datenbank. Eine Familie allein ist eine Einteilung wie
-		// jede andere.
 		expect(
 			putzplanSchema.safeParse({
 				...gueltig,
@@ -149,8 +114,6 @@ describe('putzplanSchema', () => {
 	})
 
 	test('lehnt eine Familie ohne `slug` ab', () => {
-		// Der `slug` ist der Vertrag mit dem Erinnerungsdienst. Ohne ihn ist die
-		// Zeile für ihn stumm, und die Familie bekommt keine Erinnerung.
 		expect(
 			putzplanSchema.safeParse({
 				...gueltig,
@@ -184,10 +147,6 @@ describe('familienSpalte', () => {
 	})
 
 	test('verbindet zwei Familien NIE mit einem Schrägstrich', () => {
-		// Der Schrägstrich ist in dieser Notation vergeben: er gehört zum Namen
-		// EINER Familie mit zwei Nachnamen. Zwei Familien mit `/` zu verbinden
-		// machte aus ihnen eine — und aus „Schmidt/Weber" wäre nicht mehr zu
-		// erkennen, ob eine oder zwei Familien gemeint sind.
 		const spalte = familienSpalte([{ name: 'Herbst' }, { name: 'Sommer' }])
 		expect(spalte).not.toContain('/')
 	})
@@ -216,11 +175,6 @@ describe('datumDeutsch', () => {
 	})
 
 	test('verschiebt den Tag in keiner Zeitzone', () => {
-		// `datum` ist ein reines Datum und liegt auf Mitternacht UTC. Mit lokalen
-		// Gettern nennte die Tabelle westlich von UTC jeden Termin einen Tag zu
-		// früh — ein Termin, zu dem niemand kommt. Beide Randzeiten desselben
-		// UTC-Tages müssen denselben Tag ergeben; mit lokalen Gettern scheitert in
-		// jeder Zeitzone ausser UTC mindestens eine der beiden Zusicherungen.
 		expect(datumDeutsch(new Date(Date.UTC(2026, 7, 21, 0, 30)))).toBe(
 			'21.08.2026',
 		)
@@ -240,17 +194,12 @@ describe('Sammlung aus der YAML-Datei', () => {
 	})
 
 	test('die Tabelle enthält GENAU die Termine der Datei', async () => {
-		// Der eigentliche Wächter. Nicht „ungefähr so viele" und nicht „mindestens
-		// so viele": genau diese, in dieser Zahl, jeder einmal. Eine stille
-		// Auslassung ist der einzige Fehler dieser Seite, den niemand sieht.
 		const { eintraege } = await sammlungLaden(FIXTURE_DATEI)
 		const zeilen = putzplanZeilen(eintraege)
 		const termine = termineInDerDatei()
 
 		expect(zeilen).toHaveLength(termine.length)
 		expect(zeilen.map(({ id }) => id).sort()).toEqual([...termine].sort())
-		// Keine Zeile ohne Familie: eine leere Spalte „Familie" wäre eine Zeile,
-		// die niemanden erreicht.
 		for (const zeile of zeilen) {
 			expect(zeile.familie, zeile.id).toContain('Familie ')
 			expect(zeile.datum, zeile.id).toMatch(/^\d{2}\.\d{2}\.\d{4}$/)
@@ -258,10 +207,6 @@ describe('Sammlung aus der YAML-Datei', () => {
 	})
 
 	test('trägt keinen `slug` in die Tabelle', async () => {
-		// Der `slug` ist der Schlüssel, an dem der Erinnerungsdienst seine
-		// Zuordnung Familie → Mailadressen aufhängt. Auf der Seite hat er nichts zu
-		// suchen: er sieht wie ein Name aus, ist aber keiner, und wer ihn dort
-		// liest, hält ihn für die Schreibweise der Familie.
 		const { eintraege } = await sammlungLaden(FIXTURE_DATEI)
 		const slugs = eintraege.flatMap(({ data }) =>
 			data.familien.map(({ slug }) => slug),
@@ -275,8 +220,6 @@ describe('Sammlung aus der YAML-Datei', () => {
 
 	test('sortiert aufsteigend nach Datum, nicht nach Reihenfolge in der Datei', async () => {
 		const { eintraege } = await sammlungLaden(FIXTURE_DATEI)
-		// Die Fixture-Datei ist absichtlich unsortiert — sonst bestätigte dieser
-		// Test nur, dass nichts umgestellt wurde.
 		expect(eintraege.map(({ id }) => id)).not.toEqual(
 			[...eintraege.map(({ id }) => id)].sort(),
 		)
@@ -292,8 +235,6 @@ describe('Sammlung aus der YAML-Datei', () => {
 				familien: [{ name: id, slug: id }],
 			},
 		})
-		// Zwei Termine am selben Tag: eine Sortierung, die über eine Map oder ein
-		// Objekt mit dem Datum als Schlüssel geht, verlöre hier einen.
 		const eintraege = [
 			eintrag('b', '2026-08-21'),
 			eintrag('a', '2026-08-21'),
@@ -304,9 +245,6 @@ describe('Sammlung aus der YAML-Datei', () => {
 	})
 
 	test('lässt die Eingabeliste unangetastet', () => {
-		// `nachDatum` bekommt das Ergebnis von `getCollection()`. Ein `sort()` auf
-		// dieser Liste sortierte Astros Sammlung an Ort und Stelle um — mit Folgen
-		// für jeden anderen Verbraucher im selben Request.
 		const eintraege: PutzplanEintrag[] = [
 			{
 				id: 'spaet',
@@ -330,10 +268,6 @@ describe('Sammlung aus der YAML-Datei', () => {
 
 describe('Klasse ohne putzplan.yaml', () => {
 	test('bleibt leer, statt den Build mit einem Fehler zu beschweren', async () => {
-		// Der Fall von `klasse-christophers`. Astros `file()` schreibt hier
-		// „File not found" als FEHLER ins Log — bei jedem Build, ohne dass jemand
-		// etwas zu beheben hätte. Ein Fehler, den man nicht beheben kann, bringt
-		// den nächsten echten Fehler zum Verschwinden.
 		const { eintraege, protokoll } = await sammlungLaden(
 			'src/content/putzplan.yaml',
 		)
@@ -350,18 +284,6 @@ describe('Klasse ohne putzplan.yaml', () => {
 })
 
 describe('die Vorlage der Seite', () => {
-	/**
-	 * `putzplan.astro` lässt sich hier nicht rendern: `.astro`-Dateien brauchen
-	 * Astros Vite-Plugin, und `astro:content` ist ein virtuelles Modul, das nur
-	 * innerhalb einer Astro-Kompilierung existiert. Die gerenderte Tabelle wird
-	 * deshalb im `astro build` der Klasse gegengeprüft — an der Zahl der
-	 * `id="termin-…"` im erzeugten HTML.
-	 *
-	 * Was hier bleibt, ist die Frage, die diesem Repo gehört: dass die Vorlage
-	 * über die vollständige Liste läuft. `putzplanZeilen` liefert jeden Termin;
-	 * ein `.filter()` oder `.slice()` in der Vorlage könnte ihn danach wieder
-	 * unterschlagen, und niemand sähe es.
-	 */
 	const vorlage = readFileSync(
 		fileURLToPath(
 			new URL('../../astro/pages/docs/putzen/putzplan.astro', import.meta.url),
@@ -375,15 +297,11 @@ describe('die Vorlage der Seite', () => {
 	})
 
 	test('greift auf kein Feld zu, das die Zeile nicht hat', () => {
-		// `PutzplanZeile` gibt den `slug` gar nicht heraus. Die Vorlage könnte ihn
-		// sich aber aus der Sammlung nachholen — hier steht, dass sie es nicht tut.
 		expect(vorlage).not.toMatch(/zeile\s*\.\s*slug/)
 		expect(vorlage).not.toMatch(/familien\s*\.\s*map/)
 	})
 
 	test('behält die Spalten der alten Markdown-Tabelle', () => {
-		// Gleiche Spalten, gleiche Reihenfolge: Eltern sollen die Tabelle
-		// wiedererkennen, die vorher an dieser Stelle stand.
 		const spalten = [...vorlage.matchAll(/<th>([^<]+)<\/th>/g)].map(
 			(treffer) => treffer[1],
 		)

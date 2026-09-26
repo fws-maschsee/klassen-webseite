@@ -37,10 +37,6 @@ export const recordSend = (
 	}) as SendLogRow
 }
 
-/**
- * DIE Idempotenz-Frage: Wurde diese Mail an diese Person bereits erfolgreich
- * verschickt? Genau ein `sent`-Eintrag pro (slug, mitglied) ist das Kriterium.
- */
 export const wasSentTo = (
 	email_slug: string,
 	mitglied_id: string,
@@ -75,12 +71,6 @@ export const listSuccessfullySentMitgliedIds = (
 			.map((r) => r.mitglied_id),
 	)
 
-/**
- * Counts pro Status basierend auf dem LETZTEN Eintrag pro Person. Ein
- * Empfaenger, der frueher `error` war und spaeter `sent`, zaehlt nur als
- * `sent` — alte Fehlversuche, die spaeter erfolgreich wiederholt wurden,
- * sollen nicht als Fehler dastehen.
- */
 export const countByStatus = (
 	email_slug: string,
 	db: Database = openDb(),
@@ -117,13 +107,6 @@ export const countByStatus = (
 	return counts
 }
 
-/**
- * Re-queue fuer die Personen, deren LETZTER Eintrag `error` ist. Erzeugt je
- * betroffener Person einen neuen `queued`-Eintrag; alte Error-Zeilen bleiben
- * als Historie erhalten.
- *
- * @returns Anzahl der neu eingereihten Empfaenger.
- */
 export const requeueErrors = (
 	email_slug: string,
 	db: Database = openDb(),
@@ -153,14 +136,6 @@ export const requeueErrors = (
 	return mitglieder.length
 }
 
-/**
- * Erfolgreich verschickte Mails im GLEITENDEN 1h-Fenster.
- *
- * Die Grenze wird in JS gerechnet und als Parameter uebergeben — siehe
- * `dbTimestamp` in `./index.ts`. Ein `datetime('now','-1 hour')` in der
- * Abfrage waere ein anderes Textformat als das gespeicherte `sent_at` und
- * verglich frueher faktisch den KALENDERTAG.
- */
 export const countSentInLastHour = (
 	db: Database = openDb(),
 	now: Date = new Date(),
@@ -171,7 +146,6 @@ export const countSentInLastHour = (
 		)
 		.get(dbTimestampBefore(3600, now))?.c ?? 0
 
-/** Aeltester sent-Eintrag innerhalb des 1h-Fensters (ISO-String) oder null. */
 export const oldestSentInLastHour = (
 	db: Database = openDb(),
 	now: Date = new Date(),
@@ -182,7 +156,6 @@ export const oldestSentInLastHour = (
 		)
 		.get(dbTimestampBefore(3600, now))?.sent_at ?? null
 
-/** Aelteste queued-Eintraege (aelteste zuerst). */
 export const peekQueued = (
 	limit: number,
 	db: Database = openDb(),
@@ -193,11 +166,6 @@ export const peekQueued = (
 		)
 		.all(limit)
 
-/**
- * Versucht, einen `queued`-Eintrag atomar auf `sending` zu setzen. Race-Schutz
- * gegen parallele Batches: nur wer `changes === 1` zurueckbekommt, darf den
- * Eintrag verarbeiten. Alle anderen skippen still.
- */
 export const claimQueued = (id: number, db: Database = openDb()): boolean =>
 	db
 		.prepare<[string, number]>(
@@ -205,13 +173,6 @@ export const claimQueued = (id: number, db: Database = openDb()): boolean =>
 		)
 		.run(dbTimestamp(), id).changes === 1
 
-/**
- * Reboot-Cleanup: Beim Worker-Start alle `sending`-Eintraege auf `error`
- * kippen. Wird der Pod mitten im Versand neugestartet (Deploy, Crash, OOM),
- * bleiben Eintraege sonst fuer immer in `sending` haengen. Erfasst absichtlich
- * ALLE `sending`-Eintraege unabhaengig vom Alter — direkt nach einem Restart
- * kann nichts legitim "gerade gesendet werden".
- */
 export const cleanupStuckOnBoot = (db: Database = openDb()): number =>
 	db
 		.prepare<[string, string]>(
@@ -226,11 +187,6 @@ export const cleanupStuckOnBoot = (db: Database = openDb()): number =>
 			dbTimestamp(),
 		).changes
 
-/**
- * Periodischer Cleanup: `sending`-Eintraege, die aelter als `maxAgeSeconds`
- * sind, auf `error` kippen. Schuetzt vor SMTP-Stalls, die nodemailer nicht mit
- * einem Fehler beendet (Remote-MX antwortet nicht mehr, Socket haengt).
- */
 export const cleanupStuckByTimeout = (
 	db: Database = openDb(),
 	maxAgeSeconds = 30,
@@ -257,7 +213,6 @@ export const countQueued = (db: Database = openDb()): number =>
 		)
 		.get()?.c ?? 0
 
-/** Aktualisiert einen `sending`-Eintrag auf sent/error/skipped. */
 export const completeQueued = (
 	id: number,
 	patch: {

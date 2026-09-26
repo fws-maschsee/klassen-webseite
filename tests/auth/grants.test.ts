@@ -5,18 +5,6 @@ import {
 	rolesForUser,
 } from '../../src/server/auth/grants.ts'
 
-/**
- * Die Berechtigung kommt zur Laufzeit aus ZITADEL, nicht aus einem Token.
- * Diese Tests halten die beiden Eigenschaften fest, die dabei zaehlen:
- * Rollen werden wirklich dort erfragt, und ein Ausfall fuehrt zu einer
- * VERWEIGERUNG statt zu einem Durchwinken.
- *
- * ROLLEN, sonst nichts. Hier stand einmal auch ein Test fuer `usersWithRole`,
- * das Namen und Adressen aller Personen mit Grant lieferte — die Quelle der
- * entfernten Spiegelung ins Adressbuch. Dass diese Antworten keine
- * Adressbuch-Daten mehr erzeugen, bewacht
- * `tests/auth/getrennte-datenschichten.test.ts`.
- */
 describe('Rollen aus ZITADEL', () => {
 	const original = { ...process.env }
 
@@ -37,8 +25,6 @@ describe('Rollen aus ZITADEL', () => {
 	it('fragt die Grants des Projekts dieser Instanz ab', async () => {
 		const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
 			const body = JSON.parse(String(init.body))
-			// Auf das Projekt eingeschraenkt und NUR danach — `userIdQuery`
-			// liefert gegen die echte Instanz still null Zeilen.
 			expect(body.queries).toEqual([
 				{ projectIdQuery: { projectId: 'proj-1' } },
 			])
@@ -50,8 +36,6 @@ describe('Rollen aus ZITADEL', () => {
 							roleKeys: ['mitglied', 'admin'],
 							state: 'USER_GRANT_STATE_ACTIVE',
 						},
-						// Ein anderer Grant im selben Projekt — darf nicht
-						// mitgeliefert werden.
 						{
 							userId: 'jemand-anderes',
 							roleKeys: ['admin'],
@@ -134,9 +118,6 @@ describe('Rollen aus ZITADEL', () => {
 	})
 
 	it('nimmt Namen und Adressen aus der Antwort nicht mit', async () => {
-		// Die Antwort von ZITADEL traegt sie; dieses Modul gibt sie nicht weiter.
-		// Es liefert Rollen, und Rollen sind keine personenbezogenen Daten, die
-		// irgendwo gespeichert werden muessten.
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(

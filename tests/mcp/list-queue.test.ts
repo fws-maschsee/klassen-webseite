@@ -7,22 +7,6 @@ import Database from 'better-sqlite3'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { runMigrations } from '../../src/migrations.ts'
 
-/**
- * Die Werkzeuge, mit denen sich die Frage „ist meine Mail an den Verteiler
- * ueberhaupt angekommen?" beantworten laesst — und die gescheiterte Zustellung
- * nachholen.
- *
- * Fuer Rundmails gibt es das laengst (`get_send_log`, `retry_failed_sends`).
- * Fuer Listenmails gab es nichts: Nach dem 202 an den Cloudflare-Worker war
- * der Zustand nur noch in den Pod-Logs zu sehen, und ein gescheiterter Versand
- * war endgueltig.
- *
- * Beide Werkzeuge zeigen Empfaengeradressen bzw. aendern Zustand und haengen
- * deshalb an `admin`, nicht an `mitglied`.
- *
- * Alle Namen und Adressen sind frei erfunden.
- */
-
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-listenqueue-'))
 const dbFile = path.join(tmpDir, 'test.db')
 
@@ -54,8 +38,6 @@ const textOf = (result: unknown): string => {
 beforeAll(async () => {
 	const db = new Database(dbFile)
 	runMigrations(db)
-	// Eine angenommene Listenmail: einer hat sie, bei der anderen ist der
-	// Versand gescheitert.
 	db.prepare(
 		`INSERT INTO list_messages (id, list_address, from_email, from_name, subject)
      VALUES (1, 'alle', 'jan@example.org', 'Jan Beispiel', 'Protokoll')`,

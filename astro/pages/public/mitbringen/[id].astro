@@ -7,22 +7,6 @@ import { besucherLesen } from '../../../../src/routes/mitbringen/gemeinsam.ts'
 
 export const prerender = false
 
-/**
- * Die Mitbringliste — "Wer bringt was zum Grillfest mit?"
- *
- * Liegt unter `/public/`, weil viele Eltern die Seite nicht mit Konto nutzen
- * und trotzdem eintragen sollen. Der Schutz ist der Link: Die `id` ist ein
- * zufaelliger Schlüssel, und die Seite steht auf `noindex` (Layout). Wer
- * angemeldet ist, bekommt seinen Namen vorausgefuellt; wer nicht, tippt ihn.
- *
- * Die Seite funktioniert OHNE JavaScript vollstaendig (Formular, Umleitung
- * zurück). MIT JavaScript fragt sie alle vier Sekunden den Stand ab und
- * zeichnet die Einträge neu, wenn sich etwas getan hat — die anderen sehen
- * also, was gerade eingetragen wird, ohne neu zu laden. Der Bearbeitungs-
- * schlüssel eines eigenen Eintrags bleibt im Browser (localStorage), damit
- * auch ein Gast seinen Eintrag später noch ändern kann.
- */
-
 const id = Astro.params.id ?? ''
 const stand = standLesen(id)
 if (!stand) {
@@ -31,23 +15,11 @@ if (!stand) {
 
 const { label: klasse } = klassenConfig()
 const besucher = await besucherLesen(Astro.request)
-/**
- * Angemeldete bekommen die normale Seite mit Navigation; Gaeste die schlichte
- * ohne Menue — jede Tuer dort fuehrte sie nur zur Anmeldemaske. Stattdessen
- * ein Anmelde-Knopf mit dem Hinweis, dass es angemeldet bequemer ist.
- */
 const Layout = besucher.sub ? Page : Schlicht
 const anmeldeLink = `/auth/login?rd=${encodeURIComponent(`/public/mitbringen/${id}`)}`
 const fehler = new URL(Astro.request.url).searchParams.get('fehler')
 const { list, counts } = stand
 const offen = list.status === 'open'
-/**
- * Die Zeilen kommen FERTIG vom Server, samt der Knöpfe „Ändern/Löschen" dort,
- * wo die Person es darf (eigener Eintrag per Konto, oder admin). Das Skript
- * zeichnet die Tabelle nur neu, wenn sich der Stand geändert hat — nichts
- * springt beim Laden. Nur Gäste, deren Bearbeitungsschlüssel im Browser
- * liegt, bekommen ihre Knöpfe nachträglich in die (schon vorhandene) Zelle.
- */
 const zeilen = eintraegeLesen(list.id).map((e) => ({
   id: e.id,
   name: e.name,
@@ -194,7 +166,7 @@ const datum = list.event_date
       const speicherKey = `mitbringen:${listId}`
       const lade = () => { try { return JSON.parse(localStorage.getItem(speicherKey) || '{}') } catch { return {} } }
       const speichere = (m) => { try { localStorage.setItem(speicherKey, JSON.stringify(m)) } catch {} }
-      let meine = lade() // entry_id -> edit_token (Einträge dieses Browsers)
+      let meine = lade()
       let stand = revision
       const table = document.querySelector('[data-entries] tbody')
       const form = document.querySelector('[data-form]')
@@ -305,12 +277,11 @@ const datum = list.event_date
           if (!res.ok) { alert(res.fehler || 'Das hat nicht geklappt.'); return }
           if (res.entry && res.entry.edit_token) { meine[res.entry.id] = res.entry.edit_token; speichere(meine) }
           zurücksetzen()
-          stand = -1 // beim nächsten Abruf sicher neu zeichnen
+          stand = -1
           await holeStand()
         })
       }
 
-      // Knöpfe per Delegation — die Zeilen kommen vom Server oder aus zeichne().
       if (table) table.addEventListener('click', (ev) => {
         const b = ev.target.closest('button[data-aendern],button[data-loeschen]')
         if (!b) return
@@ -318,15 +289,12 @@ const datum = list.event_date
         if (!e) return
         if (b.dataset.aendern) bearbeite(e); else loesche(e)
       })
-      // Gäste mit gemerktem Schlüssel: Knöpfe in die vorhandene Zelle setzen —
-      // kein Neuzeichnen, kein Springen.
       for (const e of zeilen) {
         if (offen && !e.own && !admin && meine[e.id]) {
           const cell = table?.querySelector(`tr[data-entry-id="${e.id}"] [data-actions]`)
           if (cell && cell.children.length === 0) cell.append(...knoepfe(e))
         }
       }
-      // Alle vier Sekunden nachsehen; neu gezeichnet wird nur bei Änderung.
       setInterval(holeStand, 4000)
       document.addEventListener('visibilitychange', () => { if (!document.hidden) holeStand() })
     })()

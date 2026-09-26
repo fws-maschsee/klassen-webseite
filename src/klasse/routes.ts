@@ -1,44 +1,16 @@
 import { fileURLToPath } from 'node:url'
 
-/**
- * Die geteilten Routen. Diese Liste ist der eigentliche Zweck des geteilten
- * Codes: eine neue Seite hier eintragen, in den Klassen das Submodule
- * nachziehen — und die Seite ist in allen Klassen da, ohne dass in einem
- * Klassen-Repo eine Datei entsteht.
- *
- * `/docs`, `/blog` und die Seitenleisten kommen weiterhin von den
- * shipyard-Integrationen; hier stehen nur die Routen, die diese Anwendung
- * selbst mitbringt.
- */
-
-/**
- * Wurzel des geteilten Codes, aufgelöst aus dem eigenen Modulpfad. Bei der
- * Klasse ist das `geteilt/`, hier das Repo selbst; in beiden Fällen liegt
- * `src/klasse/` zwei Ebenen darunter.
- */
 const wurzel = new URL('../../', import.meta.url)
 
 export const geteilt = (relativ: string): string =>
 	fileURLToPath(new URL(relativ, wurzel))
 
 export type GeteilteRoute = {
-	/** Astro-Routenmuster, wie es in `injectRoute` erwartet wird. */
 	pattern: string
-	/** Absoluter Pfad der Datei, die die Route bedient. */
 	entrypoint: string
-	/**
-	 * Warum die Route ins Package gehört. Steht hier und nicht in der README,
-	 * damit die Begründung mit der Route zusammen gepflegt wird.
-	 */
 	grund: string
 }
 
-/**
- * Alle Einstiegspunkte zeigen auf QUELLEN. Vorher standen die `.ts`-Routen als
- * `dist/**.js` hier, weil sie beim Verbraucher aus `node_modules` kamen und
- * dort niemand sie kompiliert hätte. Das Submodule liegt im Baum der Klasse,
- * also übernimmt Vite das — wie bei den `.astro`-Dateien schon immer.
- */
 export const GETEILTE_ROUTEN: readonly GeteilteRoute[] = [
 	{
 		pattern: '/',

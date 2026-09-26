@@ -10,83 +10,21 @@ import {
 	putzplanZeilen,
 } from './putzplan.ts'
 
-/**
- * Der Putzplan als PDF — dieselben Daten wie auf der Seite, in einer Form, die
- * man ausdrucken und an den Kühlschrank hängen kann.
- *
- * Erzeugt wird bei JEDEM Aufruf aus der Datenbank. Ein zur Bauzeit erzeugtes
- * PDF wäre der Stand des letzten Deploys, und der Plan ändert sich über MCP,
- * also ohne Deploy: Eine Familie hätte dann einen Zettel in der Hand, auf dem
- * ein getauschter Termin noch falsch steht — und dem Zettel sieht man das nicht
- * an. Genau dieselbe Begründung steht über der Seite (`prerender = false`).
- *
- * Die Vorlage steht in DIESEM Repository und nicht in den Klassen: Beide
- * Klassen sollen dasselbe PDF bekommen. Klassenname, Schuljahr und
- * Kontaktadresse kommen aus der `KlassenConfig`; wer hier einen Klassennamen
- * fest verdrahtet, macht den geteilten Code für die nächste Klasse wertlos.
- */
-
-/**
- * Was die Vorlage als `daten.json` zu sehen bekommt.
- *
- * Englische Feldnamen, weil das eine Maschinenschnittstelle ist — der Vertrag
- * zwischen dieser Datei und der Vorlage unten. Die WERTE sind teils deutsche
- * Anzeigetexte (`21.08.2026`, `Familie Musterfrau und Familie Beispiel`): Sie
- * werden hier gesetzt und nicht in der Vorlage, weil die Seite sie schon so
- * setzt und beide dieselbe Tabelle zeigen sollen. Zwei Formatierungen wären
- * zwei Gelegenheiten, denselben Sonderfall verschieden zu treffen — und einer
- * davon wäre falsch.
- */
 export type PutzplanPdfDaten = {
-	/** Anzeigename der Klasse, z.B. `Klasse Wiesen`. */
 	class_label: string
-	/** Schuljahr, z.B. `2026/2027`. */
 	school_year: string
-	/** Wann dieses PDF erzeugt wurde, deutsch: `15.08.2026, 18:20 Uhr`. */
 	generated_at: string
-	/** Adresse der Klassenverwaltung. */
 	contact_mail: string
-	/** Name dahinter, oder leer. */
 	contact_name: string
-	/** Eine Zeile je Termin, in derselben Reihenfolge wie auf der Seite. */
 	rows: { family: string; date: string; note: string }[]
 }
 
-/**
- * Das Schuljahr, in dem ein Datum liegt: `2026/2027` für alles ab August 2026
- * bis Juli 2027.
- *
- * Die Grenze liegt am 1. August und nicht am ersten Schultag. Das ist eine
- * Vereinfachung, und sie ist die richtige: Der erste Schultag steht nirgends
- * als Datum in dieser Anwendung, und im Juli und August liegt ohnehin kein
- * Putztermin — die Vereinfachung kann also nur dort danebenliegen, wo es keine
- * Daten gibt.
- */
 export const schuljahrAus = (datum: Date): string => {
 	const jahr = datum.getUTCFullYear()
-	// `getUTCMonth()` zählt ab 0, August ist 7.
 	const beginn = datum.getUTCMonth() >= 7 ? jahr : jahr - 1
 	return `${beginn}/${beginn + 1}`
 }
 
-/**
- * Welches Schuljahr über dem PDF steht.
- *
- * Drei Quellen in dieser Reihenfolge, und jede hat ihren Grund:
- *
- * 1. `KlassenConfig.schuljahr`, wenn die Klasse es gesetzt hat. Damit lässt sich
- *    das Feld überschreiben, ohne den geteilten Code anzufassen.
- * 2. Sonst das Schuljahr des ERSTEN Termins. Damit passt die Überschrift
- *    zwangsläufig zur Tabelle darunter — ein Plan, der im August anfängt, steht
- *    auch dann unter „2026/2027", wenn ihn jemand im Juni 2027 herunterlädt.
- * 3. Sonst der Kalender. Das ist der leere Plan; dort gibt es keinen Termin,
- *    aus dem sich etwas ableiten ließe.
- *
- * Bewusst KEIN Pflichtfeld in der `KlassenConfig`: Ein Schuljahr, das jede
- * Klasse einmal im Jahr von Hand nachträgt, steht spätestens im zweiten Jahr in
- * einer der Klassen falsch — und ein falsches Schuljahr auf einem sonst
- * richtigen Plan fällt niemandem auf.
- */
 export const schuljahrFuer = (
 	config: KlassenConfig,
 	zeilen: readonly PutzplanZeile[],
@@ -97,14 +35,12 @@ export const schuljahrFuer = (
 	return schuljahrAus(erstes ? new Date(`${erstes}T00:00:00.000Z`) : jetzt)
 }
 
-/** `15.08.2026, 18:20 Uhr` — nach der Uhr, die bei den Eltern an der Wand hängt. */
 const standDeutsch = (zeitpunkt: Date): string => {
 	const t = berlinTeile(zeitpunkt)
 	const zweistellig = (zahl: number) => String(zahl).padStart(2, '0')
 	return `${zweistellig(t.tag)}.${zweistellig(t.monat)}.${t.jahr}, ${zweistellig(t.stunde)}:${zweistellig(t.minute)} Uhr`
 }
 
-/** Die Daten für die Vorlage. Reine Funktion — deshalb ohne Datenbank. */
 export const putzplanPdfDaten = (
 	config: KlassenConfig,
 	zeilen: readonly PutzplanZeile[],
@@ -122,18 +58,6 @@ export const putzplanPdfDaten = (
 	})),
 })
 
-/**
- * Der Dateiname, unter dem das PDF im Download-Ordner landet.
- *
- * Trägt Klasse und Schuljahr, weil dort schon der Plan des Vorjahres liegen
- * kann und weil Eltern zweier Klassen denselben Ordner benutzen. `putzplan.pdf`
- * wäre nach dem zweiten Download `putzplan (1).pdf` und nach dem dritten nicht
- * mehr zuzuordnen.
- *
- * Nur Kleinbuchstaben, Ziffern und Bindestriche: Der Name geht als
- * `Content-Disposition` über HTTP, und ein Header ist ASCII. Der Schrägstrich
- * des Schuljahres wäre dort ausserdem ein Pfadtrenner.
- */
 export const putzplanDateiname = (
 	config: KlassenConfig,
 	schuljahr: string,
@@ -143,18 +67,11 @@ export const putzplanDateiname = (
 		.replaceAll(/[^a-z0-9.]+/g, '-')
 		.replace(/-+\.pdf$/, '.pdf')
 
-/** Das fertige PDF samt Dateiname. */
 export type PutzplanPdf = {
 	pdf: Buffer
 	dateiname: string
 }
 
-/**
- * Liest den Plan, setzt ihn und gibt das PDF zurück.
- *
- * Nimmt Datenbank und Zeitpunkt als Argumente, damit ein Test denselben Weg
- * geht wie die Route — und nicht einen zweiten, der nur so aussieht.
- */
 export const putzplanAlsPdf = async (
 	db: Database = openDb(),
 	jetzt: Date = new Date(),
@@ -169,36 +86,7 @@ export const putzplanAlsPdf = async (
 	}
 }
 
-/**
- * Die Typst-Vorlage.
- *
- * Sie steht als Zeichenkette in einem Modul und nicht als `.typ`-Datei daneben,
- * und dafür gibt es einen handfesten Grund: Die Route wird von Vite nach
- * `dist/` gebündelt. Ein Pfad, der relativ zum Modul aufgelöst wird
- * (`new URL('./putzplan.typ', import.meta.url)`), zeigt nach dem Build in das
- * Build-Verzeichnis, wo die Vorlage nicht liegt — und das fällt erst im Betrieb
- * auf, nicht im Test. Ausserdem muss die Vorlage ohnehin in das
- * Arbeitsverzeichnis des Laufs geschrieben werden, damit `--root` sie
- * umschliesst (siehe `src/lib/pdf/typst.ts`); der Umweg über die Platte wäre
- * ein Lesen, dem sofort ein Schreiben folgt.
- *
- * `String.raw`, damit Backslashes stehen bleiben: In Typst ist `\` ein Zeichen
- * der Auszeichnungssprache (Zeilenumbruch), in einem JavaScript-Literal wäre es
- * der Anfang einer Fluchtsequenz. Heute steht keiner in der Vorlage — genau
- * deshalb steht `String.raw` schon jetzt da: Wer später einen einbaut, soll ihn
- * nicht als stillen Zeilenumbruch im Quelltext wiederfinden.
- *
- * ALLE Daten kommen aus `daten.json` und werden als WERTE eingesetzt. Typst
- * setzt eine Zeichenkette als Text und liest sie nicht noch einmal als
- * Auszeichnung — deshalb ist `Familie #strong[X]` hier ein Familienname mit
- * merkwürdigen Zeichen und kein Befehl. Wer die Vorlage ändert, darf deshalb
- * niemals `eval` benutzen und keinen Wert in Quelltext einsetzen; genau das
- * prüft der Test „ein Familienname mit Typst-Zeichen wirkt nicht als Code".
- *
- * Die Prosa im PDF ist deutsch, denn sie liest ein Mensch. Die Feldnamen sind
- * englisch, denn die liest ein Programm.
- */
-// biome-ignore lint/complexity/noUselessStringRaw: siehe oben — `String.raw` steht hier fuer den naechsten Backslash, nicht fuer einen vorhandenen
+// biome-ignore lint/complexity/noUselessStringRaw: `String.raw` steht fuer den naechsten Backslash, nicht fuer einen vorhandenen
 export const PUTZPLAN_VORLAGE = String.raw`
 #let daten = json("daten.json")
 

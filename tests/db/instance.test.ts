@@ -8,11 +8,6 @@ import {
 } from '../../src/lib/db/instance.ts'
 import { createTestDb } from '../helpers/db.ts'
 
-/**
- * Der Schutz gegen "in der falschen Klasse gearbeitet". Wenn der hier bricht,
- * bekommt irgendwann die eine Elternschaft die Post der anderen.
- */
-
 let db: Database
 const originalEnv = process.env.MCP_INSTANCE_NAME
 

@@ -9,22 +9,6 @@ import { handleIncomingListMail } from '../../src/lib/lists/incoming.ts'
 import { processListBatch } from '../../src/lib/lists/queue.ts'
 import { createTestDb } from '../helpers/db.ts'
 
-/**
- * Der Weg einer Mail MIT ANHANG, vom Eingang bis zum SMTP-Aufruf.
- *
- * Anlass war ein Bericht aus dem Betrieb: eine Mail mit einem PDF von 218 kB
- * kam bei niemandem an, ohne dass der Absender eine Unzustellbarkeitsnachricht
- * bekam. Diese Tests bilden genau diesen Fall nach — eine Mail, wie Apple Mail
- * sie baut: `multipart/alternative` mit Text, darin ein `multipart/mixed` mit
- * HTML und dem PDF, alles quoted-printable bzw. base64.
- *
- * Sie gehoeren hierher, weil bis dahin KEIN Test einen Anhang durch den ganzen
- * Weg geschickt hat: `redistribute.test.ts` baut Anhaenge von Hand, der Eingang
- * kannte nur Mails ohne. Genau in der Luecke haette der Fehler sitzen koennen.
- *
- * Alle Namen und Adressen sind frei erfunden.
- */
-
 let db: Database
 let sent: SendInput[]
 
@@ -35,7 +19,6 @@ const transport = {
 	},
 }
 
-/** Ein PDF mit erkennbarem Kopf; der Rumpf ist Fuellung in der gewuenschten Groesse. */
 const pdf = (bytes: number): Buffer =>
 	Buffer.concat([
 		Buffer.from('%PDF-1.4\n'),
@@ -46,7 +29,6 @@ const pdf = (bytes: number): Buffer =>
 const base64Zeilen = (buffer: Buffer): string =>
 	buffer.toString('base64').replace(/(.{76})/g, '$1\r\n')
 
-/** So baut Apple Mail eine Mail mit Anhang: alternative[ text, mixed[html, pdf] ]. */
 const mitAnhang = (anhang: Buffer): Buffer =>
 	Buffer.from(
 		[
@@ -147,7 +129,6 @@ describe('Mail mit Anhang', () => {
 		const result = await zustellen(mitAnhang(pdf(217_800)))
 
 		expect(result.kind).toBe('enqueued')
-		// Der Empfaenger steht im KUVERT; `to` traegt die Listenadresse.
 		expect(sent.map((m) => m.envelope?.to).sort()).toEqual([
 			'anna@example.org',
 			'jan@example.org',
@@ -163,8 +144,6 @@ describe('Mail mit Anhang', () => {
 			const anhang = mail.attachments?.[0]
 			expect(anhang?.filename).toBe('protokoll.pdf')
 			expect(anhang?.contentType).toBe('application/pdf')
-			// Byteweise gleich: ein umkodierter Anhang waere beim Empfaenger
-			// unbrauchbar, und das faellt erst dort auf.
 			expect(anhang?.content.equals(original)).toBe(true)
 		}
 	})

@@ -17,11 +17,6 @@ import {
 } from '../../src/lib/db/schichten.ts'
 import { createTestDb } from '../helpers/db.ts'
 
-/**
- * Schichtplaene: anlegen, eintragen, volle Schichten, wer aendern darf und
- * wann ein Plan von selbst verschwindet. Alle Namen sind frei erfunden.
- */
-
 const JETZT = new Date('2026-09-01T10:00:00.000Z')
 
 let db: Database
@@ -199,7 +194,6 @@ describe('Stand für die Seite', () => {
 			{ shift: SCHICHTEN[1], count: 0, full: false },
 			{ shift: SCHICHTEN[2], count: 0, full: false },
 		])
-		// owner_sub verlaesst den Server nie.
 		expect(stand?.entries[0]).not.toHaveProperty('owner_sub')
 		expect(stand?.list.revision).toBe(2)
 	})

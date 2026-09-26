@@ -9,30 +9,6 @@ import { abgleichAlsText, abgleichen } from '../../../lib/konten/abgleich.ts'
 import type { McpAuth } from '../guard.ts'
 import { registerPersonalDataTool, registerWriteTool } from '../guard.ts'
 
-/**
- * Konten: nachsehen, wer dazugehoert — und im Ausnahmefall loeschen.
- *
- * ZWEI WERKZEUGE, UND SIE SIND ABSICHTLICH GETRENNT:
- *
- *   `reconcile_accounts` MELDET. Es stellt das Adressbuch den Grants gegenueber
- *   und sagt, wo beide auseinanderlaufen. Es aendert nichts.
- *
- *   `delete_account` LOESCHT, und zwar genau ein benanntes Konto samt dem
- *   Adressbuch-Eintrag, den es verwaltet.
- *
- * Warum nicht eines, das beides tut: Eine Stoerung bei ZITADEL sieht aus wie
- * „alle ausgetreten". Ein Werkzeug, das den Befund gleich vollstreckt, loescht
- * dann den ganzen Verteiler. So muss zwischen „hier stimmt etwas nicht" und
- * „weg damit" ein Mensch stehen, der einen Namen nennt.
- *
- * DER NORMALFALL IST AUSTRAGEN, NICHT LOESCHEN. Wer die Schule verlaesst,
- * verliert seine Rollen in ZITADEL; das Konto wird gegebenenfalls deaktiviert,
- * und im Adressbuch nimmt ein Mensch den Eintrag aus den Gruppen
- * (`remove_from_group`) oder loescht ihn (`delete_mitglied`). `delete_account`
- * ist der Weg fuer den anderen Fall: Es wird ausdruecklich VERLANGT, dass die
- * Daten verschwinden.
- */
-
 const toJson = (value: unknown): string => JSON.stringify(value, null, 2)
 
 export const registerAccountTools = (
@@ -59,8 +35,6 @@ export const registerAccountTools = (
 					],
 				}
 			} catch (fehler) {
-				// Ein Fehler und kein leerer Bericht. „Ich konnte nicht fragen" und
-				// „niemand gehoert mehr dazu" duerfen nicht gleich aussehen.
 				return {
 					isError: true,
 					content: [
@@ -92,8 +66,6 @@ export const registerAccountTools = (
 			},
 		},
 		({ user_sub }) => {
-			// Vorher nachsehen, WAS gleich verschwindet: Nach dem DELETE laesst sich
-			// das nicht mehr feststellen, und die Antwort soll den Vorgang belegen.
 			const konto = getUser(user_sub)
 			const eintrag = mitgliedFuerKonto(user_sub)
 			const ergebnis = loescheKonto(user_sub)

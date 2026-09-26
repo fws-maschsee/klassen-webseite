@@ -4,48 +4,13 @@ import { openDb } from './index.ts'
 import { normalizeEmail } from './mailingLists.ts'
 import type { MailingListRow } from './types.ts'
 
-/**
- * Was eine Adresse von einer Liste bekommt — ZWEI voneinander unabhängige
- * Fragen, und genau deshalb zwei Felder:
- *
- *   subscribed   Bekomme ich die Post dieses Verteilers?     an / aus
- *   ownMail      Was passiert mit MEINER eigenen Nachricht,
- *                wenn ich an den Verteiler schreibe?         copy /
- *                                                            confirmation /
- *                                                            none
- *
- * Anfangs war das EIN Feld mit vier Werten, `abgemeldet` als vierter. Das war
- * falsch, und zwar nicht bloß in der Darstellung: Wer abgemeldet ist, darf
- * weiter an den Verteiler SCHREIBEN — und gerade dann ist die Quittung
- * nützlich, weil er das Ergebnis sonst nirgends zu sehen bekommt. In einem Feld
- * hätte er sie nicht einstellen können. Außerdem verlor jede Abmeldung die
- * Versand-Einstellung, sodass ein Wiederanmelden bei der Vorgabe anfing.
- *
- * Diese Ebene ist NICHT dieselbe wie die Suppressions. Dort steht, was das
- * System festgestellt hat (Bounce, Beschwerde); hier, was ein Mensch will.
- * Beide gelten gleichzeitig: Wer gebounct ist, bekommt auch mit `subscribed`
- * nichts.
- */
-
-/**
- * Was mit der eigenen Nachricht passiert, wenn man an die Liste schreibt.
- *
- * Die WERTE sind englisch, die Bezeichner drumherum deutsch — kein
- * Widerspruch, sondern die Regel: Diese Werte stehen in der JSON-Antwort der
- * MCP-Werkzeuge, in Formularwerten und in der CHECK-Bedingung der Datenbank,
- * also ueberall dort, wo ein PROGRAMM liest. Was ein Mensch liest, steht als
- * Beschriftung in der Oberflaeche.
- */
 export const EIGENE_POST = ['copy', 'confirmation', 'none'] as const
 export type EigenePost = (typeof EIGENE_POST)[number]
 
-/** Was gilt, solange niemand etwas eingestellt hat. */
 export const VORGABE: Einstellung = { subscribed: true, ownMail: 'copy' }
 
 export type Einstellung = {
-	/** Bekommt diese Adresse die Post des Verteilers? */
 	subscribed: boolean
-	/** Was mit der eigenen Nachricht geschieht. */
 	ownMail: EigenePost
 }
 
@@ -59,11 +24,6 @@ const ausZeile = (row: SettingsRow): Einstellung => ({
 	ownMail: istEigenePost(row.own_mail) ? row.own_mail : VORGABE.ownMail,
 })
 
-/**
- * Die Einstellung EINER Adresse für EINE Liste. Ohne Eintrag gilt `VORGABE` —
- * die Tabelle enthält deshalb nur, was jemand bewusst geändert hat, und eine
- * neue Adresse braucht keinen Eintrag, um Post zu bekommen.
- */
 export const einstellungFuer = (
 	listAddress: string,
 	email: string,
@@ -77,7 +37,6 @@ export const einstellungFuer = (
 	return row ? ausZeile(row) : VORGABE
 }
 
-/** Alle Adressen einer Liste, die NICHT auf dem Vorgabewert stehen. */
 export const einstellungenDerListe = (
 	listAddress: string,
 	db: Database = openDb(),
@@ -90,12 +49,6 @@ export const einstellungenDerListe = (
 	return new Map(rows.map((row) => [row.email, ausZeile(row)]))
 }
 
-/**
- * Schreibt die Einstellung. Beide Felder werden gesetzt — wer nur eines ändern
- * will, liest vorher `einstellungFuer`. Ein `UPDATE` nur einer Spalte hätte
- * denselben Effekt, aber diese Signatur macht sichtbar, dass hier ein
- * vollständiger Zustand steht und keine Teiländerung.
- */
 export const setzeEinstellung = (
 	listAddress: string,
 	email: string,
@@ -117,22 +70,8 @@ export const setzeEinstellung = (
 	)
 }
 
-/**
- * Der Schlüssel der Einstellungsseite.
- *
- * 32 Byte aus `randomBytes`, base64url — nicht zu erraten und kurz genug, dass
- * er in eine URL passt, ohne umgebrochen zu werden. Ein umgebrochener Link in
- * einer Textmail ist ein toter Link.
- */
 const neuerToken = (): string => randomBytes(32).toString('base64url')
 
-/**
- * Holt den Token einer Adresse und legt ihn an, wenn es noch keinen gibt.
- *
- * Er wird nie erneuert. Ein rotierender Token hätte jeden Link in jeder schon
- * verschickten Mail entwertet — und genau diese alten Mails sind der Weg, auf
- * dem jemand Monate später aus dem Verteiler herausfindet.
- */
 export const tokenFuer = (email: string, db: Database = openDb()): string => {
 	const normalisiert = normalizeEmail(email)
 	const vorhanden = db
@@ -147,8 +86,6 @@ export const tokenFuer = (email: string, db: Database = openDb()): string => {
      VALUES (?, ?)
      ON CONFLICT (email) DO NOTHING`,
 	).run(normalisiert, neuerToken())
-	// Nach einem Wettlauf gewinnt der zuerst geschriebene Wert; deshalb erneut
-	// lesen statt den gerade gewürfelten zurückgeben.
 	const zeile = db
 		.prepare<[string], { token: string }>(
 			'SELECT token FROM list_settings_tokens WHERE email = ?',
@@ -158,7 +95,6 @@ export const tokenFuer = (email: string, db: Database = openDb()): string => {
 	return zeile.token
 }
 
-/** Die Adresse zu einem Token, oder `null`. */
 export const adresseZuToken = (
 	token: string,
 	db: Database = openDb(),
@@ -174,20 +110,6 @@ export type ListenEinstellung = Einstellung & {
 	label: string
 }
 
-/**
- * Was die Einstellungsseite zeigt: jede AKTIVE Liste der Klasse mit der
- * Einstellung dieser Adresse.
- *
- * Bewusst ALLE Listen und nicht nur die, auf denen die Adresse steht: Sonst
- * verschwände eine Liste aus der Übersicht, sobald jemand sie abbestellt — und
- * der Weg zurück wäre weg.
- *
- * Die Listen kommen als Argument und nicht aus `listMailingLists()`. Das ist
- * kein Geschmack: `mailingLists.ts` braucht `einstellungenDerListe` von hier,
- * um Abgemeldete aus den Empfängern zu nehmen. Ein gegenseitiger Import wäre
- * ein Kreis, und Kreise in ESM gehen so lange gut, bis eines der Module beim
- * Laden etwas aus dem anderen braucht.
- */
 export const einstellungenFuer = (
 	email: string,
 	listen: readonly MailingListRow[],

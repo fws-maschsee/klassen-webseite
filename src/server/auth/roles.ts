@@ -1,69 +1,11 @@
-/**
- * Rollen und was sie duerfen — die EINZIGE Stelle, an der aus einem
- * Token-Claim eine Erlaubnis wird. Sie liegt in `src/server/auth/`, weil
- * genau das der Vertrag dieses Verzeichnisses ist: ausserhalb kennt niemand
- * Rollennamen (siehe `types.ts`).
- *
- * Die Rollen kommen als Projektrollen aus ZITADEL (Claim
- * `urn:zitadel:iam:org:project:roles`, siehe `oidc.ts`). Der Claim enthaelt
- * nur die Rollen des Projekts, zu dem der OIDC-Client dieser Instanz gehoert
- * — die Trennung der Klassen entsteht also durch die Projektzuordnung und
- * nicht durch einen Namen, den man verwechseln kann. `admin` in
- * `klasse-wiesen` sperrt nichts in `klasse-christophers` auf.
- *
- * Weboberflaeche und MCP-Server fragen DIESELBE Funktion. Ein Klick in der
- * Verwaltung und ein `upsert_mitglied` ueber MCP sind derselbe Zugriff auf
- * dieselbe Datei; zwei Kopien der Regel waeren zwei Kopien, die auseinander
- * laufen. Nur die Oberflaeche abzusichern hiesse, den Schutz mit drei Zeilen
- * umgehbar zu machen.
- */
-
 import { zustaendigkeit } from '../../klasse/config.ts'
 
-/** Lesen und Empfangen: die Klassenseite sehen, auf Listen stehen. */
 export const ROLE_MITGLIED = 'mitglied'
 
-/** Pflegen und Senden: Mitglieder und Listen bearbeiten, an Listen senden. */
 export const ROLE_ADMIN = 'admin'
 
-/**
- * Was jemand tun will — feiner als die zwei Rollen, weil drei sehr
- * unterschiedliche Fragen dahinterstecken.
- *
- * `lesen`
- *   Die Seite sehen. Dazu gehoert ausdruecklich auch: **welche Verteiler es
- *   gibt und welche Gruppen sie erreichen.** Das ist die Frage, die jedes
- *   Elternteil vor dem Absenden beantwortet haben will — schreibe ich gerade
- *   an alle Eltern oder auch ans Kollegium? Sie zu beantworten braucht keine
- *   einzige fremde Adresse.
- *
- * `personen`
- *   Namen, E-Mail-Adressen, wer auf welcher Liste steht, wer
- *   was bekommen hat. Personenbezogen und deshalb NICHT jedermanns Sache,
- *   auch nicht innerhalb der Klasse: wer in einer Liste steht, geht die
- *   uebrigen Familien nichts an.
- *
- * `bearbeiten`
- *   Aendern und senden.
- *
- * `personen` und `bearbeiten` haengen heute beide an `admin`. Sie trotzdem zu
- * trennen kostet nichts und macht an jeder Aufrufstelle sichtbar, WARUM dort
- * geprueft wird — und eine spaetere Rolle "darf sehen, aber nicht aendern"
- * waere dann eine Zeile hier statt einer Suche durch zwanzig Dateien.
- */
 export type Capability = 'lesen' | 'personen' | 'bearbeiten'
 
-/**
- * Darf dieser Zugang das?
- *
- * `requiredRole` ist die Leserolle aus `OIDC_REQUIRED_ROLE`, sonst `authRole`
- * aus der `KlassenConfig`.
- *
- * `admin` schliesst `lesen` ein, auch ohne zusaetzlichen `mitglied`-Grant:
- * wer verwalten darf, darf erst recht lesen. Sonst haengt der Zugang daran,
- * dass beim Grant beide Haken gesetzt wurden — eine Falle, die genau einmal
- * jemanden aussperrt.
- */
 export const may = (
 	roles: readonly string[],
 	capability: Capability,
@@ -74,32 +16,17 @@ export const may = (
 	return admin
 }
 
-/** Kurzform fuer `may(roles, 'lesen')` — die Eintrittskarte zur Seite. */
 export const canRead = (
 	roles: readonly string[],
 	requiredRole: string = ROLE_MITGLIED,
 ): boolean => may(roles, 'lesen', requiredRole)
 
-/** Kurzform fuer `may(roles, 'personen')` — Namen und Adressen sehen. */
 export const canSeePersonalData = (roles: readonly string[]): boolean =>
 	may(roles, 'personen')
 
-/** Kurzform fuer `may(roles, 'bearbeiten')`. */
 export const canEdit = (roles: readonly string[]): boolean =>
 	may(roles, 'bearbeiten')
 
-/**
- * Begruendung fuer einen abgelehnten Zugriff. Bewusst identisch in
- * Weboberflaeche und MCP — wer sie liest, soll wissen, was ihm fehlt und wer
- * es geben kann. Und sie benennt den Unterschied, sonst klingt eine
- * abgelehnte Leseanfrage nach einem Fehler des Servers.
- *
- * Der letzte Satz nennt die Zustaendigkeit aus der `KlassenConfig` und keine
- * feste Stelle: Wer die Rolle vergeben kann, ist eine Absprache in der Klasse
- * und aendert sich, ohne dass sich dieses Package aendert. Ein hier
- * eingetragener Name waere in der naechsten Klasse falsch — und zwar
- * unbemerkt, weil die Meldung ja weiterhin plausibel klingt.
- */
 export const deniedMessage = (capability: Capability): string => {
 	const was =
 		capability === 'personen'
@@ -112,13 +39,4 @@ export const deniedMessage = (capability: Capability): string => {
 	)
 }
 
-/**
- * Der haeufigste Fall, fuer Oberflaechentexte.
- *
- * Eine Funktion und keine Konstante: als Konstante haette sie die
- * `KlassenConfig` beim IMPORT dieses Moduls gelesen und damit jeden Start ohne
- * hinterlegte Config abgebrochen — die Regel aus
- * `tests/server/importzeit.test.ts`, und `roles.ts` erreicht ueber
- * `server/auth/index.ts` jedes `server.ts`.
- */
 export const editDeniedMessage = (): string => deniedMessage('bearbeiten')

@@ -12,13 +12,6 @@ import {
 import { processListBatch } from '../../src/lib/lists/queue.ts'
 import { createTestDb } from '../helpers/db.ts'
 
-/**
- * Der Weg vom Dispatcher bis zum SMTP-Aufruf: rohe Mail rein, n Zustellungen
- * raus. Der Vertrag steht in fws-maschsee/lists-dispatcher.
- *
- * Alle Namen und Adressen sind frei erfunden.
- */
-
 let db: Database
 let sent: SendInput[]
 
@@ -37,22 +30,14 @@ const rawMail = (headers: Record<string, string>, body = 'Inhalt'): Buffer => {
 }
 
 type DeliverOptions = {
-	/** Envelope-Absender (SMTP MAIL FROM). Darauf wird autorisiert. */
 	envelopeFrom?: string
-	/** From:-Header im Body. Frei wählbar, für die Berechtigung irrelevant. */
 	headerFrom?: string
 	messageId?: string
 	subject?: string
 	listName?: string
-	/** Zusätzliche Roh-Header der Mail (List-Id, Auto-Submitted, …). */
 	extraHeaders?: Record<string, string>
 }
 
-/**
- * Stellt eine Mail so zu, wie der Worker es tut: Listenname, Envelope-Absender
- * und Message-ID kommen als Parameter (beim Worker als `X-List-*`-Header),
- * NICHT aus dem Body.
- */
 const deliver = async (options: DeliverOptions = {}) => {
 	const envelopeFrom = options.envelopeFrom ?? 'vera@example.org'
 	const headers: Record<string, string> = {
@@ -110,7 +95,6 @@ beforeEach(() => {
 
 			poster_policy: 'eingeschraenkt',
 			subject_prefix: '[Eltern]',
-			// Wie die echten Listen der Klassen.
 			reply_mode: 'sender',
 		},
 		db,
@@ -128,14 +112,11 @@ describe('Annahme und Verteilung', () => {
 		expect(result.kind).toBe('enqueued')
 		expect(statusForResult(result)).toBe(202)
 		expect(sent).toHaveLength(2)
-		// Der Empfaenger steht im KUVERT; `to` traegt die Listenadresse.
 		expect(sent.map((m) => m.envelope?.to).sort()).toEqual([
 			'anna@example.org',
 			'vera@example.org',
 		])
 		expect(sent[0]?.subject).toBe('[Eltern] Termin')
-		// From zeigt auf die Liste (DMARC), der Originalabsender bleibt sichtbar —
-		// mit Adresse, weil `X-Original-From` allein kein Mailprogramm anzeigt.
 		expect(sent[0]?.from).toContain(
 			'Vera Beispiel (vera@example.org) via Eltern',
 		)
@@ -146,11 +127,6 @@ describe('Annahme und Verteilung', () => {
 	})
 
 	test('der Opt-out-Fuss kommt bis in den Versand', async () => {
-		// Denselben Weg wie im Betrieb: rohe Mail rein, `SendInput` raus. Der
-		// Wachter fuer die Einzelheiten steht in `redistribute.test.ts`; hier geht
-		// es darum, dass der Fuss nicht auf dem Weg durch die Warteschlange
-		// verlorengeht — er ist die Angabe, die in einer Rundmail an Eltern
-		// stehen MUSS.
 		await deliver({
 			headerFrom: 'Vera Beispiel <vera@example.org>',
 			subject: 'Termin',
@@ -163,8 +139,6 @@ describe('Annahme und Verteilung', () => {
 	})
 
 	test('To traegt die Liste, das Kuvert den Empfaenger', async () => {
-		// Damit „Allen antworten" auch in Apple Mail, Gmail und Outlook die Liste
-		// erreicht — die haben keinen Listen-Knopf und lesen `List-Post` nicht.
 		await deliver({ messageId: '<to@example.org>' })
 		expect(sent[0]?.to).toContain('eltern@')
 		expect(sent.map((m) => m.envelope?.to).sort()).toEqual([
@@ -206,9 +180,6 @@ describe('Annahme und Verteilung', () => {
 
 describe('Berechtigung', () => {
 	test('autorisiert wird der Envelope-Absender, nicht der From-Header', async () => {
-		// Unberechtigter Envelope-Absender, der sich im Body als berechtigte
-		// Person ausgibt. Genau der Angriff, gegen den der Worker den
-		// Envelope-Absender getrennt mitschickt.
 		const result = await deliver({
 			envelopeFrom: 'fremd@example.org',
 			headerFrom: 'Vera Beispiel <vera@example.org>',
@@ -270,7 +241,6 @@ describe('Berechtigung', () => {
 	test('Ablehnungsgruende nennen keine Empfaengeradressen', async () => {
 		const result = await deliver({ envelopeFrom: 'anna@example.org' })
 		if (result.kind !== 'rejected') throw new Error('erwartet: rejected')
-		// Der Text geht als Unzustellbarkeitsnachricht an den Absender.
 		expect(result.reason).not.toContain('vera@example.org')
 		expect(result.reason).toContain('eltern')
 	})

@@ -1,6 +1,3 @@
--- Schichtplaene: wer uebernimmt welche Schicht (Grill, Kuchentheke, Abbau).
--- Eigene Tabellen, nicht die Mitbringlisten: dort ist ein Eintrag ein
--- Gegenstand mit Menge, hier eine Schicht mit Namen daran.
 
 -- migrate:up
 
@@ -9,9 +6,7 @@ CREATE TABLE shift_lists (
   title          TEXT NOT NULL,
   event_date     TEXT CHECK (event_date IS NULL OR event_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
   description    TEXT,
-  -- JSON-Array der Schichten, z.B. ["16:30 bis 17:30 Uhr", ...].
   shifts         TEXT NOT NULL DEFAULT '[]',
-  -- Wie viele Leute je Schicht gebraucht werden. NULL = beliebig viele.
   capacity       INTEGER CHECK (capacity IS NULL OR capacity >= 1),
   status         TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
   retention_days INTEGER NOT NULL DEFAULT 180 CHECK (retention_days >= 1),
@@ -38,9 +33,6 @@ CREATE TABLE shift_entries (
 
 CREATE INDEX idx_shift_entries_list ON shift_entries (list_id, created_at);
 
--- Umzug der einen Liste, die als Mitbringliste angelegt war, aber ein
--- Schichtplan ist (Klasse Wiesen, "Grillschichten"). Das doppelt eingetippte
--- "Was" faellt dabei weg. In anderen Klassen trifft die Bedingung nichts.
 INSERT INTO shift_lists (id, title, event_date, description, shifts, capacity, status, retention_days, delete_at, revision, created_by, created_at, updated_at)
   SELECT id, title, event_date, description, categories, NULL, status, retention_days, delete_at, revision, created_by, created_at, updated_at
     FROM bring_lists
@@ -54,4 +46,3 @@ INSERT INTO shift_entries (id, list_id, name, shift, note, owner_sub, edit_token
 DELETE FROM bring_lists WHERE id = 'hKZZWIVIoh-LQs12';
 
 -- migrate:down
--- forward-only, absichtlich leer

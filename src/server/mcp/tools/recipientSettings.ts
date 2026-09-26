@@ -10,20 +10,6 @@ import {
 import type { McpAuth } from '../guard.ts'
 import { registerPersonalDataTool, registerWriteTool } from '../guard.ts'
 
-/**
- * Die Empfangs-Einstellungen einer Adresse von der Verwaltungsseite aus.
- *
- * Normalerweise stellt das jede Person selbst ein — über den Link im Fuß jeder
- * Rundmail, ohne Konto und ohne dass jemand anders davon wissen muss. Diese
- * Werkzeuge sind für den anderen Fall: Jemand sagt es mündlich, am
- * Elternabend, oder eine Lehrkraft schreibt „ich will nur eine Bestätigung,
- * dass es angekommen ist". Dann trägt es die Klassenverwaltung ein, statt die
- * Person durch eine Selbstbedienung zu schicken, die sie nicht wollte.
- *
- * Beides sind Personendaten (welche Adresse was eingestellt hat), Ändern ist
- * ein Schreibzugriff — beides `admin`.
- */
-
 const toJson = (value: unknown): string => JSON.stringify(value, null, 2)
 
 export const registerRecipientSettingsTools = (

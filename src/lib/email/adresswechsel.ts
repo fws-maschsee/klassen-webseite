@@ -6,27 +6,9 @@ import {
 	sesTransport,
 } from './transport.ts'
 
-/**
- * Die Bestaetigungsmail fuer eine neue Zustelladresse.
- *
- * Sie geht an die NEUE Adresse und nirgendwo sonst. Das ist der ganze Zweck:
- * Wer eine Adresse eintraegt, an die er nicht herankommt, bekommt sie nicht
- * eingetragen. Eine Kopie an die alte Adresse waere ein zweites Thema
- * („jemand hat versucht, deine Post umzuleiten") — sie fehlt hier bewusst, weil
- * die alte Adresse zu diesem Zeitpunkt noch die gueltige ist und nichts
- * verliert.
- *
- * Reiner Text. Die Mail besteht aus zwei Saetzen und einem Link; alles, was ein
- * HTML-Teil hinzufuegen wuerde, waere Gestaltung um ihrer selbst willen — und
- * ein Link, der anders aussieht, als er zeigt, ist in genau dieser Mail das
- * falsche Signal.
- */
-
-/** Der Bestaetigungslink. Ohne Anmeldung erreichbar, deshalb unter `/public/`. */
 export const bestaetigungsUrl = (token: string): string =>
 	new URL(`/public/adresse-bestaetigen/${token}`, siteUrl()).toString()
 
-/** Betreff und Rumpf. Rein, damit die Formulierung pruefbar ist. */
 export const buildBestaetigung = (
 	neueAdresse: string,
 	token: string,
@@ -52,7 +34,6 @@ export const buildBestaetigung = (
 	}
 }
 
-/** Die versendbare Mail. */
 export const buildBestaetigungsMail = (
 	neueAdresse: string,
 	token: string,
@@ -63,8 +44,6 @@ export const buildBestaetigungsMail = (
 	return {
 		from: `"${mailFromName()}" <${absender}>`,
 		to: neueAdresse,
-		// Antworten gehen an einen Menschen und nicht an `noreply@`: „Ich habe
-		// das nicht gewesen" ist genau die Antwort, die jemand lesen muss.
 		replyTo: klassenConfig().contactMail,
 		sender: absender,
 		envelope: { from: absender, to: neueAdresse },
@@ -73,15 +52,12 @@ export const buildBestaetigungsMail = (
 		html: '',
 		attachments: [],
 		headers: {
-			// RFC 3834: sonst beantwortet eine Abwesenheitsnotiz die
-			// Bestaetigungsmail, und im schlechtesten Fall dreht sich das im Kreis.
 			'Auto-Submitted': 'auto-generated',
 			Precedence: 'auto_reply',
 		},
 	}
 }
 
-/** Verschickt sie. Fehler werden nach oben gereicht — die Seite muss es sagen. */
 export const sendeBestaetigung = async (
 	neueAdresse: string,
 	token: string,

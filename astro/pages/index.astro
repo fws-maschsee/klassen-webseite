@@ -6,10 +6,6 @@ import { offenePlaene } from '../../src/lib/db/schichten.ts'
 
 export const prerender = false
 
-/**
- * Offene Mitbringlisten — nur fuer Angemeldete sichtbar (diese Seite liegt
- * hinter dem Login). Gaeste bekommen den Link direkt vom admin.
- */
 const listen = offeneListen()
 const plaene = offenePlaene()
 ---

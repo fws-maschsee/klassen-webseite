@@ -3,25 +3,6 @@ import { cleanupStuckByTimeout, cleanupStuckOnBoot } from '../lib/db/sendLog.ts'
 import { processBatch } from '../lib/email/queue.ts'
 import { processListBatch } from '../lib/lists/queue.ts'
 
-/**
- * Hintergrund-Worker fuer beide Warteschlangen (Rundmails und Listenmails).
- *
- * Race-Schutz auf zwei Ebenen:
- *  - `running`-Flag verhindert ueberlappende Ticks im selben Prozess.
- *  - Atomarer DB-Claim (`queued -> sending`) verhindert Doppelversand, falls
- *    doch einmal zwei Prozesse laufen.
- *
- * Wir laufen bewusst single-replica: SQLite im Pod, ein Worker.
- */
-
-/**
- * Wie oft nachgesehen wird, ob etwas in der Warteschlange liegt.
- *
- * Das ist die Verzoegerung, mit der eine Mail an den Verteiler im
- * schlechtesten Fall startet — sie stand auf 30 Sekunden. Ein Tick ohne Arbeit
- * kostet zwei Zaehlabfragen auf indizierten Spalten; alle 10 Sekunden ist das
- * nichts, und Elternpost soll sich nicht wie Stapelverarbeitung anfuehlen.
- */
 const DEFAULT_POLL_MS = 10_000
 const MAX_BATCHES_PER_TICK = 50
 const STUCK_TIMEOUT_SECONDS = 30
@@ -37,10 +18,6 @@ const tick = async (): Promise<void> => {
 	if (running) return
 	running = true
 	try {
-		// Vor jedem Batch: haengende `sending`-Eintraege aufraeumen. SMTP-Stalls
-		// beenden sich nicht von selbst mit einem Fehler; ohne diesen Schritt
-		// blieben die Eintraege fuer immer liegen und koennten nie erneut
-		// versendet werden.
 		const stuck =
 			cleanupStuckByTimeout(undefined, STUCK_TIMEOUT_SECONDS) +
 			cleanupStuckListOutbound(undefined, STUCK_TIMEOUT_SECONDS)
@@ -120,10 +97,6 @@ const drainListQueue = async (): Promise<void> => {
 			`Listen-Batch: ${result.count} verarbeitet (${sent} gesendet, ${errors} Fehler)`,
 		)
 		if (errors > 0) {
-			// Eine gescheiterte LISTENmail meldet sich bei niemandem: Der Absender
-			// hat sein SMTP-OK laengst, ein Bounce entsteht nicht mehr. Diese Zeile
-			// ist die einzige Stelle, an der die Stoerung auffaellt — sie nennt
-			// deshalb den Weg zurueck.
 			log(
 				'Gescheiterte Zustellungen bleiben liegen und loesen KEINEN Bounce aus. Zustand: list_list_messages, nachreichen: retry_failed_list_sends',
 			)
@@ -136,9 +109,6 @@ export const startQueueWorker = (
 ): void => {
 	if (timer) return
 	log(`Start (Poll alle ${Math.round(intervalMs / 1000)}s)`)
-	// Reboot-Cleanup: jeder `sending`-Eintrag aus einer frueheren Inkarnation
-	// (Deploy, Crash, OOM) wird zu `error` — niemand wuerde ihn sonst je
-	// abschliessen.
 	const cleaned = cleanupStuckOnBoot() + cleanupStuckListOutbound()
 	if (cleaned > 0)
 		log(`Boot-Aufraeumen: ${cleaned} verwaiste Eintraege auf error gesetzt`)

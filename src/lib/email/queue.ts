@@ -20,29 +20,6 @@ import { renderForRecipient } from './render.ts'
 import type { EmailTransport } from './transport.ts'
 import { sesTransport } from './transport.ts'
 
-/**
- * Versand-Engine fuer Rundmails. Zwei Phasen, bewusst getrennt:
- *
- *   1. ENQUEUE (`enqueueEmailToRecipients`) — loest die Empfaenger auf und
- *      schreibt je Empfaenger eine `queued`-Zeile. HIER sitzt die Idempotenz:
- *      Wer fuer diesen Slug bereits eine `sent`-Zeile hat, wird uebersprungen;
- *      wer bereits eine `queued`-Zeile hat, wird nicht doppelt eingereiht.
- *   2. WORKER (`processBatch`) — arbeitet die Queue ab. Jeder Eintrag wird
- *      atomar geclaimt (`queued -> sending`), sodass parallele Batches
- *      denselben Eintrag nicht zweimal versenden.
- *
- * Der Rundmail-Weg kennt keine Listenadresse und beruecksichtigt daher nur die
- * GLOBALEN Adress-Sperren (`address_suppressions` mit `list_address = '*'`) —
- * das sind genau die harten Bounces und Beschwerden.
- */
-
-/**
- * Obergrenze je gleitender Stunde. Sie gilt fuer BEIDE Warteschlangen
- * gemeinsam, damit die verifizierte Absenderdomain insgesamt unter dem
- * SES-Kontingent bleibt — die Begruendung des Wertes steht bei derselben
- * Konstante in `../lists/queue.ts`. Beide Zahlen gehoeren zusammen; wer eine
- * aendert, aendert die andere mit (oder setzt `MAIL_HOURLY_CAP`).
- */
 const DEFAULT_HOURLY_CAP = 1000
 const DEFAULT_PARALLEL_BURST = 25
 
@@ -62,31 +39,18 @@ const buildReplyTo = (override: string | undefined): string =>
 	override ?? mailReplyTo()
 
 export type EnqueueOptions = {
-	/** Auch an Empfaenger schicken, die bereits eine `sent`-Zeile haben. */
 	force?: boolean
 	db?: Database
-	/** Verzeichnis der Rundmail-Dateien (Tests). */
 	emailsDir?: string
 }
 
 export type EnqueueResult = {
-	/** Anzahl neu in die Queue geschriebener Eintraege. */
 	enqueued: number
-	/** Bereits erfolgreich versendet und ohne `force` uebersprungen. */
 	skipped_already_sent: number
-	/** Standen bereits als `queued` in der Warteschlange. */
 	skipped_already_queued: number
-	/** Kein Eintrag mit E-Mail-Adresse. */
 	skipped_no_email: number
-	/** Adresse ist global gesperrt (Bounce/Beschwerde). */
 	skipped_suppressed: number
-	/**
-	 * Kein Konto mit Rolle in dieser Klasse — nur in `enforce` groesser als
-	 * null. Jeder dieser Empfaenger steht ausserdem als `skipped`-Zeile im
-	 * Versandprotokoll, mit dem Grund. Still verschwinden darf niemand.
-	 */
 	skipped_no_account: number
-	/** Bericht der Konten-Pruefung, siehe `src/lib/versand/kontopruefung.ts`. */
 	account_check?: AccountCheckReport
 }
 
@@ -106,28 +70,10 @@ export const enqueueEmailToRecipients = async (
 		skipped_no_account: 0,
 	}
 
-	// Harte Stopps: `skip` deaktiviert den Versand, `sentExternally` markiert
-	// eine Mail, die ausserhalb dieses Systems raus ist. In beiden Faellen wird
-	// nichts eingereiht — unabhaengig vom Send-Log.
 	if (email.skip || email.sentExternally) return result
 
 	const aufgeloest = resolveRecipients(email.recipients, db)
 
-	// OHNE KONTO, KEINE E-MAIL. Ein entzogener Grant loest kein Ereignis aus, auf
-	// das man hoeren koennte: ZITADEL meldet hoechstens das geloeschte Konto,
-	// nicht die entzogene Rolle. Ohne diese Pruefung bekaeme jemand nach
-	// dem Rollenentzug unbegrenzt weiter Post. Die Begruendung im Langen steht
-	// in `src/lib/versand/kontopruefung.ts`.
-	//
-	// Geprueft werden nur Eintraege MIT Adresse: Wer keine hat, faellt ohnehin
-	// gleich als `skipped_no_email` heraus, und eine leere Adresse waere in der
-	// Pruefung ein Empfaenger ohne Konto — also derselbe Fall unter dem
-	// falschen Namen.
-	//
-	// In `enforce` wirft die Pruefung bei einer Stoerung von ZITADEL, und dieser
-	// Wurf bleibt bewusst UNGEFANGEN: Er kommt beim MCP-Werkzeug `send_email`
-	// als Fehler an, und nichts wird eingereiht. Lieber keine Rundmail als eine
-	// an Leute, die nicht mehr dazugehoeren.
 	const ohneAdresse = aufgeloest.filter((m) => !isEmailRecipient(m))
 	const pruefung = await pruefeKonten(
 		aufgeloest.filter(isEmailRecipient),
@@ -148,8 +94,6 @@ export const enqueueEmailToRecipients = async (
 					.map((r) => r.mitglied_id),
 			)
 
-	// Auch bereits eingereihte Eintraege vermeiden — sonst laege dieselbe Mail
-	// nach einem zweiten `send_email`-Aufruf zweimal in der Queue.
 	const alreadyQueued = new Set(
 		db
 			.prepare<[string], { mitglied_id: string }>(
@@ -162,10 +106,6 @@ export const enqueueEmailToRecipients = async (
 	const suppressed = globallySuppressedAddresses(db)
 
 	const tx = db.transaction(() => {
-		// Zuerst die Geschnittenen — als `skipped`-Zeile mit Grund. Ohne sie
-		// stuende im Versandprotokoll nur eine kleinere Zahl, und niemand koennte
-		// sagen, wer fehlt. In `report` ist diese Schleife leer, weil dort nichts
-		// geschnitten wird.
 		for (const { recipient, reason } of pruefung.cut) {
 			if (pruefung.recipients.includes(recipient)) continue
 			recordSend(
@@ -228,17 +168,12 @@ export type ProcessOneResult =
 	| { kind: 'error'; queueId: number; mitgliedId: string; error: string }
 	| { kind: 'claim_lost'; queueId: number; mitgliedId: string }
 
-/**
- * Verarbeitet genau eine bereits gepickte `queued`-Zeile. Wirft NICHT — alle
- * Fehler landen als `error`-Result und als `error`-Zeile im Log.
- */
 export const processOne = async (
 	queued: SendLogRow,
 	db: Database,
 	transport: EmailTransport,
 	emailsDir?: string,
 ): Promise<ProcessOneResult> => {
-	// Atomarer Claim. Verhindert Doppelverarbeitung bei parallelen Batches.
 	if (!claimQueued(queued.id, db)) {
 		return {
 			kind: 'claim_lost',
@@ -293,11 +228,6 @@ export type ProcessBatchResult =
 			results: PromiseSettledResult<ProcessOneResult>[]
 	  }
 
-/**
- * Verarbeitet einen Burst queued-Eintraege parallel. Stoppt frueh, wenn das
- * Stunden-Cap erreicht ist (SES drosselt sonst selbst und wirft Fehler) oder
- * die Queue leer ist.
- */
 export const processBatch = async (
 	options: ProcessOptions = {},
 ): Promise<ProcessBatchResult> => {

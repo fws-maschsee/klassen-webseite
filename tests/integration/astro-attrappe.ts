@@ -10,43 +10,8 @@ import {
 } from '../../src/routes/auth/logout.ts'
 import { GET as healthRoute } from '../../src/routes/health.ts'
 
-/**
- * Steht für `dist/server/entry.mjs` aus dem Astro-Build einer Klasse — aber
- * nur für den BAU, nicht für den Inhalt.
- *
- * Was hier eine Attrappe ist: Astros Routenauflösung und das Rendern von
- * `.astro`-Dateien. Was hier ECHT ist und genau deshalb geprüft wird:
- *
- *   - `createKlassenMiddleware()` aus `src/klasse/middleware.ts`,
- *   - über sie `authenticate()` und `resolveSession()` aus
- *     `src/server/auth/oidc.ts`,
- *   - über die wiederum `rolesForUser()` aus `src/server/auth/grants.ts`,
- *   - die drei Anmelderouten und `/public/health` als die Module, die in
- *     `GETEILTE_ROUTEN` eingetragen sind.
- *
- * Der Grund für die Attrappe steht in `tests/fixtures/astro-entry.mjs` schon
- * für den Starttest: Ein echter Astro-Build ist eine zweite Toolchain. Hier
- * kommt ein zweiter Grund dazu — dieses Repository ist gar keine Astro-App. Es
- * ist der geteilte Code, den die Klassen als Submodule einbinden; `astro.config.mjs`
- * und `src/content/` liegen dort. Ein Build wäre also nicht bloss teuer, er
- * wäre der Build einer Anwendung, die es hier nicht gibt.
- *
- * Die Grenze ist damit klar gezogen: Alles vom Cookie bis zum Urteil ist echt,
- * das Aussehen der Seite dahinter nicht. Was die Attrappe NICHT beweisen kann,
- * steht in der README neben den fünf Nachweisen.
- */
-
-/**
- * Der Satz, an dem ein Test erkennt, dass er wirklich hinter der Anmeldung
- * gelandet ist.
- *
- * Er ist absichtlich unverwechselbar: Ein Test, der auf „200" prüft, ist auch
- * dann grün, wenn die Anwendung eine Fehlerseite mit Status 200 ausliefert. Ein
- * Test, der DIESEN Satz sucht, ist es nicht.
- */
 export const GESCHUETZTER_INHALT = 'Klasseninterner Inhalt dieser Testklasse'
 
-/** Astros `next()` ohne Rewrite — mehr braucht die Middleware nicht. */
 type Weiter = () => Promise<Response>
 
 type Route = (kontext: {
@@ -55,14 +20,6 @@ type Route = (kontext: {
 	locals: App.Locals
 }) => Response | Promise<Response>
 
-/**
- * Die Routen, die in `GETEILTE_ROUTEN` stehen und für die Anmeldung zählen.
- *
- * Bewusst eine Tabelle und keine `if`-Kette: Die Regel „Astro ruft seine
- * Middleware nur für Pfade auf, zu denen es eine Route gibt" (siehe
- * `src/routes/auth/callback.ts`) ist der Grund, warum `/auth/callback`
- * überhaupt eine Datei ist. Eine Tabelle bildet genau das ab.
- */
 const ROUTEN: Record<string, Route> = {
 	'/auth/login': (kontext) => authLogin(kontext as unknown as APIContext),
 	'/auth/callback': (kontext) => authCallback(kontext as unknown as APIContext),
@@ -73,7 +30,6 @@ const ROUTEN: Record<string, Route> = {
 	'/public/health': (kontext) => healthRoute(kontext as unknown as APIContext),
 }
 
-/** Die geschützte Seite — steht für alles, was hinter der Anmeldung liegt. */
 const geschuetzteSeite = (locals: App.Locals): Response =>
 	new Response(
 		`<!DOCTYPE html><html lang="de"><body><h1>${GESCHUETZTER_INHALT}</h1>` +
@@ -104,9 +60,6 @@ const alsRequest = async (req: IncomingMessage): Promise<Request> => {
 	return new Request(url, {
 		method: req.method,
 		headers: kopfzeilen,
-		// `Uint8Array` und nicht `Buffer`: Der Typ von `BodyInit` kennt keinen
-		// Buffer, und `new Uint8Array(...)` kopiert hier nichts — es ist
-		// dieselbe Sicht auf denselben Speicher.
 		body: ohneKoerper ? undefined : new Uint8Array(await koerperLesen(req)),
 	})
 }
@@ -117,12 +70,6 @@ const antwortSchreiben = async (
 ): Promise<void> => {
 	res.statusCode = antwort.status
 	for (const [name, wert] of antwort.headers) {
-		// `Set-Cookie` NICHT über diese Schleife: Beim Iterieren fasst `Headers`
-		// mehrere Cookies zu einem kommagetrennten Wert zusammen, und der Browser
-		// sieht dann ein einziges, kaputtes Cookie. Der Rücksprung von ZITADEL
-		// setzt genau zwei (Sitzung setzen, Anmeldevorgang abräumen) — hier wäre
-		// also der erste Ort, an dem eine Attrappe still etwas anderes täte als
-		// der Node-Adapter.
 		if (name.toLowerCase() === 'set-cookie') continue
 		res.setHeader(name, wert)
 	}
@@ -133,14 +80,6 @@ const antwortSchreiben = async (
 
 let middleware: MiddlewareHandler | null = null
 
-/**
- * Baut den Handler, den `startServer({ astroEntry })` lädt.
- *
- * Die Konfiguration kommt über `globalThis`, weil `startServer()` den Entry per
- * `import()` eines Dateipfads lädt — ein Argument gibt es auf diesem Weg nicht.
- * Genau so wenig hat der Astro-Build eines: Er bekommt seine Konfiguration über
- * die Integration.
- */
 declare global {
 	var __fwsAttrappenConfig: KlassenConfig | undefined
 }

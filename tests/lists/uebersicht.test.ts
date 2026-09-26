@@ -8,22 +8,10 @@ import { upsertMitglied } from '../../src/lib/db/members.ts'
 import { verteilerUebersicht } from '../../src/lib/lists/uebersicht.ts'
 import { createTestDb } from '../helpers/db.ts'
 
-/**
- * Die Verteiler-Uebersicht ist die Antwort auf einen echten Fehler: Die
- * Adressen standen von Hand in Markdown, und der Text ist veraltet, waehrend
- * die Anwendung laengst woanders zustellte. Deshalb pruefen diese Tests vor
- * allem zwei Dinge — dass die Angaben aus der DATENBANK kommen, und dass die
- * Seite dabei nichts Personenbezogenes ausplaudert.
- *
- * DATENSCHUTZ: ausschliesslich erfundene Namen und example.org-Adressen.
- */
-
 let db: Database
 const original = { ...process.env }
 
-/** Ein Mitglied ohne `admin` — der Normalfall unter den Eltern. */
 const ALS_MITGLIED = false
-/** Ein Zugang mit `admin`, der Personenbezogenes sehen darf. */
 const ALS_ADMIN = true
 
 beforeEach(() => {
@@ -47,9 +35,6 @@ describe('verteilerUebersicht', () => {
 			'eltern@klasse-beispiel.lists.example.org',
 		)
 
-		// Dieselbe Liste, andere Klasse: die Adresse muss mitwandern. Waere sie
-		// irgendwo als Konstante hinterlegt, bliebe sie hier stehen — und genau
-		// das war der Fehler, den diese Seite abloest.
 		process.env.LIST_DOMAIN = 'ganz-andere-klasse.lists.example.net'
 		expect(verteilerUebersicht(ALS_MITGLIED, db)[0]?.adresse).toBe(
 			'eltern@ganz-andere-klasse.lists.example.net',
@@ -100,8 +85,6 @@ describe('verteilerUebersicht', () => {
 		)
 		const roh = JSON.stringify(verteilerUebersicht(ALS_MITGLIED, db))
 		expect(roh).toContain('Eltern')
-		// Weder Name noch Adresse noch eine Zahl, aus der sich in einer Klasse
-		// erraten liesse, wer gemeint ist.
 		expect(roh).not.toContain('Anna')
 		expect(roh).not.toContain('anna@example.org')
 		expect(roh).not.toMatch(/\b1\b/)
@@ -177,7 +160,6 @@ describe('verteilerUebersicht', () => {
 				kind: 'eingeschraenkt',
 				muster: ['*@waldorfschule-maschsee.de'],
 				adressen: [],
-				// Dass es weitere gibt, darf jeder wissen — nur nicht, welche.
 				verborgeneAdressen: 2,
 			})
 			expect(JSON.stringify(s)).not.toContain('schulbuero')
@@ -197,12 +179,6 @@ describe('verteilerUebersicht', () => {
 })
 
 describe('Keine fest verdrahteten Adressen mehr', () => {
-	/**
-	 * Der eigentliche Fehler war nicht die falsche Adresse, sondern dass sie
-	 * ueberhaupt im Text stand. Dieser Test bewacht die Ursache, nicht das
-	 * Symptom: taucht irgendwo wieder eine Listen-Domain als Literal auf, faellt
-	 * es hier auf und nicht erst, wenn jemand ins Leere antwortet.
-	 */
 	const projekt = process.cwd()
 
 	const textDateien = (): string[] => {
@@ -222,8 +198,6 @@ describe('Keine fest verdrahteten Adressen mehr', () => {
 	}
 
 	test('in Seiten und Inhalten steht keine Verteiler-Adresse als Text', () => {
-		// Adressen der Form <irgendwas>@<irgendwas>.lists.<domain> bzw. die
-		// abgeloeste Mailman-Domain.
 		const verdaechtig = /[\w.-]+@[\w.-]*lists\.[\w.-]+|lists\.klasse-[\w.-]+/i
 		const fundstellen = textDateien()
 			.map((datei) => ({

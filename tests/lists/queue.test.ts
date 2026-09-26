@@ -14,26 +14,8 @@ import { handleIncomingListMail } from '../../src/lib/lists/incoming.ts'
 import { processListBatch } from '../../src/lib/lists/queue.ts'
 import { createTestDb } from '../helpers/db.ts'
 
-/**
- * Was passiert mit einer Listenmail, die ANGENOMMEN wurde und danach nicht
- * rausgeht?
- *
- * Der Eingang antwortet dem Worker mit 202, sobald die Mail in der Queue liegt.
- * Ab da gibt es keine SMTP-Antwort mehr, an der ein Absender etwas merken
- * koennte: Scheitert der Versand danach, bekommt niemand eine
- * Unzustellbarkeitsnachricht. Genau dieser Fall — „nicht angekommen, aber auch
- * kein Bounce" — kam aus dem Betrieb.
- *
- * Diese Tests halten deshalb zwei Dinge fest, die der Rundmail-Weg laengst
- * kann und der Listen-Weg nicht konnte: Der Zustand einer angenommenen Mail
- * muss ABLESBAR sein, und ein gescheiterter Versand muss WIEDERHOLBAR sein.
- *
- * Alle Namen und Adressen sind frei erfunden.
- */
-
 let db: Database
 let sent: SendInput[]
-/** Adressen, deren Zustellung der Transport ablehnt. */
 let scheitert: Set<string>
 
 const transport = {
@@ -159,7 +141,6 @@ describe('Wiederholung gescheiterter Zustellungen', () => {
 		expect(requeueListErrors(1, db)).toBe(1)
 		await queueLeeren()
 
-		// Der Empfaenger steht im KUVERT; `to` traegt die Listenadresse.
 		expect(sent.map((m) => m.envelope?.to).sort()).toEqual([
 			'anna@example.org',
 			'jan@example.org',
@@ -194,11 +175,6 @@ describe('Wiederholung gescheiterter Zustellungen', () => {
 })
 
 describe('Unerwarteter Fehler beim Bauen der Mail', () => {
-	/**
-	 * Ein Wurf VOR dem Sendeversuch — hier beim Laden der Anhaenge. Frueher lag
-	 * er ausserhalb des `try`: der Eintrag blieb dann auf `sending` stehen, ohne
-	 * Fehlermeldung, und niemand konnte ihn je abschliessen.
-	 */
 	const dbMitKaputtenAnhaengen = (echt: Database): Database =>
 		new Proxy(echt, {
 			get(ziel, eigenschaft, empfaenger) {

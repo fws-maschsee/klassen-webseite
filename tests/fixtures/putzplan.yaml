@@ -1,16 +1,3 @@
-# Steht fuer `src/content/putzplan.yaml` einer Klasse.
-#
-# ABSICHTLICH nicht chronologisch: die Sortierung ist Aufgabe der Seite, und ein
-# nachgetragener Termin landet in der echten Datei dort, wo gerade Platz war.
-#
-# Die Namen sind erfunden. Eine echte Einteilung gehoert nicht in dieses
-# Repository — sie nennt die Familien einer bestimmten Klasse.
-#
-# Die Anzahl der Eintraege steht in KEINEM Test als Zahl. Die Tests zaehlen sie
-# aus dieser Datei; sonst waere ein sechster Eintrag hier eine rote Zeile dort,
-# und die Aussage "keine stille Auslassung" haenge an einer Zahl, die jemand
-# nachzieht.
-
 - id: "2026-09-04"
   datum: 2026-09-04
   familien:
@@ -22,7 +9,6 @@
 - id: "2026-08-21"
   datum: 2026-08-21
   familien:
-    # Ein Schraegstrich gehoert zu EINER Familie mit zwei Nachnamen.
     - name: Probst/Vogel
       slug: probst-vogel
     - name: Sonnenschein
@@ -45,8 +31,6 @@
     - name: Fruehling
       slug: fruehling
 
-# Ein Termin mit nur EINER Familie. Das ist eine Einteilung wie jede andere —
-# es gibt keine Regel ueber die Anzahl, weder hier noch in der Datenbank.
 - id: "2026-10-09"
   datum: 2026-10-09
   familien:

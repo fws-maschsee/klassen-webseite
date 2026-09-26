@@ -1,16 +1,3 @@
--- Die Werte von `own_mail` auf Englisch.
---
--- `kopie`, `bestaetigung`, `nichts` standen in der JSON-Antwort der
--- MCP-Werkzeuge, in den Formularwerten der Einstellungsseite und in der
--- CHECK-Bedingung — also ueberall dort, wo ein PROGRAMM liest. Fuer Maschinen
--- wird englisch benannt, und das gilt fuer Werte genauso wie fuer Feldnamen.
--- Beschriftungen fuer Menschen bleiben deutsch; die stehen in der Oberflaeche
--- und nicht hier.
---
--- SQLite kann eine CHECK-Bedingung nicht aendern. Der Weg ist deshalb der
--- vorgeschriebene: neue Tabelle, Inhalt uebersetzt hineinkopieren, alte
--- weg, umbenennen. Der Index wird mitgenommen.
---
 -- migrate:up
 CREATE TABLE list_recipient_settings_neu (
   list_address TEXT NOT NULL,
@@ -29,8 +16,6 @@ SELECT  list_address, email, subscribed,
           WHEN 'kopie'        THEN 'copy'
           WHEN 'bestaetigung' THEN 'confirmation'
           WHEN 'nichts'       THEN 'none'
-          -- Sollte es nicht geben; die Vorgabe ist die schadloseste Annahme,
-          -- weil sie dem Verhalten ohne jede Einstellung entspricht.
           ELSE 'copy'
         END,
         updated_at

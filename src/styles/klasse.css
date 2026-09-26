@@ -1,99 +1,23 @@
-/*
- * Der Tailwind-Einstieg aller Klassen.
- *
- * Steht hier und nicht in der Klasse, aus demselben Grund wie früher
- * `tailwindVorgabe()`: Ein fehlender `@import`, ein fehlendes `@plugin` oder ein
- * fehlender `@source` lässt jeden Build durchlaufen und die Seite völlig
- * unformatiert aussehen. Abgeschrieben lief diese Liste zwischen den Klassen
- * auseinander, ohne dass es jemandem gemeldet wurde. In der Klasse steht
- * deshalb genau eine Zeile:
- *
- *     @import "../../geteilt/src/styles/klasse.css";
- *
- * Seit shipyard 0.7 liefert das Paket kein Tailwind-Setup mehr mit — das CSS
- * der Seite besteht ausschließlich aus dem, was hier steht.
- */
 
 @import "tailwindcss";
 
-/*
- * Komponentenstile UND `@source`-Zeilen der shipyard-Pakete: jedes Paket
- * liefert seine eigenen Quellpfade in seiner `index.css` mit, aufgelöst über
- * die `style`-Bedingung seines `exports`-Felds. Deshalb hier keine Pfade von
- * Hand — und deshalb kein `@source "@levino/shipyard-base"`: `@source` löst
- * keine Paketnamen auf und meldet das auch nicht.
- */
 @import "@levino/shipyard-base";
 @import "@levino/shipyard-blog";
 @import "@levino/shipyard-docs";
 
-/*
- * Die geteilten Seiten. Der Pfad ist relativ zu DIESER Datei und zeigt damit in
- * der Klasse auf `geteilt/astro`. Ausdrücklich und nicht der automatischen
- * Quellenerkennung überlassen, weil der geteilte Code als Submodule im Baum
- * liegt: an dieser Git-Grenze ist nicht verlässlich, was Tailwind von allein
- * findet. Fehlt die Zeile, fehlt jede Utility, die nur in `astro/pages/**`
- * vorkommt.
- */
 @source "../../astro";
 
 @plugin "daisyui";
 @plugin "@tailwindcss/typography";
 
-/*
- * Der Stundenplan.
- *
- * Ausgezeichnet wird die Tabelle von `src/remark/stundenplanTabelle.ts`; hier
- * steht, wie sie aussieht. Dieselbe Handschrift wie das PDF der Klasse
- * (`dokumente/stundenplan.typ`): vier sehr helle Toene nach Bereichen, Pausen
- * als ruhige Baender, duenne warme Linien statt eines schwarzen Gitters,
- * weiche Ecken, viel Luft.
- *
- * ZWEI Bedingungen, und beide sind der Grund fuer die Bauart:
- *
- * 1. Die Seite hat einen DUNKELMODUS. Pastelltoene, die im Hellen schoen sind,
- *    werden im Dunklen grell. Deshalb steht hier kein einziger fester
- *    Farbwert: Jeder Ton wird mit `color-mix` aus einem daisyUI-Token und dem
- *    Seitengrund `--color-base-100` angeruehrt. Im Hellen legt sich der Ton auf
- *    Weiss und wird zart, im Dunklen auf Dunkelgrau und bleibt dunkel — von
- *    allein, ohne zweite Farbliste. Umgeschaltet wird nur, WIE STARK die Lasur
- *    ist (`--fws-lasur`), weil ein dunkler Grund mehr Farbe braucht, um
- *    ueberhaupt als Ton erkennbar zu sein.
- *
- *    Absichtlich `warning`/`info`/`error`/`success` und nicht
- *    `primary`/`secondary`/`accent`/`neutral`: die vier letzteren darf eine
- *    Klasse ueber `farben` in ihrer Konfiguration ueberschreiben. Der
- *    Stundenplan saehe dann in jeder Klasse anders aus als ihr eigenes PDF.
- *
- * 2. Der Plan muss SCHWARZ-WEISS AUSGEDRUCKT lesbar bleiben. Die Farbe ist
- *    Schmuck und Orientierung und nie die einzige Information — in jeder Zelle
- *    steht das Fach ausgeschrieben. Wer hier eine Angabe allein ueber die Farbe
- *    transportiert, macht den Ausdruck kaputt.
- */
 @layer components {
-	/*
-	 * Rahmen UND Rollbereich in einem. Der Rand und die weichen Ecken sitzen
-	 * hier und nicht an der Tabelle: Eine Tabelle laesst sich nicht zuverlaessig
-	 * an ihren Ecken beschneiden — die Hintergrundfarben der Eckzellen legen
-	 * sich darueber, und man muesste jede der vier Ecken einzeln runden. Der
-	 * Kasten drumherum kann es von allein, und er bleibt beim seitlichen Rollen
-	 * stehen.
-	 */
 	.stundenplan-rahmen {
 		@apply my-6 overflow-x-auto;
 		border: 1px solid var(--color-base-300);
 		border-radius: var(--radius-box, 0.5rem);
 	}
 
-	/*
-	 * Mit Elementname geschrieben, und zwar absichtlich: shipyards Regel fuer
-	 * Markdown-Tabellen ist `.prose :where(table)` und damit ebenso spezifisch
-	 * wie eine blosse Klasse. `table.stundenplan` gewinnt unabhaengig von der
-	 * Reihenfolge der Importe — sonst haengt das Aussehen daran, in welcher Zeile
-	 * dieser Block steht.
-	 */
 	table.stundenplan {
-		/* Wie stark der Ton auf dem Seitengrund liegt. Lasur, kein Buntstift. */
 		--fws-lasur: 14%;
 		--fws-fach-haupt: color-mix(
 			in oklab,
@@ -116,11 +40,6 @@
 			var(--color-base-100)
 		);
 
-		/*
-		 * `display: table` holt zurueck, was shipyards Regel fuer Markdown-Tabellen
-		 * (`display: block; overflow-x: auto`) wegnimmt: die volle Breite. Das
-		 * Rollen uebernimmt `.stundenplan-rahmen`.
-		 */
 		display: table;
 		@apply w-full border-separate border-spacing-0 text-sm;
 		min-width: 42rem;
@@ -145,7 +64,6 @@
 		@apply text-left;
 	}
 
-	/* Die Zeitspalte traegt die Struktur, nicht die Aufmerksamkeit. */
 	table.stundenplan .stundenplan-zeit {
 		@apply whitespace-nowrap tabular-nums;
 		color: color-mix(
@@ -168,11 +86,6 @@
 		background-color: var(--fws-fach-bewegung);
 	}
 
-	/*
-	 * Der Raum, in dem die Stunde stattfindet — `Fach (Raum)` in der
-	 * Markdown-Zelle. Eigene Zeile unter dem Fach und leiser: Er wird gebraucht,
-	 * wenn man vor der Tuer steht, und stoert, wenn man den Wochenrhythmus sucht.
-	 */
 	table.stundenplan .stundenplan-raum {
 		@apply mt-0.5 block text-xs;
 		color: color-mix(
@@ -182,7 +95,6 @@
 		);
 	}
 
-	/* Freie Stunde: der Strich soll da sein, aber nicht rufen. */
 	table.stundenplan .fach-frei {
 		color: color-mix(
 			in oklab,
@@ -191,21 +103,10 @@
 		);
 	}
 
-	/*
-	 * Die vom Band ueberdeckten Zellen. Sie stehen im HTML, weil
-	 * `mdast-util-to-hast` jede Zeile auf die Spaltenzahl auffuellt und geloeschte
-	 * Zellen ungefragt neu erzeugt — siehe `src/remark/stundenplanTabelle.ts`.
-	 */
 	table.stundenplan .stundenplan-leer {
 		display: none;
 	}
 
-	/*
-	 * Hinweiszeilen: was neben dem Stundenraster steht, aber je Tag verschieden
-	 * ist — Unterrichtsschluss, Betreuung danach. Dasselbe ruhige Band wie die
-	 * Pausen, damit man auf einen Blick sieht, dass hier kein Unterricht mehr
-	 * steht; im PDF sehen dieselben Zeilen genauso aus.
-	 */
 	table.stundenplan tr.stundenplan-hinweis > td {
 		background-color: color-mix(
 			in oklab,
@@ -224,15 +125,6 @@
 		);
 	}
 
-	/*
-	 * Die Pause: ein Atemzug, keine laute Zeile.
-	 *
-	 * `td.` und nicht nur `.`: Sonst gewinnt die Regel fuer die erste Spalte
-	 * (`td:first-child { text-align: left }`), und das Band stuende linksbuendig
-	 * statt mittig ueber der ganzen Breite. Und `font-style: normal`, weil im
-	 * Markdown `*Große Pause*` steht — die Sternchen machen die Pause im
-	 * Quelltext als solche kenntlich, sie sollen sie aber nicht kursiv setzen.
-	 */
 	table.stundenplan td.stundenplan-band {
 		background-color: color-mix(
 			in oklab,
@@ -252,17 +144,6 @@
 		font-style: inherit;
 	}
 
-	/*
-	 * Im Dunklen WENIGER Lasur, nicht mehr.
-	 *
-	 * Der erste Anlauf hatte 24 % — der Gedanke war, ein dunkler Grund brauche
-	 * mehr Farbe. Nachgemessen war es umgekehrt: Dieselbe Beimischung hebt die
-	 * Helligkeit im Dunklen viel staerker an als sie sie im Hellen senkt (auf
-	 * Weiss 0,04, auf dem dunklen Grund 0,12 in oklab). Aus der Lasur wurden
-	 * satte Bloecke in Oliv, Petrol und Bordeaux — genau das Grelle, das im
-	 * Dunkelmodus droht. 12 % ergibt in beiden Modi ungefaehr denselben
-	 * Abstand zum Untergrund.
-	 */
 	[data-theme="dark"] table.stundenplan {
 		--fws-lasur: 12%;
 	}

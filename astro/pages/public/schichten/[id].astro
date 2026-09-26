@@ -7,14 +7,6 @@ import { besucherLesen } from '../../../../src/routes/besucher.ts'
 
 export const prerender = false
 
-/**
- * Der Schichtplan — „Wer übernimmt welche Schicht?"
- *
- * Liegt unter `/public/`, weil viele Eltern die Seite ohne Konto nutzen; der
- * Schutz ist der zufaellige Schluessel im Link. Funktioniert ohne JavaScript
- * vollstaendig; mit JavaScript zeichnet sie den Stand alle vier Sekunden neu.
- */
-
 const id = Astro.params.id ?? ''
 const stand = standLesen(id)
 if (!stand) {
@@ -168,7 +160,7 @@ const besetzung = (c: { count: number; full: boolean }) =>
       const speicherKey = `schichten:${listId}`
       const lade = () => { try { return JSON.parse(localStorage.getItem(speicherKey) || '{}') } catch { return {} } }
       const speichere = (m) => { try { localStorage.setItem(speicherKey, JSON.stringify(m)) } catch {} }
-      let meine = lade() // entry_id -> edit_token (Einträge dieses Browsers)
+      let meine = lade()
       let stand = revision
       const table = document.querySelector('[data-entries] tbody')
       const form = document.querySelector('[data-form]')
@@ -212,7 +204,6 @@ const besetzung = (c: { count: number; full: boolean }) =>
           li.querySelector('[data-count]').textContent = capacity === null ? String(n) : `${n}/${capacity}`
           li.className = `badge badge-lg ${voll ? 'badge-success' : n === 0 ? 'badge-outline' : 'badge-primary'}`
         }
-        // Volle Schichten sind nicht mehr wählbar — ein admin darf trotzdem.
         const auswahl = form && form.elements.shift
         if (auswahl) {
           for (const option of auswahl.options) {
@@ -254,7 +245,6 @@ const besetzung = (c: { count: number; full: boolean }) =>
         form.elements.edit_token.value = meine[e.id] || ''
         if (form.elements.name) form.elements.name.value = e.name
         const auswahl = form.elements.shift
-        // Die eigene Schicht bleibt wählbar, auch wenn sie voll ist.
         for (const option of auswahl.options) if (option.value === e.shift) option.disabled = false
         auswahl.value = e.shift
         form.elements.note.value = e.note || ''
@@ -290,7 +280,7 @@ const besetzung = (c: { count: number; full: boolean }) =>
           if (!res.ok) { alert(res.fehler || 'Das hat nicht geklappt.'); return }
           if (res.entry && res.entry.edit_token) { meine[res.entry.id] = res.entry.edit_token; speichere(meine) }
           zurücksetzen()
-          stand = -1 // beim nächsten Abruf sicher neu zeichnen
+          stand = -1
           await holeStand()
         })
       }
@@ -302,7 +292,6 @@ const besetzung = (c: { count: number; full: boolean }) =>
         if (!e) return
         if (b.dataset.aendern) bearbeite(e); else loesche(e)
       })
-      // Gäste mit gemerktem Schlüssel: Knöpfe in die vorhandene Zelle setzen.
       for (const e of zeilen) {
         if (offen && !e.own && !admin && meine[e.id]) {
           const cell = table?.querySelector(`tr[data-entry-id="${e.id}"] [data-actions]`)

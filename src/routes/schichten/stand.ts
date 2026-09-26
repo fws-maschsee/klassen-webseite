@@ -4,12 +4,6 @@ import { besucherLesen } from '../besucher.ts'
 
 export const prerender = false
 
-/**
- * `GET /public/schichten/<id>/stand` — der Plan als JSON.
- *
- * `?ab=<revision>`: unveraendert → 304 ohne Rumpf. Je Eintrag steht `own`, ob
- * er der fragenden Person gehoert; `owner_sub` verlaesst den Server nie.
- */
 export const GET: APIRoute = async ({ params, url, request }) => {
 	const stand = standLesen(params.id ?? '')
 	if (!stand)

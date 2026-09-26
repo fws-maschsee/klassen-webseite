@@ -9,67 +9,14 @@ import {
 
 export const prerender = false
 
-/**
- * Der Putzplan — Prosa aus dem Markdown, Tabelle aus den Daten.
- *
- * Diese Seite liegt auf dem BESTEHENDEN Pfad `/docs/putzen/putzplan`. Der ist
- * aus `putzen/index.md` verlinkt, steht in der Seitenleiste und ist bei Eltern
- * gespeichert; ein neuer Pfad hätte jeden dieser Verweise gebrochen. Das Muster
- * ist vollständig statisch und damit spezifischer als shipyards Docs-Catch-all
- * `/docs/[...slug]` — Astro entscheidet sich deshalb für diese Datei.
- *
- * Warum die Prosa weiterhin aus dem Docs-Eintrag kommt und nicht hier steht:
- * Titel, Beschreibung, Seitenleisten-Eintrag und Position leben im Frontmatter
- * von `putzplan.md`, und die Seitenleiste entsteht aus der Docs-Sammlung. Wäre
- * der Eintrag dort entfallen, fiele der Putzplan aus der Seitenleiste und die
- * Klasse müsste ihn von Hand in die Navigation eintragen — genau die Datei im
- * Klassen-Repo, die diese Seite vermeiden soll.
- *
- * Die Tabelle steht DAHINTER, unter einer eigenen Überschrift. Sie mitten in
- * die Prosa zu setzen hieße, das gerenderte Markdown aufzuschneiden; die
- * Überschrift ist der Preis dafür, dass die Tabelle nicht als Teil des letzten
- * Prosa-Abschnitts gelesen wird. Sie wird an `headings` angehängt, damit das
- * Inhaltsverzeichnis vollständig bleibt.
- */
-
 const eintrag = await getEntry('docs', 'putzen/putzplan')
 
-/**
- * Keine Unterlage `putzen/putzplan` — dann gibt es diese Seite in dieser Klasse
- * nicht, und zwar mit 404 statt mit einer leeren Seite. Der Docs-Catch-all
- * leitet in diesem Fall auf `/404` um; ein 302 auf eine Seite, die es ebenso
- * wenig gibt, ist der Umweg zur selben Antwort.
- *
- * Das ist der Grund, warum die Route bedingungslos eingehängt werden darf: eine
- * Klasse ohne Putzplan bekommt keine zusätzliche Seite, sondern dieselbe
- * Antwort wie vorher.
- */
 if (!eintrag || eintrag.data.render === false) {
   return new Response(null, { status: 404 })
 }
 
 const { Content, headings } = await render(eintrag)
 
-/**
- * Die Einteilung — zur Laufzeit aus der DATENBANK, nicht mehr aus einer
- * YAML-Datei im Klassen-Repo.
- *
- * Der Grund steht ausführlich in `src/lib/db/putzplan.ts`: In der YAML standen
- * nur Familiennamen, die Menschen stehen im Adressbuch, und zwischen beidem
- * gab es keine Verbindung — der Plan konnte niemanden anschreiben. Jetzt ist
- * eine Familie eine Gruppe, und die Gruppe kennt ihre Adressen.
- *
- * Leer, solange die Klasse keine Termine hat. Bewusst OHNE Hinweis auf der
- * Seite: `klasse-christophers` ist genau dieser Fall und trägt ihre Tabelle
- * noch im Markdown. Ein „hier fehlen Daten" stünde dort unmittelbar unter einer
- * vollständigen Tabelle und wäre schlicht falsch. Der Hinweis gehört an die
- * Person, die den Plan einträgt — die sieht ihn im MCP-Werkzeug
- * `get_putzplan`, nicht auf einer Seite für Eltern.
- *
- * `prerender = false` ist die Voraussetzung dafür und stand schon vorher da:
- * Ein zur Bauzeit erzeugter Plan zeigte den Stand des letzten Deploys, und
- * genau das sollte der Umzug ja abschaffen.
- */
 const zeilen = putzplanZeilen(planAlsEintraege())
 
 const UEBERSCHRIFT = 'Einteilung'
@@ -80,10 +27,6 @@ const inhaltsverzeichnis =
     ? [...headings, { depth: 2, text: UEBERSCHRIFT, slug: UEBERSCHRIFT_ANKER }]
     : headings
 
-// Der Bearbeiten-Link zeigt auf die Datei, in der das Bearbeitbare steht: die
-// Prosa. Die Einteilung steht in der Datenbank und hat deshalb keinen
-// Bearbeiten-Link mehr — der Hinweis unter der Tabelle nennt stattdessen den
-// Weg, der wirklich funktioniert.
 const klasse = klassenConfig()
 const editUrl = bearbeitenUrl(klasse, 'src/content/docs/putzen/putzplan.md')
 ---
@@ -95,13 +38,6 @@ const editUrl = bearbeitenUrl(klasse, 'src/content/docs/putzen/putzplan.md')
     <>
       <h2 id={UEBERSCHRIFT_ANKER}>{UEBERSCHRIFT}</h2>
 
-      {/*
-        Eine schlichte Tabelle ohne eigene Klassen: die Layout-Vorlage von
-        shipyard-docs umschliesst diesen Bereich mit `prose`, und Tailwinds
-        Typografie gestaltet `<table>` dort genauso, wie sie es mit der
-        Markdown-Tabelle getan hat, die vorher an dieser Stelle stand. Gleiche
-        Spalten, gleiche Anmutung — Eltern erkennen sie wieder.
-      */}
       <table>
         <thead>
           <tr>
@@ -121,19 +57,6 @@ const editUrl = bearbeitenUrl(klasse, 'src/content/docs/putzen/putzplan.md')
         </tbody>
       </table>
 
-      {/*
-        Wochenende und Schluessel — die zwei Dinge, an denen der Putzdienst in
-        der Praxis scheitert, und beide stehen nicht in der Tabelle.
-
-        Der Absatz steht im GETEILTEN Code und nicht in der Prosa der Klasse:
-        Er haengt an nichts, was Klassen voneinander unterscheidet — dieselbe
-        Schule, dieselben Schliesszeiten, dieselbe Abmachung. Stuende er im
-        Markdown jeder Klasse, gaebe es ihn pro Klasse einmal, und die zweite
-        Fassung veraltet in dem Moment, in dem die erste geaendert wird.
-
-        Aus demselben Grund stehen beide Saetze auch im PDF: Wer den Plan
-        ausdruckt und aufhaengt, hat die Seite danach nicht mehr vor sich.
-      */}
       <p>Geputzt wird am Wochenende, frühestens am Freitag.</p>
 
       <p>
@@ -141,12 +64,6 @@ const editUrl = bearbeitenUrl(klasse, 'src/content/docs/putzen/putzplan.md')
         Am Wochenende ist niemand in der Schule, der euch aufschließen kann.
       </p>
 
-      {/*
-        Der Link steht HIER und nicht in der Kopfzeile: Er gehört zu dieser
-        Tabelle, und wer ihn braucht, hat sie gerade vor sich. Das Ziel liegt
-        hinter derselben Anmeldung wie diese Seite — es stehen Familiennamen
-        drin (siehe `src/routes/putzplanPdf.ts`).
-      */}
       <p>
         <a href="/docs/putzen/putzplan.pdf">Diesen Plan als PDF herunterladen</a>
         — zum Ausdrucken und Aufhängen.

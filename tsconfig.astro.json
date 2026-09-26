@@ -1,18 +1,9 @@
 {
-	// Der Astro-Teil: die Integration, die Content-Konfiguration und die Typen,
-	// die eine Klassen-App einbindet. Eigenes Projekt, weil hier andere Regeln
-	// gelten als im Nodeteil — dieser Code wird ausschließlich von Vite bzw.
-	// vite-node geladen, nie von Node direkt.
 	"extends": "./tsconfig.base.json",
-	// Die `paths` für shipyard stehen in `tsconfig.base.json`: seit die Tests die
-	// Integration aufrufen, braucht der Nodeteil sie ebenso.
 	"compilerOptions": {
 		"module": "NodeNext",
 		"moduleResolution": "NodeNext"
 	},
-	// `src/**` steht mit drin, weil `astro/` dorthin importiert und tsc die
-	// Zieldateien ohnehin liest. Frueher liefen die Selbstreferenzen ueber
-	// `paths` — die gibt es nicht mehr, es sind gewoehnliche relative Pfade.
 	"include": ["astro/**/*.ts", "astro/**/*.d.ts"],
 	"exclude": ["node_modules"]
 }

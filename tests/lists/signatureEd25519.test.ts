@@ -14,17 +14,6 @@ import {
 } from '../../src/lib/lists/signatureEd25519.ts'
 import { TESTKLASSE } from '../setup.ts'
 
-/**
- * Die Prüfung der Aufrufe des zonenweiten Dispatchers.
- *
- * Das Schlüsselpaar erzeugt diese Suite selbst — kein Netz, kein eingecheckter
- * Privatschlüssel, aber echte Kryptografie: Signiert wird mit `node:crypto`
- * über genau die Zeichenkette, die `buildSigningInput` liefert. Damit prüft der
- * Test das Verfahren und nicht eine Attrappe.
- *
- * Alle Namen und Adressen sind frei erfunden.
- */
-
 const { publicKey, privateKey } = generateKeyPairSync('ed25519')
 const PEM = publicKey.export({ format: 'pem', type: 'spki' }).toString()
 const KEY_ID = listKeyIdFromPem(PEM)
@@ -34,7 +23,6 @@ const BODY = Buffer.from('From: vera@example.org\r\n\r\nHallo', 'utf-8')
 const NOW = new Date(1_800_000_000_000)
 const TS = `${Math.floor(NOW.getTime() / 1000)}`
 
-/** SHA-256 der Body-Bytes, hex — dasselbe, was die Prüfung selbst berechnet. */
 const bodyHashOf = (body: Buffer): string =>
 	createHash('sha256').update(body).digest('hex')
 
@@ -59,11 +47,6 @@ const signaturFuer = (fields: ListRequestFields): string =>
 		privateKey,
 	).toString('base64')
 
-/**
- * Baut die Header so, wie der Dispatcher sie schickt: aus DEMSELBEN Feldsatz,
- * über den signiert wurde. Ein Test, der etwas manipulieren will, überschreibt
- * einzelne Header — genau das tut ein Angreifer auch.
- */
 const headerFuer = (
 	fields: ListRequestFields,
 	manipulation: Record<string, string> = {},
@@ -98,14 +81,6 @@ const pruefe = (
 	})
 
 describe('buildSigningInput', () => {
-	/**
-	 * GOLDEN STRING. Das Gegenstück steht im Dispatcher-Repo
-	 * (`lists-dispatcher`, `test/reference.test.ts` gegen `src/signature.ts`) und
-	 * ist dieselbe Zeichenkette, Byte für Byte — es ist das Beispiel aus dessen
-	 * README. Läuft das Format auf einer Seite weg, wird hier oder dort ein Test
-	 * rot und nicht der Betrieb: Eine einseitige Änderung würde sonst dazu
-	 * führen, dass gar keine Elternpost mehr durchkommt.
-	 */
 	test('erzeugt genau die Zeichenkette aus dem Vertrag', () => {
 		expect(
 			buildSigningInput({
@@ -135,8 +110,6 @@ describe('buildSigningInput', () => {
 	})
 
 	test('laesst die Zeile der Message-ID leer stehen, wenn es keine gibt', () => {
-		// Ohne die leere Zeile waeren zwei verschiedene Feldbelegungen auf
-		// dieselbe Zeichenkette abbildbar.
 		const zeilen = buildSigningInput(feldsatz({ messageId: null })).split('\n')
 		expect(zeilen).toHaveLength(9)
 		expect(zeilen[0]).toBe(SIGNING_VERSION)
@@ -145,11 +118,6 @@ describe('buildSigningInput', () => {
 })
 
 describe('listKeyIdFromPem', () => {
-	/**
-	 * Die Vorgabe des Packages, nachgerechnet. Schlägt dieser Test an, sind
-	 * `listPublicKeyPem` und `listKeyIds` in `SCHUL_VORGABEN` auseinandergelaufen
-	 * — und keine Klasse könnte mehr Listenmail annehmen.
-	 */
 	test('leitet aus der Vorgabe-PEM genau die Vorgabe-Key-Id ab', () => {
 		expect(listKeyIdFromPem(TESTKLASSE.listPublicKeyPem)).toBe(
 			'bf2226d575ece8c8',
@@ -159,8 +127,6 @@ describe('listKeyIdFromPem', () => {
 
 	test('ist 16 Hex-Zeichen lang und aus dem Schluessel abgeleitet', () => {
 		expect(KEY_ID).toMatch(/^[0-9a-f]{16}$/)
-		// Ein zweites Paar ergibt eine andere Id — sonst waere die Id kein
-		// Unterscheidungsmerkmal.
 		const anderes = generateKeyPairSync('ed25519')
 			.publicKey.export({ format: 'pem', type: 'spki' })
 			.toString()
@@ -183,7 +149,6 @@ describe('verifyListRequest', () => {
 		const ergebnis = pruefe(headerFuer(fields))
 		expect(ergebnis.ok).toBe(true)
 		if (!ergebnis.ok) return
-		// Der Body-Hash ist SELBST berechnet und kommt aus keinem Header.
 		expect(ergebnis.fields).toEqual(fields)
 	})
 
@@ -195,10 +160,6 @@ describe('verifyListRequest', () => {
 	})
 
 	test('lehnt einen Aufruf ab, dessen Klasse geaendert wurde', () => {
-		// Der Datenschutzfall: ein gueltig signierter Aufruf fuer die
-		// Nachbarklasse, mit auf uns umgeschriebenem X-List-Class. Alle Klassen
-		// pruefen mit DEMSELBEN oeffentlichen Schluessel — nur die mitsignierte
-		// Klasse unterscheidet die eigene Post von der fremden.
 		const fremd = feldsatz({ class: 'klasse-nachbar' })
 		expect(pruefe(headerFuer(fremd, { 'x-list-class': KLASSE }))).toMatchObject(
 			{ ok: false, status: 401, reason: expect.stringMatching(/ungueltig/) },
@@ -286,8 +247,6 @@ describe('verifyListRequest', () => {
 	})
 
 	test('lehnt ab, wenn die Konfiguration fehlt, statt durchzulassen', () => {
-		// Der eine Fehler, den es hier nicht geben darf: kein Schluessel
-		// konfiguriert und deshalb keine Pruefung.
 		expect(pruefe(headerFuer(feldsatz()), { keyIds: [] })).toMatchObject({
 			ok: false,
 			reason: expect.stringMatching(/listKeyIds/),

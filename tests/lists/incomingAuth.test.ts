@@ -14,19 +14,6 @@ import {
 } from '../../src/lib/lists/signatureEd25519.ts'
 import { TESTKLASSE } from '../setup.ts'
 
-/**
- * Der Eingang für Listenmails: Ed25519 gegen den öffentlichen Schlüssel der
- * Klasse, und nichts sonst. Einliefern darf damit nur der zonenweite
- * Dispatcher, denn nur er hat den privaten Schlüssel.
- *
- * Bis vor kurzem gab es hier einen zweiten Pfad (HMAC mit einem Secret je
- * Klasse, für die alten Worker). Er ist mit den Workern entfallen. Was dieser
- * Test vor allem ausschließt: dass ein Aufruf durch Weglassen eines Headers oder
- * durch eine fehlende Konfiguration an der Prüfung vorbeikommt.
- *
- * Alle Namen und Adressen sind frei erfunden.
- */
-
 const { publicKey, privateKey } = generateKeyPairSync('ed25519')
 const PEM = publicKey.export({ format: 'pem', type: 'spki' }).toString()
 const KEY_ID = listKeyIdFromPem(PEM)
@@ -49,7 +36,6 @@ const feldsatz = (
 	...abweichung,
 })
 
-/** Header eines Dispatcher-Aufrufs (v2, Ed25519). */
 const v2Header = (
 	fields: ListRequestFields = feldsatz(),
 	manipulation: Record<string, string> = {},
@@ -78,9 +64,6 @@ const auth = (headers: Headers, rawBody: Buffer = BODY) =>
 	authenticateListRequest({ headers, rawBody, now: NOW })
 
 beforeEach(() => {
-	// Testschluesselpaar statt der eingecheckten Vorgabe: Den Privatschluessel
-	// zur Vorgabe hat nur der Dispatcher, also kann die Suite mit ihr nichts
-	// signieren.
 	setKlassenConfig({
 		...TESTKLASSE,
 		listPublicKeyPem: PEM,
@@ -109,16 +92,11 @@ describe('authenticateListRequest, Ed25519-Pfad', () => {
 	})
 
 	test('prueft gegen die eigene Klasse, ohne dass sie uebergeben wird', () => {
-		// Vorgabe ist `instanceName()`. Ein Aufruf fuer die Nachbarklasse faellt
-		// damit auch dann durch, wenn der Route-Handler nichts dazu sagt.
 		const fremd = feldsatz({ class: 'klasse-nachbar' })
 		expect(auth(v2Header(fremd))).toMatchObject({ ok: false, status: 401 })
 	})
 
 	test('lehnt eine unbekannte Key-Id ab', () => {
-		// Der Schluesselwechsel laeuft ueber `listKeyIds`. Eine Id, die dort nicht
-		// steht, ist kein Grund zum Durchlassen — auch dann nicht, wenn die
-		// Signatur zu irgendeinem anderen Schluessel passt.
 		const headers = v2Header(feldsatz(), {
 			'x-list-key-id': '0123456789abcdef',
 		})

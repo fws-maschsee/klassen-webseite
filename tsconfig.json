@@ -1,8 +1,4 @@
 {
-	// Der Nodeteil: `src/` und die Tests. Aufloesung nach NodeNext, weil dieser
-	// Code als ESM in Node laeuft — Endungen in Importen sind hier Pflicht und
-	// keine Stilfrage, und seit `node --experimental-strip-types` ist die
-	// richtige Endung `.ts`.
 	"extends": "./tsconfig.base.json",
 	"compilerOptions": {
 		"module": "NodeNext",

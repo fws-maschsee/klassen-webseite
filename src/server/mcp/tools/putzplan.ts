@@ -19,29 +19,8 @@ import {
 import type { McpAuth } from '../guard.ts'
 import { registerPersonalDataTool, registerWriteTool } from '../guard.ts'
 
-/**
- * Der Putzplan ueber MCP — der eigentliche Zweck des Umzugs in die Datenbank.
- *
- * Vorher war jeder Tausch zwischen zwei Familien ein Commit im Klassen-Repo
- * plus ein Deploy: zehn Minuten fuer etwas, das die Eltern in einer Minute
- * untereinander ausmachen. Hier ist es ein Satz an den MCP-Client.
- *
- * ALLES haengt an `admin`, auch das Lesen. Der Plan nennt Familiennamen und
- * sagt, wer wann wo ist; das sind Personendaten, und dass sie frueher fuer
- * jedes angemeldete Mitglied auf einer Seite standen, macht sie nicht zu
- * weniger. Die Seite `/docs/putzen/putzplan` bleibt davon unberuehrt — sie ist
- * die Auskunft an die Eltern und geht durch die Middleware, nicht hier
- * hindurch.
- *
- * Diese Werkzeuge pruefen die Einteilung NICHT. Es gibt nichts zu pruefen: Was
- * eine sinnvolle Einteilung ist, entscheidet die Klasse und nicht der Code.
- * Wer hier eine Plausibilitaet einbaut, baut sie an genau einer von mehreren
- * Schreibstellen ein — und lehnt der Klasse etwas ab, das sie so gewollt hat.
- */
-
 const toJson = (value: unknown): string => JSON.stringify(value, null, 2)
 
-/** `JJJJ-MM-TT`. Dasselbe Format wie der CHECK der Tabelle. */
 const DatumSchema = z
 	.string()
 	.regex(
@@ -56,12 +35,6 @@ const GroupKeySchema = z
 		"Nur Kleinbuchstaben, Ziffern und Bindestriche, z.B. 'familie-morzynski'.",
 	)
 
-/**
- * Ein abgelehnter Schreibvorgang ist ein FEHLER DES AUFRUFERS und kein Absturz:
- * Er bekommt den Satz, der sagt, was nicht geht, und kann es anders versuchen.
- * Was ueberhaupt noch ablehnt, ist die Integritaet der Daten — eine unbekannte
- * Gruppe, ein Datum, das es nicht gibt.
- */
 const mitFehlermeldung = <T>(
 	tun: () => T,
 	erfolg: (ergebnis: T) => string,
@@ -79,13 +52,6 @@ const mitFehlermeldung = <T>(
 	}
 }
 
-/**
- * Der Aenderungsbericht eines Massenschreibens, in einem Satz.
- *
- * Eine eigene Funktion, damit der Bericht ueberall gleich klingt — und damit
- * ein zweites Massenschreiben, falls es je eines gibt, nicht seine eigene
- * Zaehlweise erfindet.
- */
 const berichtSatz = (a: PlanAenderung): string => {
 	const teile = [
 		`${a.added.length} neu`,
@@ -94,9 +60,6 @@ const berichtSatz = (a: PlanAenderung): string => {
 		`${a.unchanged} unveraendert`,
 	]
 	const satz = `Aenderungen: ${teile.join(', ')}.`
-	// Die ENTFALLENEN werden einzeln genannt. Sie sind der gefaehrliche Teil: Ein
-	// Dokument, dem versehentlich die Haelfte fehlt, sieht sonst aus wie ein
-	// gelungener Import.
 	if (a.removed.length === 0) return satz
 	const liste =
 		a.removed.length <= 10
@@ -105,7 +68,6 @@ const berichtSatz = (a: PlanAenderung): string => {
 	return `${satz} Entfallen sind: ${liste}.`
 }
 
-/** Wie der Plan in der Antwort aussieht — englische Feldnamen, wie in der DB. */
 const planAusgabe = () => ({
 	dates: planMitNamen().map((termin) => ({
 		date: termin.date,
@@ -254,9 +216,6 @@ export const registerPutzplanTools = (
 			mitFehlermeldung(
 				() => loescheTermine({ dates, from, to }),
 				({ deleted, missing }) => {
-					// Ein stilles "ok" ist bei einer Loeschung zu wenig: Wer sie
-					// ausgeloest hat, muss lesen koennen, was wirklich weg ist — sonst
-					// faellt ein zu weit gefasster Zeitraum erst Wochen spaeter auf.
 					const zuteilungen = deleted.reduce((n, t) => n + t.assignments, 0)
 					const teile: string[] = []
 					teile.push(
@@ -367,15 +326,6 @@ export const registerPutzplanTools = (
 
 			return mitFehlermeldung(
 				() => {
-					// Erst die Gruppen, dann der Plan: Umgekehrt scheitert das
-					// Schreiben an Group-Keys, die es noch nicht gibt.
-					//
-					// Gruppen werden NICHT aus den Group-Keys des Plans erraten. Ein
-					// Key ist `familie-probst-vogel`, der Anzeigename "Probst/Vogel" —
-					// aus dem einen laesst sich der andere nicht zurueckrechnen, und
-					// ein geratenes Label stuende danach auf der Seite, die die Eltern
-					// lesen. Wer eine neue Familie hat, nennt sie unter `families`
-					// oder legt sie vorher mit upsert_putzfamilie an.
 					for (const { slug, label } of families ?? []) {
 						upsertGroup({ key: familienGruppenKey(slug), label })
 					}

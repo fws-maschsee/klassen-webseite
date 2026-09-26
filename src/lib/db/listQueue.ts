@@ -20,24 +20,17 @@ export type EnqueueListMessageInput = {
 	body_html: string | null
 	body_text: string | null
 	original_message_id: string | null
-	/**
-	 * Schluessel gegen Doppelverteilung bei Worker-Retries. `null` = keine
-	 * Garantie moeglich (Mail ohne Message-ID).
-	 */
 	idempotency_key: string | null
 	attachments: IncomingAttachment[]
-	/** Empfaenger als (email, mitglied_id?)-Paare. */
 	recipients: { email: string; mitglied_id: string | null }[]
 }
 
 export type EnqueueListMessageResult = {
 	message_id: number
 	enqueued: number
-	/** true, wenn die Mail schon einmal angenommen wurde (Retry des Workers). */
 	duplicate: boolean
 }
 
-/** Findet eine bereits angenommene Mail anhand ihres Idempotenz-Schluessels. */
 export const findListMessageByIdempotencyKey = (
 	key: string,
 	db: Database = openDb(),
@@ -48,16 +41,6 @@ export const findListMessageByIdempotencyKey = (
 		)
 		.get(key)
 
-/**
- * Speichert eine eingegangene Listen-Mail (Message + Anhaenge) und legt fuer
- * jeden Empfaenger eine `queued`-Zeile in `list_outbound` an — alles in EINER
- * Transaktion. Doppelte Empfaengeradressen werden dedupliziert.
- *
- * Idempotenz des Eingangs: Liegt `idempotency_key` bereits vor, wird NICHT
- * erneut verteilt, sondern die bestehende `message_id` zurueckgegeben. Der
- * Cloudflare-Worker darf dieselbe Mail also gefahrlos erneut zustellen (SMTP
- * ist at-least-once).
- */
 export const enqueueListMessage = (
 	input: EnqueueListMessageInput,
 	db: Database = openDb(),
@@ -146,7 +129,6 @@ export const getListAttachments = (
 		)
 		.all(messageId)
 
-/** Aelteste queued-Outbound-Eintraege (aelteste zuerst). */
 export const peekListOutbound = (
 	limit: number,
 	db: Database = openDb(),
@@ -157,7 +139,6 @@ export const peekListOutbound = (
 		)
 		.all(limit)
 
-/** Atomar `queued` -> `sending`. Nur der Gewinner (changes === 1) verarbeitet. */
 export const claimListOutbound = (
 	id: number,
 	db: Database = openDb(),
@@ -209,7 +190,6 @@ export const listOutboundForMessage = (
 		)
 		.all(messageId)
 
-/** Zaehlung je Status. Alle vier Schluessel sind immer da, auch mit 0. */
 export type ListOutboundCounts = {
 	queued: number
 	sending: number
@@ -242,17 +222,6 @@ const countsFor = (messageId: number, db: Database): ListOutboundCounts => {
 	return counts
 }
 
-/**
- * Der Zustand EINER angenommenen Listenmail — samt Fehlermeldung je Empfaenger.
- *
- * Bis hierher endete der Weg einer Listenmail im Dunkeln: Der Eingang antwortet
- * dem Cloudflare-Worker mit 202, sobald die Mail in der Queue liegt, und ab da
- * gibt es keine SMTP-Antwort mehr, an der ein Absender etwas merken koennte.
- * Scheitert der Versand danach, bekommt niemand eine Unzustellbarkeitsnachricht
- * — die Mail ist weg, und die Frage „ist sie ueberhaupt angekommen?" war ohne
- * Zugriff auf die Pod-Logs nicht zu beantworten. Der Rundmail-Weg kann das
- * laengst (`get_send_log`); hier ist das Gegenstueck.
- */
 export const listMessageStatus = (
 	id: number,
 	db: Database = openDb(),
@@ -266,7 +235,6 @@ export const listMessageStatus = (
 	}
 }
 
-/** Die zuletzt angenommenen Listenmails, neueste zuerst, mit ihren Zahlen. */
 export const recentListMessages = (
 	limit = 20,
 	db: Database = openDb(),
@@ -278,23 +246,6 @@ export const recentListMessages = (
 		.all(limit)
 		.map((message) => ({ ...message, counts: countsFor(message.id, db) }))
 
-/**
- * Reiht die gescheiterten Zustellungen einer Listenmail erneut ein
- * (`error -> queued`) und gibt zurueck, wie viele es waren.
- *
- * Angefasst werden ausschliesslich `error`-Zeilen: Wer die Mail schon hat,
- * bekommt sie kein zweites Mal, und was noch in der Queue liegt, bleibt liegen.
- * Ohne `messageId` gilt es fuer alle Mails — der Fall nach einem Neustart, der
- * einen ganzen Schwung Zustellungen unterbrochen hat.
- *
- * Die verbleibende Unsicherheit steht hier, weil sie sich nicht wegprogrammieren
- * laesst: Eine Zeile auf `error` heisst „unser Sendeversuch ist gescheitert",
- * nicht „SES hat die Mail nicht angenommen". Bricht die Verbindung NACH der
- * Annahme ab, erzeugt eine Wiederholung eine zweite Mail beim Empfaenger. Eine
- * doppelte Mail ist der ertraeglichere Fehler gegenueber einer verlorenen —
- * deshalb gibt es diese Funktion, und deshalb loest ein Mensch sie aus statt
- * eines Automatismus.
- */
 export const requeueListErrors = (
 	messageId?: number,
 	db: Database = openDb(),
@@ -317,14 +268,6 @@ export const requeueListErrors = (
 				)
 				.run(messageId).changes
 
-/**
- * Erfolgreiche Zustellungen im GLEITENDEN Fenster der letzten Stunde.
- *
- * Die Grenze wird in JS gerechnet und als Parameter uebergeben — siehe
- * `dbTimestamp` in `./index.ts`. Ein `datetime('now','-1 hour')` in der
- * Abfrage waere ein anderes Textformat als das gespeicherte `sent_at` und
- * verglich frueher faktisch den KALENDERTAG.
- */
 export const countListSentInLastHour = (
 	db: Database = openDb(),
 	now: Date = new Date(),
@@ -342,14 +285,6 @@ export const countListQueued = (db: Database = openDb()): number =>
 		)
 		.get()?.c ?? 0
 
-/**
- * Reboot-/Stuck-Cleanup analog zu email_send_log: haengende `sending`-Eintraege
- * (aelter als `maxAgeSeconds`, oder alle bei `maxAgeSeconds <= 0`) auf `error`.
- *
- * Die Altersgrenze kommt aus `dbTimestampBefore` und nicht aus
- * `datetime('now', …)`: `claimed_at` steht im Datenbankformat, und zwei
- * Schreibweisen zu vergleichen hiesse, den Kalendertag zu vergleichen.
- */
 export const cleanupStuckListOutbound = (
 	db: Database = openDb(),
 	maxAgeSeconds = 0,

@@ -1,14 +1,3 @@
-/**
- * Der Weg einer Rundmail bei `confirmation`: Die Absenderin bekommt ihre eigene
- * Nachricht NICHT zurueck, sondern eine Quittung — und zwar erst, wenn die
- * Warteschlange die Liste durch hat.
- *
- * Der Test geht denselben Weg wie der Betrieb: rohe Mail rein, Warteschlange
- * abarbeiten, `SendInput` raus. Nur so faellt auf, wenn die Quittung zwar
- * gebaut, aber nie ausgeloest wird.
- *
- * Alle Namen und Adressen sind frei erfunden.
- */
 import type { Database } from 'better-sqlite3'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { upsertGroup } from '../../src/lib/db/groups.ts'
@@ -25,7 +14,6 @@ import { createTestDb } from '../helpers/db.ts'
 
 let db: Database
 let sent: SendInput[]
-/** Adressen, bei denen der Versand scheitert. */
 let scheitert: Set<string>
 
 const transport = {
@@ -59,7 +47,6 @@ const verteilen = async (
 	return ergebnis
 }
 
-/** Nur den Umgang mit der eigenen Post setzen. */
 const eigene = (mail: string, wert: 'copy' | 'confirmation' | 'none') =>
 	setzeEinstellung(
 		'eltern',
@@ -68,7 +55,6 @@ const eigene = (mail: string, wert: 'copy' | 'confirmation' | 'none') =>
 		db,
 	)
 
-/** Nur das Abo setzen. */
 const abo = (mail: string, an: boolean) =>
 	setzeEinstellung(
 		'eltern',
@@ -77,7 +63,6 @@ const abo = (mail: string, an: boolean) =>
 		db,
 	)
 
-/** Die Quittung erkennt man am Header, nicht am Betreff. */
 const quittungen = () => sent.filter((m) => m.headers?.['X-List-Receipt'])
 const rundmails = () => sent.filter((m) => !m.headers?.['X-List-Receipt'])
 
@@ -154,7 +139,6 @@ describe('confirmation — Quittung statt Kopie', () => {
 		expect(quittung[0]?.envelope?.to).toBe('vera@example.org')
 		expect(quittung[0]?.subject).toBe('Zugestellt: Elternabend')
 		expect(quittung[0]?.text).toContain('an alle 2 Empfänger')
-		// RFC 3834: Sonst beantwortet eine Abwesenheitsnotiz die Quittung.
 		expect(quittung[0]?.headers?.['Auto-Submitted']).toBe('auto-replied')
 	})
 
@@ -171,9 +155,6 @@ describe('confirmation — Quittung statt Kopie', () => {
 	})
 
 	test('kommt auch dann, wenn die LETZTE Zustellung scheitert', async () => {
-		// Der Fall, in dem eine Quittung am ehesten ausbliebe — und der, in dem
-		// sie am wichtigsten ist: Die Absenderin wartet sonst auf eine Nachricht,
-		// die nie kommt.
 		eigene('vera@example.org', 'confirmation')
 		scheitert.add('anna@example.org')
 		scheitert.add('bea@example.org')
@@ -195,9 +176,6 @@ describe('confirmation — Quittung statt Kopie', () => {
 	})
 
 	test('eine geplatzte Quittung laesst die Rundmail zugestellt', async () => {
-		// Die Rundmail ist zu diesem Zeitpunkt draussen. Ein Fehler beim
-		// Quittieren darf daran nichts mehr aendern und schon gar keinen erneuten
-		// Rundgang ausloesen.
 		eigene('vera@example.org', 'confirmation')
 		scheitert.add('vera@example.org')
 		const ergebnis = await verteilen()

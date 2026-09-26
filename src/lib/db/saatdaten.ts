@@ -6,69 +6,6 @@ import { upsertMailingList } from './mailingLists.ts'
 import { GROUP_ELTERN, upsertMitglied } from './members.ts'
 import { ersetzePlan } from './putzplan.ts'
 
-/**
- * ERFUNDENE Saatdaten fuer eine Vorschau-Umgebung (PR-Preview).
- *
- * ============================================================================
- * WARUM HIER KEINE ECHTEN DATEN STEHEN — UND AUCH NIE STEHEN WERDEN
- * ============================================================================
- *
- * In der Produktionsdatenbank jeder Klasse stehen die Namen und Adressen von
- * rund hundert echten Familien. Eine Vorschau ist eine Umgebung, die aus einem
- * Pull Request entsteht: Sie laeuft unter einer wechselnden Adresse, sie
- * enthaelt den Code eines Zweigs, den noch niemand gelesen hat, und sie
- * verschwindet wieder, wenn der Pull Request zugeht. Genau deshalb gehoeren
- * dort keine echten Personendaten hin.
- *
- * Wer hier spaeter einmal "nur kurz mal mit echten Daten" testen will — sei es
- * ueber einen gemeinsamen PVC, ein `kubectl cp` der Produktionsdatei oder eine
- * Wiederherstellung aus einem Backup — moege bitte drei Dinge bedenken:
- *
- *  1. Es ist eine Weitergabe personenbezogener Daten an einen Zweck, dem
- *     niemand zugestimmt hat. Die Eltern haben ihre Adresse fuer den
- *     Klassenverteiler hinterlegt, nicht fuer die Fehlersuche.
- *  2. Eine Vorschau ist strukturell schlechter geschuetzt als die Produktion:
- *     Sie traegt Code, der noch nicht gereviewt ist, und ihr Login haengt an
- *     einem ZITADEL-Zugang mit `devMode` (wechselnde Ruecksprungadressen).
- *     Ein Fehler im Zweig, der die Anmeldung aushebelt, faellt hier per
- *     Definition zuerst auf — mit echten Daten dahinter.
- *  3. Vorschau-Datentraeger sind `emptyDir`. Sie sind fluechtig, es gibt kein
- *     Backup und niemanden, der eine Loeschanfrage darauf ausfuehren koennte.
- *
- * Deshalb: Eine Vorschau bekommt einen EIGENEN, LEEREN Datentraeger und wird
- * beim Start mit den erfundenen Daten aus dieser Datei befuellt. Es gibt keinen
- * Kopierschritt aus der Produktion, und es soll auch keinen geben.
- *
- * ============================================================================
- * DIE SICHERUNG
- * ============================================================================
- *
- * `seedDemoData()` schreibt NUR in eine FRISCH MIGRIERTE Datenbank. Geprueft
- * wird das nicht an einer Handvoll bekannter Tabellen, sondern an ALLEN
- * Tabellen des Schemas, und zwar gegen eine im Speicher frisch migrierte
- * Vergleichsdatenbank (`abweichungGegenFrisch` unten). Steht irgendwo auch nur
- * eine Zeile mehr, als die Migrationen selbst anlegen, passiert nichts ausser
- * einer Zeile im Protokoll.
- *
- * Das ist die Sicherung dafuer, dass der Schalter `SEED_DEMO_DATA` in der
- * Produktion NICHTS tut: Die Produktionsdatenbank ist nicht frisch — in
- * `app_meta` steht seit dem ersten Start die Instanz-Identitaet, in
- * `mitglieder` stehen die Familien. Selbst wenn jemand die Variable dort aus
- * Versehen setzt, wird kein Datensatz angefasst. Gepruefte Aussage, kein
- * Vorsatz: `tests/db/saatdaten.test.ts`.
- *
- * Die Saat liegt im GETEILTEN Code und nicht in den Klassen-Repos, damit beide
- * Klassen dieselben erfundenen Daten sehen: Eine Vorschau soll zeigen, wie der
- * Code sich verhaelt, und nicht, welche Klasse man gerade erwischt hat.
- */
-
-/**
- * Erfundene Familien. Die Nachnamen sind Baumnamen — unverwechselbar erfunden
- * und damit garantiert nicht der Nachname einer echten Familie. Die Adressen
- * liegen auf `example.org`; die Domain ist nach RFC 2606 reserviert und kann
- * keine Mail annehmen, eine versehentlich abgeschickte Nachricht geht also
- * nirgendwohin.
- */
 const FAMILIEN = [
 	{ nachname: 'Ahorn', erwachsene: ['Anna', 'Arne'] },
 	{ nachname: 'Birke', erwachsene: ['Bente'] },
@@ -82,19 +19,9 @@ const FAMILIEN = [
 	{ nachname: 'Ulme', erwachsene: ['Karla', 'Kolja'] },
 ] as const
 
-/** Group-Key einer erfundenen Familie — dieselbe Konvention wie im Echtbetrieb. */
 const familienKey = (nachname: string): string =>
 	`familie-${nachname.toLowerCase()}`
 
-/**
- * Die Einteilung des Putzplans, als Paare von Familien-Indizes.
- *
- * Der Plan prueft nichts mehr an einer Einteilung — es gibt keine Planregeln.
- * Diese Folge ist trotzdem sauber gewaehlt: Sie soll in der Vorschau wie eine
- * echte Einteilung aussehen, also jede Familie gleich oft und keine zwei
- * Termine hintereinander dranhaben. Wer sie anfasst, macht nichts kaputt —
- * hoechstens eine Vorschau, die unrealistisch aussieht.
- */
 const PUTZPAARE: readonly (readonly [number, number])[] = [
 	[0, 1],
 	[2, 3],
@@ -110,36 +37,19 @@ const PUTZPAARE: readonly (readonly [number, number])[] = [
 	[1, 2],
 ]
 
-/** Erster Putztermin: der naechste Freitag ab `ab` (00:00 UTC gerechnet). */
 const naechsterFreitag = (ab: Date): Date => {
 	const tag = new Date(
 		Date.UTC(ab.getUTCFullYear(), ab.getUTCMonth(), ab.getUTCDate()),
 	)
-	// 5 = Freitag. `|| 7` schiebt auf den naechsten Freitag statt auf heute —
-	// ein Termin heute waere in der Vorschau sofort "ueberfaellig".
 	const bisFreitag = (5 - tag.getUTCDay() + 7) % 7 || 7
 	tag.setUTCDate(tag.getUTCDate() + bisFreitag)
 	return tag
 }
 
-/** `JJJJ-MM-TT` — das Format, das `cleaning_dates.date` per CHECK verlangt. */
 const alsDatum = (d: Date): string => d.toISOString().slice(0, 10)
 
-/**
- * Buchhaltung des Migrationslaufs — zaehlt bei der Pruefung nicht mit.
- *
- * `app_meta` steht bewusst NICHT hier: Dort schreibt der Server beim ersten
- * Start die Instanz-Identitaet hinein, und eine Datenbank, die das schon hinter
- * sich hat, ist keine frische mehr.
- */
 const BUCHHALTUNG = new Set(['schema_migrations'])
 
-/**
- * Namen aller Tabellen des Schemas — aus `sqlite_master` gelesen und nicht als
- * Liste gepflegt. Eine gepflegte Liste vergisst die naechste Migration, und
- * dann prueft die Sicherung eine Tabelle nicht, in der die echten Daten
- * stehen.
- */
 const tabellen = (db: Database): string[] =>
 	db
 		.prepare<[], { name: string }>(
@@ -157,22 +67,8 @@ const anzahl = (db: Database, tabelle: string): number =>
 		)
 		.get()?.anzahl ?? 0
 
-/** Eine Tabelle, deren Inhalt nicht dem einer frisch migrierten Datei entspricht. */
 export type Abweichung = { tabelle: string; ist: number; soll: number }
 
-/**
- * Ist diese Datenbank frisch — also genau das, was die Migrationen erzeugen?
- *
- * "Leer" heisst hier ausdruecklich NICHT "null Zeilen ueberall": Die Migration
- * `create_groups` legt die Systemgruppe `eltern` an, und eine kuenftige
- * Migration wird weitere Zeilen mitbringen. Verglichen wird deshalb gegen eine
- * frisch migrierte Datenbank im Speicher — dieselben Migrationen, derselbe
- * Runner. Damit pflegt sich die Sicherung selbst: Was eine Migration anlegt,
- * gilt automatisch als Grundzustand; jede Zeile darueber hinaus ist Inhalt und
- * laesst die Saat abbrechen.
- *
- * Liefert die erste Tabelle, die abweicht, oder `null` fuer "frisch".
- */
 export const abweichungGegenFrisch = (
 	db: Database = openDb(),
 	klassenVerzeichnisse: readonly string[] = [],
@@ -194,9 +90,7 @@ export const abweichungGegenFrisch = (
 }
 
 export type SaatErgebnis = {
-	/** `false`, wenn die Datenbank nicht frisch war — dann wurde nichts geschrieben. */
 	gesaet: boolean
-	/** Die Tabelle, die den Abbruch ausgeloest hat. */
 	grund?: Abweichung
 	familien: number
 	mitglieder: number
@@ -204,17 +98,6 @@ export type SaatErgebnis = {
 	verteiler: number
 }
 
-/**
- * Befuellt eine FRISCHE Datenbank mit den erfundenen Daten oben.
- *
- * Tut nichts, wenn irgendeine Tabelle mehr enthaelt, als die Migrationen
- * anlegen — siehe die Sicherung im Dateikopf. Der Rueckgabewert sagt, was
- * passiert ist; der Aufrufer protokolliert es.
- *
- * @param jetzt Bezugszeitpunkt fuer die Putztermine. Nur Tests setzen ihn;
- *   sonst wandert der Plan mit dem Kalender mit, statt in der Vergangenheit zu
- *   liegen.
- */
 export const seedDemoData = (
 	db: Database = openDb(),
 	jetzt: Date = new Date(),
@@ -233,8 +116,6 @@ export const seedDemoData = (
 	}
 
 	const tx = db.transaction(() => {
-		// Die Dachgruppe. Denselben Key benutzt der Echtbetrieb (GROUP_ELTERN),
-		// damit die Vorschau die Verteiler-Seite zeigt, die es wirklich gibt.
 		upsertGroup({ key: GROUP_ELTERN, label: 'Alle Eltern' }, db)
 		upsertGroup(
 			{ key: 'elternvertretung', label: 'Elternvertretung (Vorschau)' },
@@ -245,9 +126,6 @@ export const seedDemoData = (
 		for (const familie of FAMILIEN) {
 			const key = familienKey(familie.nachname)
 			upsertGroup({ key, label: `Familie ${familie.nachname}` }, db)
-			// Die Familiengruppe haengt unter `eltern`. Damit loest ein Verteiler
-			// an `eltern` rekursiv auf alle Familien auf — dieselbe Mechanik wie
-			// im Echtbetrieb, nur mit erfundenen Namen.
 			addSubgroup(GROUP_ELTERN, key, db)
 			for (const vorname of familie.erwachsene) {
 				upsertMitglied(
@@ -263,9 +141,6 @@ export const seedDemoData = (
 			}
 		}
 
-		// Zwei Personen zusaetzlich in die Elternvertretung — sonst ist die
-		// zweite Gruppe leer und die Vorschau zeigt nicht, wie eine
-		// Mehrfachzugehoerigkeit aussieht.
 		for (const [vorname, nachname] of [
 			['Anna', 'Ahorn'],
 			['Jonas', 'Pappel'],

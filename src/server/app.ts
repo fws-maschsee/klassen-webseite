@@ -17,68 +17,17 @@ import { startErinnerungsdienst } from './putzplan-worker.ts'
 import { startQueueWorker } from './queue-worker.ts'
 import { nurAngemeldet } from './statisch.ts'
 
-/**
- * Produktions-Entrypoint. Express umschliesst den Astro-SSR-Handler, weil zwei
- * Dinge ausserhalb von Astro leben muessen:
- *
- *  - Der MCP-Endpunkt `/mcp` braucht das Express-`req`/`res`-Paar fuer den
- *    Streamable-HTTP-Transport des SDK.
- *  - Die OAuth-Endpunkte (`/authorize`, `/token`, `/register`, `/revoke` und
- *    die `.well-known`-Metadaten) mountet `mcpAuthRouter` auf Root-Ebene.
- *
- * Alles andere — Seiten, Content, die Anmeldung — laeuft durch die
- * Astro-Middleware.
- *
- * Diese Datei liegt im geteilten Code und nicht in der Klasse, weil sie in
- * beiden Klassen-Repos zeichengleich war (`diff -wB` = 0 Zeilen). In der Klasse
- * bleibt ein `server.ts` mit drei Zeilen — es muss dort bleiben, weil der Pfad
- * zum Astro-Build (`./dist/server/entry.mjs`) relativ zum Arbeitsverzeichnis
- * der KLASSE gilt. Gestartet wird es mit
- * `node --experimental-strip-types server.ts`.
- */
-
 export type StartServerOptions = {
 	config: KlassenConfig
-	/**
-	 * Zusätzliche Migrationsverzeichnisse der Klasse. Die des geteilten Codes
-	 * laufen immer zuerst; klassen-eigene dürfen darauf aufbauen, nie umgekehrt.
-	 */
 	migrationsDirs?: readonly string[]
-	/**
-	 * Migrationen beim Start anwenden. Vorgabe `true` und idempotent über
-	 * `schema_migrations` — dieselbe Tabelle, die dbmate benutzt, damit ein
-	 * bestehendes Deployment mit `dbmate up` im Container nicht doppelt
-	 * migriert wird.
-	 */
 	migrate?: boolean
-	/**
-	 * Pfad des Astro-SSR-Entrypoints, relativ zum Arbeitsverzeichnis der
-	 * Klassen-App.
-	 */
 	astroEntry?: string
-	/**
-	 * Verzeichnis der gebauten statischen Dateien. Vorgabe `dist/client` —
-	 * dorthin spiegelt Astro `public/` der Klasse. Als Option da, damit der
-	 * Test dieses Verzeichnis bestuecken kann, ohne einen Astro-Build zu
-	 * brauchen.
-	 */
 	staticDir?: string
 }
 
-/**
- * Startet die Express-App.
- *
- * Gibt den `http.Server` zurueck, damit ein Test den Start abschliessen und den
- * Port danach wieder freigeben kann. In `server.ts` einer Klasse bleibt das
- * `await startServer({ config })` davon unberuehrt.
- */
 export const startServer = async (
 	options: StartServerOptions,
 ): Promise<Server> => {
-	// MUSS als erstes laufen: alles darunter liest die Konfiguration ueber
-	// `klassenConfig()`. Deshalb darf oberhalb dieser Zeile auch kein IMPORT
-	// etwas auswerten, das die Konfiguration braucht — siehe die Begruendung an
-	// `createMcpAuthMiddleware` in `./mcp/handler.ts`.
 	setKlassenConfig(options.config)
 
 	const db = openDb()
@@ -92,19 +41,6 @@ export const startServer = async (
 		}
 	}
 
-	// Saatdaten fuer eine Vorschau-Umgebung (PR-Preview). NUR erfundene Namen,
-	// NUR in eine frisch migrierte Datei — die Begruendung und die Sicherung
-	// stehen in `src/lib/db/saatdaten.ts`.
-	//
-	// Der Schalter steht hier und nicht in der Klasse, weil beide Klassen
-	// dieselbe Vorschau bekommen sollen. In der Produktion ist er nicht gesetzt;
-	// waere er es, taete er trotzdem nichts: die Produktionsdatei ist nicht
-	// frisch, und dann schreibt `seedDemoData` keine Zeile.
-	//
-	// Der Aufruf steht VOR `assertInstanceMatches`: Danach stuende in `app_meta`
-	// die Instanz-Identitaet, und die Datei waere per Definition nicht mehr
-	// frisch. Diese Reihenfolge ist also kein Zufall, sondern der Grund, warum
-	// die Saat ueberhaupt je greift.
 	if (process.env.SEED_DEMO_DATA === 'true') {
 		const saat = seedDemoData(db, new Date(), options.migrationsDirs ?? [])
 		if (saat.gesaet) {
@@ -124,20 +60,12 @@ export const startServer = async (
 		}
 	}
 
-	// Bevor irgendetwas laeuft: gehoert die gemountete Datenbank ueberhaupt zu
-	// dieser Klasse? Ein Mismatch bedeutet, dass der naechste Versand an die
-	// falsche Elternschaft ginge. Lieber gar nicht starten.
 	const instance = assertInstanceMatches(db)
 
 	const app = express()
 
-	// Hinter einem Reverse-Proxy laufen wir mit X-Forwarded-*-Headern, damit
-	// Express (und das Rate-Limiting des MCP-SDK) die echten Client-IPs sieht.
 	app.set('trust proxy', 1)
 
-	// OAuth-Endpunkte fuer den MCP-Client (Discovery, DCR, Token, Revoke).
-	// `/authorize` leitet auf die Astro-Seite `/oauth/consent` weiter, die
-	// hinter der normalen Anmeldung liegt.
 	app.use(
 		mcpAuthRouter({
 			provider: mcpOAuthProvider,
@@ -147,22 +75,8 @@ export const startServer = async (
 		}),
 	)
 
-	// MCP-Endpunkt mit eigenem Bearer-Auth-Layer.
 	app.use('/mcp', express.json(), mcpAuthMiddleware, mcpRequestHandler)
 
-	// Eine frueher benutzte Kalenderadresse dauerhaft auf die heutige umleiten.
-	// Nur `klasse-christophers` hat eine: Dort lag die Datei sieben Monate unter
-	// einem anderen Pfad, und wer in diesem Zeitraum abonniert hat, haengt daran.
-	//
-	// Die Umleitung traegt bewusst nur DIESE Seite — der Pfad mit den echten Abos
-	// wird direkt als Datei ausgeliefert. Ein 301 ist fuer Kalender-Clients kein
-	// sicherer Weg: Apples Kalender quittiert Umleitungen dokumentiert mit Fehler
-	// -1007, Googles Importer scheitert an ihnen ebenfalls.
-	//
-	// Sie steht VOR `express.static`, damit sie auch dann greift, wenn wieder
-	// eine Datei an der alten Stelle landet. `pruefeKalender` laesst das ohnehin
-	// nicht durch die Tests, aber die Reihenfolge hier kostet nichts und macht
-	// den Fall unmoeglich statt unwahrscheinlich.
 	const { calendarLegacyPath, calendarPath } = options.config
 	if (calendarLegacyPath !== null && calendarPath !== null) {
 		app.get(calendarLegacyPath, (_req, res) => {
@@ -170,26 +84,10 @@ export const startServer = async (
 		})
 	}
 
-	// Statische Dateien liegen hinter derselben Anmeldung wie die Seiten. Warum
-	// das eine eigene Datei mit langem Kommentar wert ist, steht in
-	// `statisch.ts`: Ohne diese Zeile war jede Datei aus `public/` der Klasse —
-	// Stundenplan, Elternbriefe, Fotos — fuer jeden abrufbar, der die Adresse
-	// kannte, waehrend die Seite daneben 401 antwortete.
 	const staticDir = options.staticDir ?? 'dist/client'
 	app.use(nurAngemeldet(staticDir))
 	app.use(express.static(staticDir))
 
-	// Der Astro-SSR-Entry entsteht erst beim Build, der Pfad liegt deshalb in
-	// einer Variable — sonst wollte die Typpruefung ein Modul aufloesen, das im
-	// Quellbaum gar nicht existiert.
-	//
-	// `pathToFileURL(resolve(...))` und nicht der relative String: dieses Modul
-	// liegt bei der Klasse unter `geteilt/src/server/`, und ein relativer
-	// `import()` wird gegen den Ort des IMPORTIERENDEN Moduls aufgeloest, nicht
-	// gegen das Arbeitsverzeichnis. Der Astro-Build der Klasse liegt aber neben
-	// ihrer `package.json`. Ohne diese Zeile sucht Node
-	// `geteilt/src/server/dist/server/entry.mjs` — dasselbe Fehlerbild wie
-	// vorher unter `node_modules`, nur mit anderem Pfad.
 	const astroEntry = pathToFileURL(
 		path.resolve(options.astroEntry ?? './dist/server/entry.mjs'),
 	).href
@@ -202,9 +100,6 @@ export const startServer = async (
 			`[server] ${instance.configured} laeuft auf http://localhost:${port()}`,
 		)
 		startQueueWorker()
-		// Mitbringlisten mit abgelaufener Aufbewahrung abraeumen: beim Start und
-		// dann einmal am Tag. Eine Liste nennt Familiennamen und ist nach dem
-		// Fest wertlos — sie liegen zu lassen waere der Fehler, nicht das Loeschen.
 		const abraeumen = () => {
 			try {
 				const n = loescheFaellige(db)
@@ -221,10 +116,6 @@ export const startServer = async (
 		}
 		abraeumen()
 		setInterval(abraeumen, 24 * 60 * 60 * 1000).unref()
-		// Die Putz-Erinnerung laeuft neben der Warteschlange im selben Prozess:
-		// Sie braucht dieselbe Datenbank und denselben Mailweg, und beides ist
-		// hier schon eingerichtet. Startet nicht, wenn die Klasse keinen
-		// Putzplan hat — dann steht eine Zeile im Log und sonst nichts.
 		startErinnerungsdienst()
 	})
 }

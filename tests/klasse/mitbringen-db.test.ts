@@ -19,13 +19,6 @@ import {
 } from '../../src/lib/db/mitbringen.ts'
 import { createTestDb } from '../helpers/db.ts'
 
-/**
- * Mitbringlisten in der Datenbank: anlegen, eintragen, wer was aendern darf,
- * und wann eine Liste von selbst verschwindet.
- *
- * Alle Namen sind frei erfunden.
- */
-
 const JETZT = new Date('2026-09-01T10:00:00.000Z')
 const TAG = 24 * 60 * 60 * 1000
 
@@ -97,7 +90,6 @@ describe('Listen', () => {
 		expect(() =>
 			trageEin(liste.id, { name: 'Muster', item: 'Brot' }, {}, db, JETZT),
 		).toThrow(/geschlossen/)
-		// ein admin darf trotzdem
 		expect(
 			trageEin(
 				liste.id,
@@ -172,7 +164,6 @@ describe('Einträge', () => {
 			{ category: 'Grillgut', count: 0 },
 			{ category: 'Getränke', count: 0 },
 		])
-		// weder owner_sub noch edit_token gehen an die Seite
 		expect(Object.keys(stand?.entries[0] ?? {})).not.toContain('owner_sub')
 		expect(Object.keys(stand?.entries[0] ?? {})).not.toContain('edit_token')
 	})

@@ -25,22 +25,6 @@ import {
 } from '../../src/lib/db/putzplan.ts'
 import { createTestDb } from '../helpers/db.ts'
 
-/**
- * Der Putzplan in der Datenbank: lesen, schreiben, und was das Schema erzwingt.
- *
- * Hier standen einmal Tests ueber vier Planregeln — Anzahl der Familien je
- * Termin, Mindestabstand, Paarungen. Die Regeln sind weg, und die Tests mit
- * ihnen: Was eine sinnvolle Einteilung ist, entscheidet die Klasse.
- *
- * Was geprueft wird, ist deshalb nur noch zweierlei: dass der Plan
- * unveraendert wieder herauskommt, wie er hineingegangen ist, und dass das
- * SCHEMA haelt, was kein Code mehr prueft — Fremdschluessel auf `groups`,
- * Primaerschluessel `(date, group_key)`, das Datumsformat.
- *
- * Alle Namen und Adressen sind frei erfunden.
- */
-
-/** Zehn Familien — genug, dass ein Plan aus zehn Terminen sich nicht wiederholt. */
 const FAMILIEN = [
 	'musterfrau',
 	'beispiel',
@@ -56,10 +40,6 @@ const FAMILIEN = [
 
 const key = (slug: string) => familienGruppenKey(slug)
 
-/**
- * Ein Plan: zehn Termine im Wochenabstand, jede Familie zweimal.
- *
- */
 const PLAN = [
 	{ date: '2026-08-21', groups: [key('musterfrau'), key('beispiel')] },
 	{ date: '2026-08-28', groups: [key('probst-vogel'), key('sonnenschein')] },
@@ -73,10 +53,6 @@ const PLAN = [
 	{ date: '2026-10-23', groups: [key('fruehling'), key('suedstern')] },
 ]
 
-/**
- * Die ersten beiden Termine mit Namen — sie kommen in mehreren Tests vor, und
- * `PLAN[0]!` an jeder dieser Stellen waere ein Ausrufezeichen mehr als noetig.
- */
 const [ERSTER, ZWEITER] = PLAN as [(typeof PLAN)[number], (typeof PLAN)[number]]
 
 let db: Database
@@ -88,14 +64,10 @@ beforeEach(() => {
 	}
 })
 
-/** Der Plan, eingespielt. */
 const planEinspielen = () => ersetzePlan(PLAN, db)
 
 describe('das Schema selbst', () => {
 	test('haelt eine Zuteilung auf eine unbekannte Gruppe zurueck', () => {
-		// Der Schreibpfad faengt das mit einer freundlichen Meldung ab. Der
-		// Fremdschluessel ist die zweite Linie: Er gilt auch fuer den, der an
-		// `setzeTermin` vorbei in die Tabelle schreibt.
 		db.prepare("INSERT INTO cleaning_dates (date) VALUES ('2026-08-21')").run()
 		expect(() =>
 			db
@@ -107,9 +79,6 @@ describe('das Schema selbst', () => {
 	})
 
 	test('laesst dieselbe Gruppe am selben Termin kein zweites Mal zu', () => {
-		// Der Primaerschluessel (date, group_key). Dass eine Familie an einem
-		// Termin nicht zweimal stehen kann, ist keine Regel, die jemand prueft —
-		// es faellt strukturell weg, und deshalb steht der Test hier am Schema.
 		db.prepare("INSERT INTO cleaning_dates (date) VALUES ('2026-08-21')").run()
 		const zuteilen = db.prepare(
 			'INSERT INTO cleaning_assignments (date, group_key) VALUES (?, ?)',
@@ -121,17 +90,12 @@ describe('das Schema selbst', () => {
 	})
 
 	test('lehnt ein Datum ab, das nicht JJJJ-MM-TT ist', () => {
-		// `2026-8-1` sortierte sich als Zeichenkette falsch ein, und der Plan
-		// wird ueberall nach dieser Zeichenkette sortiert.
 		expect(() =>
 			db.prepare("INSERT INTO cleaning_dates (date) VALUES ('2026-8-1')").run(),
 		).toThrow(/CHECK/)
 	})
 
 	test('haelt das Loeschen einer Familie zurueck, die noch im Plan steht', () => {
-		// ON DELETE RESTRICT und nicht CASCADE: Mit CASCADE bliebe der Termin mit
-		// EINER Familie zurueck — ein Plan, der vollstaendig aussieht und an dem
-		// eine Familie fehlt, ist genau der Ausfall, den niemand bemerkt.
 		planEinspielen()
 		expect(() => deleteGroup(key('musterfrau'), db)).toThrow(/FOREIGN KEY/)
 	})
@@ -142,9 +106,6 @@ describe('ein Plan', () => {
 		const plan = planEinspielen()
 		expect(plan).toHaveLength(PLAN.length)
 		expect(plan.map((t) => t.date)).toEqual([...PLAN.map((t) => t.date)].sort())
-		// Gegen die EINGABE geprueft und nicht gegen eine feste Anzahl: Die
-		// Zusicherung ist, dass der Plan unveraendert zurueckkommt, und die gilt
-		// unabhaengig davon, wie viele Familien ein Termin hat.
 		for (const erwartet of PLAN) {
 			const termin = plan.find((t) => t.date === erwartet.date)
 			expect(termin?.groups).toEqual([...erwartet.groups].sort())
@@ -152,8 +113,6 @@ describe('ein Plan', () => {
 	})
 
 	test('laesst sich zweimal einspielen, ohne sich zu aendern', () => {
-		// Die Zusicherung des Imports: Ein zweiter Lauf darf den Plan nicht
-		// verdoppeln.
 		const erst = planEinspielen()
 		const zweit = planEinspielen()
 		expect(zweit).toEqual(erst)
@@ -180,16 +139,12 @@ describe('Termine tauschen', () => {
 			),
 			db,
 		)
-		// Position 0 und 1 — der Tausch, um den es in der Praxis geht:
-		// Beide Paare ruecken nur um eine Position, und ihr zweiter Einsatz liegt
-		// weit genug entfernt.
 		const plan = tauscheTermine('2026-08-21', '2026-08-28', db)
 		const a = plan.find((t) => t.date === '2026-08-21')
 		const b = plan.find((t) => t.date === '2026-08-28')
 
 		expect(a?.groups).toEqual([key('probst-vogel'), key('sonnenschein')].sort())
 		expect(b?.groups).toEqual([key('musterfrau'), key('beispiel')].sort())
-		// Der Feiertag verschiebt sich nicht mit den Familien.
 		expect(a?.note).toBeNull()
 		expect(b?.note).toBe('(Do, da Fr Feiertag)')
 	})
@@ -213,8 +168,6 @@ describe('naechsterPutztermin', () => {
 	})
 
 	test('zaehlt den Tag selbst mit', () => {
-		// Ein Erinnerungsdienst, der am Morgen des Putztermins laeuft, meint
-		// diesen Termin — nicht den in einer Woche.
 		planEinspielen()
 		const naechster = naechsterPutztermin(new Date('2026-09-11T06:00:00Z'), db)
 		expect(naechster?.datum.toISOString()).toBe('2026-09-11T00:00:00.000Z')
@@ -262,8 +215,6 @@ describe('familienEmpfaenger', () => {
 	})
 
 	test('nimmt die Mitglieder von Untergruppen mit', () => {
-		// Das ist der Grund, ueberhaupt das bestehende Gruppenmodell zu benutzen
-		// statt eines eigenen: Die rekursive Aufloesung gibt es schon.
 		upsertGroup({ key: 'familie-beispiel-kinder', label: 'Kinder' }, db)
 		addSubgroup(key('beispiel'), 'familie-beispiel-kinder', db)
 		upsertMitglied(
@@ -281,9 +232,6 @@ describe('familienEmpfaenger', () => {
 	})
 
 	test('gibt eine LEERE Liste zurueck, wenn es die Gruppe nicht gibt', () => {
-		// Die wichtigste Zusage: Der Aufrufer bekommt NICHTS und kann den Fall
-		// erkennen — statt einer erfundenen Adresse, an die eine Erinnerung ginge,
-		// die den Empfaenger nichts angeht.
 		expect(familienEmpfaenger('familie-gibtesnicht', db)).toEqual([])
 	})
 
@@ -319,9 +267,6 @@ describe('die Tabelle auf der Seite', () => {
 	})
 
 	test('traegt keinen Group-Key in die Tabelle', () => {
-		// Der Key ist der Schluessel, an dem der Erinnerungsdienst seine Zuordnung
-		// aufhaengt. Auf der Seite hat er nichts zu suchen: Er sieht wie ein Name
-		// aus, ist aber keiner.
 		planEinspielen()
 		const ausgabe = JSON.stringify(putzplanZeilen(planAlsEintraege(db)))
 		for (const slug of FAMILIEN) expect(ausgabe).not.toContain(key(slug))
@@ -352,9 +297,6 @@ describe('Termine loeschen', () => {
 	})
 
 	test('laesst keine verwaiste Einteilung zurueck', () => {
-		// Die Kaskade ist der eigentliche Punkt: Eine Einteilung, die auf ein
-		// geloeschtes Datum zeigt, waere eine Zeile, die niemand mehr erklaeren
-		// kann — und `planLesen` faende sie nie wieder.
 		planEinspielen()
 		loescheTermine({ dates: ['2026-08-21'] }, db)
 		const offen = db
@@ -366,8 +308,6 @@ describe('Termine loeschen', () => {
 	})
 
 	test('loescht einen ganzen Zeitraum', () => {
-		// Der Fall, um den es geht: einen alten Plan abraeumen, ohne vierzig
-		// Aufrufe zu machen.
 		planEinspielen()
 		const { deleted } = loescheTermine(
 			{ from: '2026-08-21', to: '2026-09-11' },
@@ -469,11 +409,8 @@ describe('den ganzen Plan setzen', () => {
 	test('ersetzt und berichtet, was sich geaendert hat', () => {
 		planEinspielen()
 		const neu = [
-			// unveraendert
 			ERSTER,
-			// geaendert: andere Einteilung
 			{ date: ZWEITER.date, groups: [key('winter'), key('sommer')] },
-			// neu
 			{ date: '2027-01-08', groups: [key('herbst'), key('fruehling')] },
 		]
 		const { aenderung } = ersetzePlanMitBericht(neu, db)
