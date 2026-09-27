@@ -501,9 +501,32 @@ keine Daten.
 - **Refresh**, sobald das Access-Token abläuft (`expires_in`, bei ZITADEL 5 min).
   Scheitert er, ist die Sitzung gelöscht und man ist abgemeldet.
 - **Sitzungen** liegen in `auth_sessions` (Refresh-Token, Rollen, `sid`). Der
-  Keks `fws_session` trägt nur einen verschlüsselten Griff (`SESSION_SECRET`),
-  in der Tabelle steht dessen SHA-256. Abmelden löscht die Zeile und widerruft
-  das Refresh-Token bei ZITADEL.
+  Keks `__Host-fws_session` (unter https; lokal über http `fws_session`) trägt
+  nur einen verschlüsselten Griff (`SESSION_SECRET`), in der Tabelle steht
+  dessen SHA-256. Abmelden löscht die Zeile und widerruft das Refresh-Token bei
+  ZITADEL. Das Präfix `__Host-` verhindert, dass eine Nachbar-Subdomain einen
+  gleichnamigen Keks für die ganze Domain unterschiebt; kommt ein Keksname
+  doppelt, gilt keiner. Ein alter Keks `fws_session` wird beim nächsten Aufruf
+  umbenannt (`src/server/keksUmzug.ts`), niemand wird abgemeldet.
+- **Schutz vor fremden Seiten (CSRF).** Vor Express und Astro prüft
+  `src/server/herkunft.ts` jede Anfrage außer GET/HEAD/OPTIONS: `Sec-Fetch-Site`
+  muss `same-origin` oder `none` sein, fehlt der Kopf, muss `Origin` gleich
+  `PUBLIC_BASE_URL` sein; fehlen beide, ist es kein Browser (wie Go's
+  `CrossOriginProtection`). Sonst 403 und eine Zeile `[herkunft]` im Log.
+  Ausgenommen sind nur Endpunkte, die sich selbst ausweisen: `/token`,
+  `/register`, `/revoke`, `/mcp`, `/auth/backchannel-logout`,
+  `/auth/zitadel-events`, `/api/lists/incoming` — ihnen wird der `Cookie`-Kopf
+  entzogen, sie können also keine Sitzung benutzen. Alle Antworten tragen
+  `Content-Security-Policy: frame-ancestors 'none'` und `X-Frame-Options: DENY`.
+- **MCP-Clients (OAuth, dynamische Registrierung).** Rücksprungziele müssen
+  `https://claude.ai/…`, `https://claude.com/…` oder loopback sein, ohne
+  Fragment (`src/server/oauth/redirectZiel.ts`); anderes lehnt `/register` mit
+  `invalid_redirect_uri` ab. Die Liste ist bewusst eng: ein Code an einen
+  fremden Server ist Zustimmungs-Phishing, und registriert haben sich bisher nur
+  Claude und Claude Code. Ein weiterer Client braucht einen Eintrag dort. Die
+  Zustimmungsseite zeigt das Ziel groß und den Client-Namen als „selbst
+  angegeben“. Registrierungen ohne gültiges Token werden nach einem Tag
+  gelöscht, abgelaufene Tokens, Codes und Anfragen täglich.
 - **Client-Authentifizierung** `private_key_jwt` (`OIDC_CLIENT_KEY`).
 - **`POST /auth/backchannel-logout`** (OIDC Back-Channel-Logout): `logout_token`
   wird gegen die JWKS des Issuers geprüft (`iss`, `aud`, `iat`, Ereignis, keine

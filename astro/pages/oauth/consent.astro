@@ -9,6 +9,7 @@ import {
 import { instanceLabel } from '../../../src/lib/db/instance.ts'
 import { canEdit } from '../../../src/server/auth/roles.ts'
 import { verifyRequest } from '../../../src/server/auth/index.ts'
+import { pruefeRedirectUri } from '../../../src/server/oauth/redirectZiel.ts'
 
 export const prerender = false
 
@@ -40,6 +41,12 @@ if (!auth.ok) {
 }
 
 const userId = auth.user.id
+
+const redirect = pruefeRedirectUri(pending.redirect_uri)
+if (!redirect.ok) {
+	return new Response('Unzulässiges Rücksprungziel', { status: 400 })
+}
+const ziel = redirect.ziel
 
 if (Astro.request.method === 'POST') {
 	const form = await Astro.request.formData()
@@ -75,29 +82,30 @@ if (Astro.request.method === 'POST') {
 const scopeList = pending.scopes ?? ['mcp']
 
 const mayEdit = canEdit(auth.user.roles)
+
 ---
 
 <Layout title="Anwendung autorisieren">
   <div class="container mx-auto px-4 py-12 max-w-xl">
     <h1 class="text-2xl font-bold mb-4">Anwendung autorisieren</h1>
     <p class="mb-6">
-      <strong>{client.client_name}</strong> moechte auf die Mitglieder- und
-      Verteilerverwaltung der Instanz <strong>{instanceLabel()}</strong> zugreifen.
+      Eine Anwendung möchte auf die Mitglieder- und Verteilerverwaltung der
+      Instanz <strong>{instanceLabel()}</strong> zugreifen.
     </p>
 
     <div class="not-prose bg-base-100 shadow-sm rounded-lg p-4 mb-6">
-      <p class="text-sm opacity-70 mb-2">Wer fragt:</p>
-      <p class="font-mono text-sm">{client.client_name}</p>
-      <p class="text-xs opacity-50 font-mono break-all">
-        client_id: {client.client_id}
+      <p class="text-sm opacity-70 mb-1">Der Zugang geht an:</p>
+      <p class="text-xl font-bold font-mono break-all" data-redirect-host>{ziel.host}</p>
+      <p class="text-sm mt-1">
+        {ziel.art === 'lokal'
+          ? 'Ein Programm auf diesem Gerät (zum Beispiel Claude Code). Nur zustimmen, wenn Du es gerade selbst gestartet hast.'
+          : 'Claude von Anthropic (Connector in claude.ai oder der Claude-App).'}
       </p>
-      {client.client_uri && (
-        <p class="text-xs opacity-50 mt-1">
-          <a href={client.client_uri} target="_blank" rel="noopener" class="link link-primary">
-            {client.client_uri}
-          </a>
-        </p>
-      )}
+
+      <p class="text-sm opacity-70 mt-4 mb-1">
+        Name, den die Anwendung selbst angibt (nicht geprüft):
+      </p>
+      <p class="font-mono text-sm break-all" data-client-name>{client.client_name}</p>
 
       <p class="text-sm opacity-70 mt-4 mb-1">Berechtigungen:</p>
       <ul class="text-sm list-disc list-inside">
@@ -105,15 +113,18 @@ const mayEdit = canEdit(auth.user.roles)
           <li class="font-mono">{s}</li>
         ))}
       </ul>
+    </div>
 
-      <p class="text-sm opacity-70 mt-4 mb-1">Redirect-URI:</p>
-      <p class="font-mono text-xs break-all">{pending.redirect_uri}</p>
+    <div role="alert" class="alert alert-warning mb-6">
+      <span>
+        Nur zustimmen, wenn Du diese Verbindung gerade selbst eingerichtet hast.
+        Hat Dir jemand diesen Link geschickt, lehne ab.
+      </span>
     </div>
 
     <p class="text-sm opacity-70 mb-6">
       Angemeldet als <strong>{auth.user.email}</strong>. Die Verbindung gibt
-      Zugriff auf Namen und E-Mail-Adressen der Eltern dieser Klasse — nur
-      zustimmen, wenn die Anfrage wirklich von dir stammt.
+      Zugriff auf Namen und E-Mail-Adressen der Eltern dieser Klasse.
     </p>
 
     <p class="text-sm opacity-70 mb-6">

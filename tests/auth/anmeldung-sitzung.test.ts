@@ -127,9 +127,11 @@ afterEach(() => {
 
 const anmelden = async (
 	claims: Record<string, unknown> = { [ROLLEN]: rollen('mitglied') },
+	origin = 'http://klasse.example.org',
+	keksName = 'fws_session',
 ) => {
 	const start = await startLogin(
-		new Request('http://klasse.example.org/verwaltung'),
+		new Request(`${origin}/verwaltung`),
 		'/verwaltung',
 	)
 	const authorize = new URL(start.headers.get('location') as string)
@@ -147,15 +149,20 @@ const anmelden = async (
 	})
 	const rueck = await handleCallback(
 		new Request(
-			`http://klasse.example.org/auth/callback?code=c1&state=${authorize.searchParams.get('state')}`,
+			`${origin}/auth/callback?code=c1&state=${authorize.searchParams.get('state')}`,
 			{ headers: { cookie: stateKeks } },
 		),
 	)
 	expect(rueck.status).toBe(302)
 	const sitzungsKeks = rueck.headers
 		.getSetCookie()
-		.find((k) => k.startsWith('fws_session=')) as string
-	return { authorize, keks: sitzungsKeks.split(';')[0] as string }
+		.find((k) => k.startsWith(`${keksName}=`)) as string
+	return {
+		authorize,
+		stateKeks: start.headers.get('set-cookie') as string,
+		gesetzt: sitzungsKeks,
+		keks: sitzungsKeks.split(';')[0] as string,
+	}
 }
 
 const mitKeks = (keks: string) =>
@@ -334,5 +341,64 @@ describe('Uebergang: Client-Geheimnis', () => {
 		const kopf = new Headers(tokenAufruf?.[1]?.headers)
 		expect(kopf.get('authorization')).toMatch(/^Basic /)
 		expect(tokenAnfragen[0]?.get('client_assertion')).toBeNull()
+	})
+})
+
+describe('unter https: __Host-Kekse', () => {
+	const HTTPS = 'https://klasse.example.org'
+	const mitKeksHttps = (keks: string) =>
+		new Request(`${HTTPS}/verwaltung`, { headers: { cookie: keks } })
+
+	beforeEach(() => {
+		vi.stubEnv('OIDC_PUBLIC_ORIGIN', HTTPS)
+	})
+
+	test('Sitzungs- und Anmeldekeks tragen das Präfix, Secure und keine Domain', async () => {
+		const { stateKeks, gesetzt, keks } = await anmelden(
+			undefined,
+			HTTPS,
+			'__Host-fws_session',
+		)
+		expect(stateKeks).toMatch(/^__Host-fws_auth_/)
+		for (const k of [stateKeks, gesetzt]) {
+			expect(k).toContain('Secure')
+			expect(k).toContain('Path=/')
+			expect(k).not.toMatch(/domain=/i)
+		}
+		expect((await resolveSession(mitKeksHttps(keks))).state).toBe('ok')
+	})
+
+	test('ein doppelter Sitzungskeks gilt nicht — auch nicht der gültige', async () => {
+		const { keks } = await anmelden(undefined, HTTPS, '__Host-fws_session')
+		vi.spyOn(console, 'warn').mockImplementation(() => {})
+		for (const doppelt of [
+			`__Host-fws_session=untergeschoben; ${keks}`,
+			`${keks}; __Host-fws_session=untergeschoben`,
+		]) {
+			expect((await resolveSession(mitKeksHttps(doppelt))).state).toBe(
+				'unauthenticated',
+			)
+		}
+	})
+
+	test('der alte Name allein öffnet nichts mehr, das Umbenennen macht Express', async () => {
+		const { keks } = await anmelden(undefined, HTTPS, '__Host-fws_session')
+		const alt = keks.replace('__Host-fws_session=', 'fws_session=')
+		expect((await resolveSession(mitKeksHttps(alt))).state).toBe(
+			'unauthenticated',
+		)
+	})
+
+	test('Abmelden löscht den neuen und den alten Keks', async () => {
+		const { keks } = await anmelden(undefined, HTTPS, '__Host-fws_session')
+		const antwort = await handleLogout(mitKeksHttps(keks))
+		const geloescht = antwort.headers.getSetCookie()
+		expect(geloescht.some((k) => k.startsWith('__Host-fws_session=;'))).toBe(
+			true,
+		)
+		expect(geloescht.some((k) => k.startsWith('fws_session=;'))).toBe(true)
+		expect((await resolveSession(mitKeksHttps(keks))).state).toBe(
+			'unauthenticated',
+		)
 	})
 })

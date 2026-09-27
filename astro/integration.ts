@@ -68,7 +68,7 @@ export const fwsKlasse = (options: FwsKlasseOptions): AstroIntegration[] => {
 					site: config.siteUrl,
 					output: 'server',
 					adapter,
-					// Hinter Express greift Astros Origin-Check nicht verlässlich; Consent schützen Zufallstoken, PKCE und redirect_uri.
+					// Astros Prüfung kennt keine Ausnahmen für die signierten Eingänge; src/server/herkunft.ts prüft vor Express und Astro.
 					security: { checkOrigin: false },
 					markdown: {
 						// processor statt remarkPlugins: Astro 7 rendert sonst mit Sätteri ohne unified-Plugins.

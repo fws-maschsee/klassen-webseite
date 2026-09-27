@@ -1,5 +1,9 @@
 import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js'
-import { InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js'
+import {
+	CustomOAuthError,
+	InvalidClientMetadataError,
+	InvalidTokenError,
+} from '@modelcontextprotocol/sdk/server/auth/errors.js'
 import type {
 	AuthorizationParams,
 	OAuthServerProvider,
@@ -22,6 +26,7 @@ import {
 	rotateRefreshToken,
 	verifyAccessToken,
 } from '../../lib/db/oauth.ts'
+import { pruefeRedirectUri } from './redirectZiel.ts'
 
 const toClientInfo = (
 	c: ReturnType<typeof getClient> extends infer R ? NonNullable<R> : never,
@@ -41,21 +46,42 @@ const toClientInfo = (
 	client_secret_expires_at: c.client_secret_expires_at,
 })
 
+const MAX_CLIENT_NAME = 80
+
 const clientsStore: OAuthRegisteredClientsStore = {
 	getClient(clientId) {
 		const c = getClient(clientId)
 		if (!c) return undefined
+		const unzulaessig = c.redirect_uris
+			.map(pruefeRedirectUri)
+			.find((p) => !p.ok)
+		if (unzulaessig && !unzulaessig.ok) {
+			console.warn(`[oauth] Client ${clientId} gesperrt: ${unzulaessig.grund}`)
+			return undefined
+		}
 		return toClientInfo(c)
 	},
 
 	registerClient(client) {
 		const redirectUris = client.redirect_uris ?? []
 		if (redirectUris.length === 0) {
-			throw new Error('redirect_uris required')
+			throw new InvalidClientMetadataError('redirect_uris fehlt')
+		}
+		for (const uri of redirectUris) {
+			const pruefung = pruefeRedirectUri(uri)
+			if (!pruefung.ok) {
+				console.warn(`[oauth] Registrierung abgewiesen: ${pruefung.grund}`)
+				throw new CustomOAuthError('invalid_redirect_uri', pruefung.grund)
+			}
+		}
+		const name = (client.client_name as string | undefined)?.trim()
+		if (name && name.length > MAX_CLIENT_NAME) {
+			throw new InvalidClientMetadataError(
+				`client_name ist länger als ${MAX_CLIENT_NAME} Zeichen`,
+			)
 		}
 		const { client: created, client_secret_plain } = registerClient({
-			client_name:
-				(client.client_name as string | undefined) ?? 'Unnamed MCP Client',
+			client_name: name || 'Unbenannter MCP-Client',
 			redirect_uris: redirectUris,
 			grant_types: client.grant_types,
 			response_types: client.response_types,

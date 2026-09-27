@@ -4,6 +4,7 @@ import type { RequestHandler } from 'express'
 import { klassenConfig, wemGehoertDieSeite } from '../klasse/config.ts'
 import { brauchtKeineAnmeldung, normalisierterPfad } from '../klasse/pfad.ts'
 import { authenticate } from './auth/oidc.ts'
+import { kopfAlsWebRequest } from './webRequest.ts'
 
 export const nurAngemeldet = (staticDir: string): RequestHandler => {
 	const wurzel = path.resolve(staticDir)
@@ -37,7 +38,7 @@ export const nurAngemeldet = (staticDir: string): RequestHandler => {
 			try {
 				// Erst hier gelesen: beim Bauen der Middleware kann das Register noch leer sein.
 				const { contactMail } = klassenConfig()
-				const { response } = await authenticate(alsWebRequest(req), {
+				const { response } = await authenticate(kopfAlsWebRequest(req), {
 					siteOwner: wemGehoertDieSeite(),
 					contactMail,
 				})
@@ -55,21 +56,6 @@ export const nurAngemeldet = (staticDir: string): RequestHandler => {
 			}
 		})()
 	}
-}
-
-const alsWebRequest = (req: Parameters<RequestHandler>[0]): Request => {
-	const kopf = new Headers()
-	for (const [name, wert] of Object.entries(req.headers)) {
-		if (typeof wert === 'string') kopf.set(name, wert)
-		else if (Array.isArray(wert)) for (const w of wert) kopf.append(name, w)
-	}
-	return new Request(
-		new URL(
-			req.originalUrl,
-			`${req.protocol}://${req.get('host') ?? 'localhost'}`,
-		),
-		{ method: 'GET', headers: kopf },
-	)
 }
 
 const schreibe = async (

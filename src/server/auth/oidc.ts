@@ -33,6 +33,9 @@ const SESSION_COOKIE = 'fws_session'
 
 const STATE_COOKIE_PREFIX = 'fws_auth_'
 
+// Nur ein __Host-Keks ist sicher vor Nachbar-Subdomains, die einen gleichnamigen Keks für die ganze Domain setzen.
+const HOST_PREFIX = '__Host-'
+
 const STATE_MAX_AGE_SECONDS = 15 * 60
 
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
@@ -127,18 +130,46 @@ export const resetOidcConfig = (): void => {
 	refreshInFlight.clear()
 }
 
-const parseCookies = (header: string | null): Record<string, string> => {
-	const result: Record<string, string> = {}
-	if (!header) return result
-	for (const part of header.split(';')) {
+type CookieRead =
+	| { state: 'missing' }
+	| { state: 'ambiguous'; count: number }
+	| { state: 'single'; value: string }
+
+const readCookieState = (header: string | null, name: string): CookieRead => {
+	const values: string[] = []
+	for (const part of (header ?? '').split(';')) {
 		const index = part.indexOf('=')
-		if (index < 0) continue
-		const name = part.slice(0, index).trim()
-		if (!name) continue
-		result[name] = decodeURIComponent(part.slice(index + 1).trim())
+		if (index < 0 || part.slice(0, index).trim() !== name) continue
+		values.push(part.slice(index + 1).trim())
 	}
-	return result
+	if (values.length === 0) return { state: 'missing' }
+	if (values.length > 1) return { state: 'ambiguous', count: values.length }
+	try {
+		return { state: 'single', value: decodeURIComponent(values[0] as string) }
+	} catch {
+		return { state: 'ambiguous', count: 1 }
+	}
 }
+
+// Kommt ein Name doppelt, hat jemand mitgeschrieben; „letzter gewinnt“ ließe ihn eine fremde Sitzung unterschieben.
+export const readCookie = (
+	header: string | null,
+	name: string,
+): string | null => {
+	const read = readCookieState(header, name)
+	if (read.state === 'ambiguous') {
+		console.warn(
+			`[anmeldung] Keks ${name} ist mehrdeutig (${read.count}x oder unlesbar), er gilt nicht`,
+		)
+	}
+	return read.state === 'single' ? read.value : null
+}
+
+export const sessionCookieName = (secure: boolean): string =>
+	secure ? `${HOST_PREFIX}${SESSION_COOKIE}` : SESSION_COOKIE
+
+const stateCookieName = (state: string, secure: boolean): string =>
+	`${secure ? HOST_PREFIX : ''}${STATE_COOKIE_PREFIX}${state.slice(0, 16)}`
 
 const serializeCookie = (
 	name: string,
@@ -376,7 +407,7 @@ export const startLogin = async (
 		headers: {
 			Location: authorize.toString(),
 			'Set-Cookie': serializeCookie(
-				`${STATE_COOKIE_PREFIX}${state.slice(0, 16)}`,
+				stateCookieName(state, secure),
 				cookieValue,
 				{ maxAge: STATE_MAX_AGE_SECONDS, secure },
 			),
@@ -528,7 +559,6 @@ export const handleCallback = async (request: Request): Promise<Response> => {
 	const config = getOidcConfig()
 	const url = new URL(request.url)
 	const secure = isSecureOrigin(publicOrigin(request))
-	const cookies = parseCookies(request.headers.get('Cookie'))
 
 	const idpError = url.searchParams.get('error')
 	if (idpError) {
@@ -553,8 +583,8 @@ export const handleCallback = async (request: Request): Promise<Response> => {
 		)
 	}
 
-	const cookieName = `${STATE_COOKIE_PREFIX}${state.slice(0, 16)}`
-	const pendingCookie = cookies[cookieName]
+	const cookieName = stateCookieName(state, secure)
+	const pendingCookie = readCookie(request.headers.get('Cookie'), cookieName)
 	if (!pendingCookie) {
 		return startLogin(request, '/')
 	}
@@ -631,7 +661,7 @@ export const handleCallback = async (request: Request): Promise<Response> => {
 	const headers = new Headers({ Location: safeReturnTo(pending.returnTo) })
 	headers.append(
 		'Set-Cookie',
-		serializeCookie(SESSION_COOKIE, sessionCookie, {
+		serializeCookie(sessionCookieName(secure), sessionCookie, {
 			maxAge: SESSION_MAX_AGE_SECONDS,
 			secure,
 		}),
@@ -666,7 +696,8 @@ export const handleLogout = async (request: Request): Promise<Response> => {
 	try {
 		const config = getOidcConfig()
 		const handle = await openSessionHandle(
-			parseCookies(request.headers.get('Cookie'))[SESSION_COOKIE] ?? '',
+			readCookie(request.headers.get('Cookie'), sessionCookieName(secure)) ??
+				'',
 			config.sessionKey,
 		)
 		if (handle) {
@@ -689,13 +720,55 @@ export const handleLogout = async (request: Request): Promise<Response> => {
 		)
 	}
 
-	return new Response(null, {
-		status: 302,
-		headers: {
-			Location: target,
-			'Set-Cookie': expireCookie(SESSION_COOKIE, secure),
-		},
-	})
+	const headers = new Headers({ Location: target })
+	headers.append('Set-Cookie', expireCookie(sessionCookieName(secure), secure))
+	if (secure) headers.append('Set-Cookie', expireCookie(SESSION_COOKIE, true))
+	return new Response(null, { status: 302, headers })
+}
+
+export type SessionCookieMigration = {
+	cookieHeader: string | null
+	setCookies: string[]
+}
+
+// Übergang vom Keks ohne Präfix: einmal umbenennen statt abmelden. Nach 30 Tagen (SESSION_MAX_AGE) gibt es keine alten Sitzungen mehr.
+export const migrateSessionCookie = (
+	request: Request,
+): SessionCookieMigration => {
+	const header = request.headers.get('Cookie')
+	if (!isSecureOrigin(publicOrigin(request))) {
+		return { cookieHeader: header, setCookies: [] }
+	}
+	const legacy = readCookieState(header, SESSION_COOKIE)
+	if (legacy.state === 'missing')
+		return { cookieHeader: header, setCookies: [] }
+
+	const current = readCookieState(header, sessionCookieName(true))
+	const others = (header ?? '')
+		.split(';')
+		.map((part) => part.trim())
+		.filter((part) => part && part.split('=')[0]?.trim() !== SESSION_COOKIE)
+	const setCookies = [expireCookie(SESSION_COOKIE, true)]
+
+	if (current.state === 'missing' && legacy.state === 'single') {
+		const value = encodeURIComponent(legacy.value)
+		others.push(`${sessionCookieName(true)}=${value}`)
+		setCookies.unshift(
+			serializeCookie(sessionCookieName(true), legacy.value, {
+				maxAge: SESSION_MAX_AGE_SECONDS,
+				secure: true,
+			}),
+		)
+	} else if (legacy.state === 'ambiguous') {
+		console.warn(
+			`[anmeldung] Keks ${SESSION_COOKIE} ist mehrdeutig (${legacy.count}x), er wird nicht übernommen`,
+		)
+	}
+
+	return {
+		cookieHeader: others.length > 0 ? others.join('; ') : null,
+		setCookies,
+	}
 }
 
 const noStore = { 'Cache-Control': 'no-store' }
@@ -813,10 +886,10 @@ export const resolveSession = async (
 	request: Request,
 ): Promise<SessionOutcome> => {
 	const config = getOidcConfig()
-	const cookies = parseCookies(request.headers.get('Cookie'))
+	const secure = isSecureOrigin(publicOrigin(request))
 
 	const handle = await openSessionHandle(
-		cookies[SESSION_COOKIE] ?? '',
+		readCookie(request.headers.get('Cookie'), sessionCookieName(secure)) ?? '',
 		config.sessionKey,
 	)
 	let session = handle ? activeAuthSession(handle) : null

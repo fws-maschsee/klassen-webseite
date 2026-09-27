@@ -8,10 +8,13 @@ import { purgeAuthSessions } from '../lib/db/authSessions.ts'
 import { openDb } from '../lib/db/index.ts'
 import { assertInstanceMatches, instanceLabel } from '../lib/db/instance.ts'
 import { loescheFaellige } from '../lib/db/mitbringen.ts'
+import { raeumeOAuthAuf } from '../lib/db/oauth.ts'
 import { seedDemoData } from '../lib/db/saatdaten.ts'
 import { loescheFaellige as loescheFaelligeSchichtplaene } from '../lib/db/schichten.ts'
 import { runMigrations } from '../migrations.ts'
 import { port, publicBaseUrl } from './config.ts'
+import { nichtEinbettbar, nurEigeneHerkunft } from './herkunft.ts'
+import { sitzungsKeksUmziehen } from './keksUmzug.ts'
 import { mcpAuthMiddleware, mcpRequestHandler } from './mcp/handler.ts'
 import { mcpOAuthProvider } from './oauth/provider.ts'
 import { startErinnerungsdienst } from './putzplan-worker.ts'
@@ -70,6 +73,10 @@ export const startServer = async (
 	// Hinter dem Reverse-Proxy: sonst sehen Express und das Rate-Limiting des MCP-SDK nur die Proxy-IP.
 	app.set('trust proxy', 1)
 
+	app.use(nichtEinbettbar)
+	app.use(nurEigeneHerkunft(publicBaseUrl))
+	app.use(sitzungsKeksUmziehen)
+
 	app.use(
 		mcpAuthRouter({
 			provider: mcpOAuthProvider,
@@ -117,9 +124,14 @@ export const startServer = async (
 				const s = loescheFaelligeSchichtplaene(db)
 				if (s > 0)
 					console.log(`[schichten] ${s} abgelaufene(r) Plan/Plaene geloescht`)
+				const o = raeumeOAuthAuf(db)
+				if (o.clients + o.tokens + o.codes + o.pending > 0)
+					console.log(
+						`[oauth] aufgeraeumt: ${o.clients} Client(s), ${o.tokens} Token(s), ${o.codes} Code(s), ${o.pending} offene Zustimmung(en)`,
+					)
 			} catch (fehler) {
 				console.error(
-					`[mitbringen] Abraeumen fehlgeschlagen: ${fehler instanceof Error ? fehler.message : String(fehler)}`,
+					`[abraeumen] fehlgeschlagen: ${fehler instanceof Error ? fehler.message : String(fehler)}`,
 				)
 			}
 		}

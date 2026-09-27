@@ -641,3 +641,53 @@ export const deletePendingAuthorization = (
 		'DELETE FROM oauth_pending_authorizations WHERE pending_id = ?',
 	).run(pending_id)
 }
+
+// Eine Registrierung, die einen Tag lang kein Token bekommen hat, ist verlassen — oder ein Köder für Zustimmungs-Phishing.
+export const OAUTH_CLIENT_KARENZ_SEKUNDEN = 24 * 60 * 60
+
+export type OAuthAufraeumen = {
+	clients: number
+	tokens: number
+	codes: number
+	pending: number
+}
+
+export const raeumeOAuthAuf = (
+	db: Database = openDb(),
+	jetzt: number = Math.floor(Date.now() / 1000),
+): OAuthAufraeumen =>
+	db.transaction(() => {
+		const codes = db
+			.prepare<[number]>(
+				'DELETE FROM oauth_authorization_codes WHERE expires_at < ?',
+			)
+			.run(jetzt).changes
+		const pending = db
+			.prepare<[number]>(
+				'DELETE FROM oauth_pending_authorizations WHERE expires_at < ?',
+			)
+			.run(jetzt).changes
+		const refresh = db
+			.prepare<[number]>(
+				'DELETE FROM oauth_refresh_tokens WHERE expires_at < ?',
+			)
+			.run(jetzt).changes
+		const access = db
+			.prepare<[number]>('DELETE FROM oauth_access_tokens WHERE expires_at < ?')
+			.run(jetzt).changes
+		const clients = db
+			.prepare<[number]>(
+				`DELETE FROM oauth_clients
+         WHERE client_id_issued_at < ?
+           AND NOT EXISTS (SELECT 1 FROM oauth_refresh_tokens r
+                           WHERE r.client_id = oauth_clients.client_id AND r.revoked = 0)
+           AND NOT EXISTS (SELECT 1 FROM oauth_access_tokens a
+                           WHERE a.client_id = oauth_clients.client_id AND a.revoked = 0)
+           AND NOT EXISTS (SELECT 1 FROM oauth_pending_authorizations p
+                           WHERE p.client_id = oauth_clients.client_id)
+           AND NOT EXISTS (SELECT 1 FROM oauth_authorization_codes c
+                           WHERE c.client_id = oauth_clients.client_id AND c.used = 0)`,
+			)
+			.run(jetzt - OAUTH_CLIENT_KARENZ_SEKUNDEN).changes
+		return { clients, tokens: refresh + access, codes, pending }
+	})()
