@@ -3,9 +3,9 @@ name: Anmeldung
 # Eigener Workflow statt Schritt in ci.yml, damit Rot klar sagt: Code kaputt oder ZITADEL nicht hochgekommen.
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  # Auf main ruft main.yml diesen Workflow auf.
+  workflow_call:
 
 concurrency:
   # In PRs bricht ein neuer Push den alten Lauf ab; auf main bekommt jeder Lauf eine eigene Gruppe.
