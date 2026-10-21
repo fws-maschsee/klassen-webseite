@@ -123,8 +123,15 @@ describe('Footer und horizontales Scrollen', () => {
 	})
 
 	test('der Schutz gegen horizontales Scrollen steht noch auf .drawer-content', () => {
-		expect(layout()).toContain(
-			'class="drawer-content flex flex-col overflow-x-hidden"',
+		// Geprueft wird der Schutz, nicht die genaue Klassenliste: shipyard 0.9.4
+		// hat `overflow-x-hidden` durch `overflow-x-clip` ersetzt (verhindert das
+		// Scrollen genauso, bricht aber `position: sticky` nicht).
+		const klassen = layout().match(/class="(drawer-content\b[^"]*)"/)?.[1]
+		expect(klassen).toBeDefined()
+		expect(klassen?.split(/\s+/)).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/^overflow-x-(hidden|clip)$/),
+			]),
 		)
 	})
 
