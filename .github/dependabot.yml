@@ -1,10 +1,26 @@
+# Warum `monthly`?
+#
+#   Jede rote Sammel-PR wurde bisher jede Woche durch eine neue ersetzt --
+#   rund 470 Dependabot-PRs in 90 Tagen ueber alle Repos, nur die Haelfte
+#   gemergt. Ein eigenes Intervall je Gruppe (etwa nur fuer `majors`) kennt
+#   Dependabot nicht: `schedule` gilt pro Eintrag, und zwei Eintraege fuer
+#   dasselbe Oekosystem und Verzeichnis sind verboten. Darum laeuft der ganze
+#   Eintrag monatlich. Security-Updates ignorieren `schedule` und kommen
+#   weiterhin sofort.
+#
+# Warum `update-types` in der Gruppe `security`?
+#
+#   Damit der Security-Sammel-PR keine Majors mehr enthaelt und automatisch
+#   durchgehen kann. Ein Sicherheitsfix, den es nur als Major gibt, kommt als
+#   eigener PR (Trailer `update-type: version-update:semver-major`) und wird
+#   von automerge.yml als `major` gelabelt.
+
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
       time: "04:00"
       timezone: Europe/Berlin
     labels:
@@ -23,6 +39,9 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
       # Muss nach minor-and-patch stehen: eine Abhängigkeit landet in der ersten passenden Gruppe.
       majors:
         applies-to: version-updates
@@ -33,8 +52,7 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
       time: "04:00"
       timezone: Europe/Berlin
     labels:
@@ -52,6 +70,9 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
       majors:
         applies-to: version-updates
         patterns:
