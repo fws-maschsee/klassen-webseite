@@ -23,13 +23,10 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
-      # Muss nach minor-and-patch stehen: eine Abhängigkeit landet in der ersten passenden Gruppe.
-      majors:
-        applies-to: version-updates
-        patterns:
-          - "*"
-        update-types:
-          - major
+    ignore:
+      # Keine Major-Updates: Majors erst, wenn der Support endet (separat verfolgt).
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -52,9 +49,7 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
-      majors:
-        applies-to: version-updates
-        patterns:
-          - "*"
-        update-types:
-          - major
+    ignore:
+      # Keine Major-Updates: Majors erst, wenn der Support endet (separat verfolgt).
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
