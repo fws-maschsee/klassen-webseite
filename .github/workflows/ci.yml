@@ -33,4 +33,6 @@ jobs:
 
       - run: npm test
 
-      - run: npm run check
+      - uses: biomejs/setup-biome@v2
+
+      - run: biome ci .
