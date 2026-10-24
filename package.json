@@ -34,9 +34,9 @@
 		"daisyui": "5.7.47",
 		"express": "^5.2.1",
 		"jose": "^6.2.12",
-		"mailparser": "^3.9.37",
+		"mailparser": "^3.12.4",
 		"mjml": "^5.4.1",
-		"nodemailer": "^10.0.10",
+		"nodemailer": "^10.2.1",
 		"tailwindcss": "4.3.3",
 		"unist-util-visit": "^5.0.0",
 		"zod": "^4.6.5"
