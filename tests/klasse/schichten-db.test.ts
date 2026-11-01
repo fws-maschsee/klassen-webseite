@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test } from 'vitest'
 import {
 	aendereEintrag,
 	aenderePlan,
+	belegungNachBloecken,
 	darfEintragAendern,
 	eintraegeLesen,
 	legePlanAn,
@@ -14,6 +15,7 @@ import {
 	standLesen,
 	trageEin,
 	VORGABE_AUFBEWAHRUNG_TAGE,
+	zusagenUrl,
 } from '../../src/lib/db/schichten.ts'
 import { createTestDb } from '../helpers/db.ts'
 
@@ -190,11 +192,148 @@ describe('Stand für die Seite', () => {
 		trageEin(plan.id, { name: 'B', shift: schicht }, {}, db, JETZT)
 		const stand = standLesen(plan.id, db, JETZT)
 		expect(stand?.counts).toEqual([
-			{ shift: SCHICHTEN[0], count: 2, full: true },
-			{ shift: SCHICHTEN[1], count: 0, full: false },
-			{ shift: SCHICHTEN[2], count: 0, full: false },
+			{ shift: SCHICHTEN[0], count: 2, capacity: 2, full: true },
+			{ shift: SCHICHTEN[1], count: 0, capacity: 2, full: false },
+			{ shift: SCHICHTEN[2], count: 0, capacity: 2, full: false },
 		])
 		expect(stand?.entries[0]).not.toHaveProperty('owner_sub')
 		expect(stand?.list.revision).toBe(2)
+	})
+})
+
+describe('Blöcke', () => {
+	const basar = () =>
+		legePlanAn(
+			{
+				title: 'Teestube',
+				event_date: '2026-11-28',
+				capacity: 3,
+				blocks: [
+					{
+						title: 'Freitag · Aufbau',
+						description: 'ca. 2 Stunden',
+						capacity: 6,
+						shifts: ['ab 15:30 Uhr'],
+					},
+					{
+						title: 'Samstag · Verkauf',
+						shifts: [
+							'10:30 bis 11:30 Uhr',
+							{ label: '11:30 bis 12:30 Uhr', capacity: 1 },
+						],
+					},
+					{ title: 'Samstag · Abbau', shifts: ['ab 16:30 Uhr'] },
+				],
+			},
+			db,
+			JETZT,
+		)
+
+	test('Schichten heißen nach Block und Uhrzeit', () => {
+		const plan = basar()
+		expect(plan.shifts).toEqual([
+			'Freitag · Aufbau · ab 15:30 Uhr',
+			'Samstag · Verkauf · 10:30 bis 11:30 Uhr',
+			'Samstag · Verkauf · 11:30 bis 12:30 Uhr',
+			'Samstag · Abbau · ab 16:30 Uhr',
+		])
+		expect(plan.blocks[0]?.description).toBe('ca. 2 Stunden')
+	})
+
+	test('Plätze: Schicht vor Block vor Plan', () => {
+		const plan = basar()
+		const zaehler = standLesen(plan.id, db, JETZT)?.counts.map(
+			(c) => c.capacity,
+		)
+		expect(zaehler).toEqual([6, 3, 1, 3])
+		trageEin(plan.id, { name: 'A', shift: plan.shifts[2] ?? '' }, {}, db, JETZT)
+		expect(() =>
+			trageEin(
+				plan.id,
+				{ name: 'B', shift: plan.shifts[2] ?? '' },
+				{},
+				db,
+				JETZT,
+			),
+		).toThrowError(/ist voll \(1 Plätze\)/)
+	})
+
+	test('gleiche Uhrzeit in zwei Blöcken geht, doppelt im selben Block nicht', () => {
+		expect(() =>
+			legePlanAn(
+				{
+					title: 'Doppelt',
+					blocks: [{ title: 'Samstag', shifts: ['10 Uhr', '10 Uhr '] }],
+				},
+				db,
+				JETZT,
+			),
+		).toThrowError(/doppelt/)
+		const plan = legePlanAn(
+			{
+				title: 'Zwei Tage',
+				blocks: [
+					{ title: 'Freitag', shifts: ['16 Uhr'] },
+					{ title: 'Samstag', shifts: ['16 Uhr'] },
+				],
+			},
+			db,
+			JETZT,
+		)
+		expect(plan.shifts).toEqual(['Freitag · 16 Uhr', 'Samstag · 16 Uhr'])
+	})
+
+	test('alter Plan ohne Blöcke zeigt sich als ein Block ohne Titel', () => {
+		const plan = grillschichten()
+		expect(plan.blocks).toEqual([
+			{
+				title: null,
+				description: null,
+				capacity: null,
+				shifts: SCHICHTEN.map((label) => ({ label, capacity: null })),
+			},
+		])
+	})
+
+	test('ändern: Blöcke rein, flache Liste macht sie wieder weg', () => {
+		const plan = grillschichten()
+		const mitBloecken = aenderePlan(
+			plan.id,
+			{ blocks: [{ title: 'Samstag', shifts: ['16 Uhr'] }] },
+			db,
+			JETZT,
+		)
+		expect(mitBloecken.shifts).toEqual(['Samstag · 16 Uhr'])
+		expect(
+			aenderePlan(plan.id, { title: 'Neu' }, db, JETZT).blocks[0]?.title,
+		).toBe('Samstag')
+		const flach = aenderePlan(plan.id, { shifts: ['Aufbau'] }, db, JETZT)
+		expect(flach.blocks[0]?.title).toBeNull()
+		expect(flach.shifts).toEqual(['Aufbau'])
+	})
+
+	test('Belegung nach Blöcken mit Namen und Link zum Zusagen', () => {
+		const plan = basar()
+		trageEin(
+			plan.id,
+			{ name: 'Muster', shift: plan.shifts[1] ?? '' },
+			{},
+			db,
+			JETZT,
+		)
+		const stand = standLesen(plan.id, db, JETZT)
+		if (!stand) throw new Error('kein Stand')
+		const bloecke = belegungNachBloecken(stand)
+		expect(bloecke.map((b) => b.title)).toEqual([
+			'Freitag · Aufbau',
+			'Samstag · Verkauf',
+			'Samstag · Abbau',
+		])
+		const schicht = bloecke[1]?.shifts[0]
+		expect(schicht?.label).toBe('10:30 bis 11:30 Uhr')
+		expect(schicht?.entries.map((e) => e.name)).toEqual(['Muster'])
+		expect(zusagenUrl(plan.id, schicht?.key ?? '')).toBe(
+			`/public/schichten/${plan.id}/zusagen?schicht=Samstag%20%C2%B7%20Verkauf%20%C2%B7%2010%3A30%20bis%2011%3A30%20Uhr`,
+		)
 	})
 })

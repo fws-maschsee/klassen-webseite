@@ -184,3 +184,53 @@ describe('lesen, ändern, löschen', () => {
 		await client.close()
 	})
 })
+
+describe('Blöcke über MCP', () => {
+	it('legt Blöcke an und zeigt Plätze je Schicht', async () => {
+		const client = await connect(['admin'])
+		const res = await client.callTool({
+			name: 'create_schichtplan',
+			arguments: {
+				title: 'Teestube',
+				capacity: 3,
+				blocks: [
+					{
+						title: 'Freitag · Aufbau',
+						description: 'ca. 2 Stunden',
+						capacity: 6,
+						shifts: ['ab 15:30 Uhr'],
+					},
+					{ title: 'Samstag · Verkauf', shifts: ['10:30 bis 11:30 Uhr'] },
+				],
+			},
+		})
+		expect(isError(res)).toBe(false)
+		const plan = JSON.parse(textOf(res)) as {
+			shifts: { shift: string; capacity: number }[]
+			blocks: { title: string; description: string | null; shifts: string[] }[]
+		}
+		expect(plan.shifts).toEqual([
+			{ shift: 'Freitag · Aufbau · ab 15:30 Uhr', taken: 0, capacity: 6 },
+			{
+				shift: 'Samstag · Verkauf · 10:30 bis 11:30 Uhr',
+				taken: 0,
+				capacity: 3,
+			},
+		])
+		expect(plan.blocks[0]).toMatchObject({
+			title: 'Freitag · Aufbau',
+			description: 'ca. 2 Stunden',
+		})
+		await client.close()
+	})
+
+	it('ohne Schichten und ohne Blöcke kein Plan', async () => {
+		const client = await connect(['admin'])
+		const res = await client.callTool({
+			name: 'create_schichtplan',
+			arguments: { title: 'Leer' },
+		})
+		expect(isError(res)).toBe(true)
+		await client.close()
+	})
+})

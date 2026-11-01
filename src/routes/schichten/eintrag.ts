@@ -19,11 +19,11 @@ export const POST: APIRoute = async ({ params, request }) => {
 	const willJson = (request.headers.get('accept') ?? '').includes(
 		'application/json',
 	)
-	const zurueck = (fehler?: string) =>
+	const zurueck = (fehler?: string, eingetragen?: string) =>
 		new Response(null, {
 			status: 303,
 			headers: {
-				Location: `/public/schichten/${listId}${fehler ? `?fehler=${encodeURIComponent(fehler)}` : ''}`,
+				Location: `/public/schichten/${listId}${fehler ? `?fehler=${encodeURIComponent(fehler)}` : eingetragen ? `?eingetragen=${encodeURIComponent(eingetragen)}` : ''}`,
 			},
 		})
 	const antwort = (body: unknown, status = 200) =>
@@ -50,7 +50,9 @@ export const POST: APIRoute = async ({ params, request }) => {
 					},
 					wer,
 				)
-				return willJson ? antwort({ ok: true, entry: e }) : zurueck()
+				return willJson
+					? antwort({ ok: true, entry: e })
+					: zurueck(undefined, e.id)
 			}
 			case 'ändern': {
 				const vorher = eintragLesen(feld('entry_id') ?? '')

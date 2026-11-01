@@ -1,0 +1,83 @@
+---
+import Page from '@levino/shipyard-base/layouts/Page.astro'
+import Schlicht from '../../../../layouts/Schlicht.astro'
+import { klassenConfig } from '../../../../../src/klasse/config.ts'
+import { belegungNachBloecken, standLesen } from '../../../../../src/lib/db/schichten.ts'
+import { besucherLesen } from '../../../../../src/routes/besucher.ts'
+
+export const prerender = false
+
+const id = Astro.params.id ?? ''
+const stand = standLesen(id)
+if (!stand) {
+  return new Response('Diesen Schichtplan gibt es nicht.', { status: 404 })
+}
+
+const { label: klasse } = klassenConfig()
+const besucher = await besucherLesen(Astro.request)
+const Layout = besucher.sub ? Page : Schlicht
+const { list } = stand
+const bloecke = belegungNachBloecken(stand)
+const datum = list.event_date
+  ? new Date(`${list.event_date}T12:00:00Z`).toLocaleDateString('de-DE', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+  : null
+const belegt = stand.entries.length
+const plaetze = bloecke
+  .flatMap((b) => b.shifts)
+  .reduce<number | null>((summe, s) => (summe === null || s.capacity === null ? null : summe + s.capacity), 0)
+---
+
+<Layout title={`${list.title} – Übersicht`}>
+  <div class={besucher.sub ? 'container mx-auto max-w-3xl px-4 py-8' : ''}>
+  {besucher.sub && <h1 class="text-2xl font-semibold">{list.title} – Übersicht</h1>}
+  <p class="mb-2 text-sm opacity-70">Schichtplan der {klasse}{datum ? ` · ${datum}` : ''}</p>
+  <p class="mb-6 text-sm">{plaetze === null ? `${belegt} eingetragen` : `${belegt} von ${plaetze} Plätzen belegt`}</p>
+
+  <div class="mb-6 flex gap-2 print:hidden">
+    <a class="btn btn-sm btn-ghost" href={`/public/schichten/${list.id}`}>Zurück zum Eintragen</a>
+    <button class="btn btn-sm btn-outline" type="button" onclick="window.print()">Drucken</button>
+  </div>
+
+  {bloecke.map((b) => (
+    <section class="mb-8 break-inside-avoid">
+      {b.title && <h2 class="mb-1 text-lg font-semibold">{b.title}</h2>}
+      {b.description && <p class="mb-2 whitespace-pre-line text-sm opacity-70">{b.description}</p>}
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th class="w-1/3">Schicht</th>
+            <th>Wer</th>
+            <th class="w-24 text-right">Frei</th>
+          </tr>
+        </thead>
+        <tbody>
+          {b.shifts.map((s) => (
+            <tr>
+              <td class="align-top font-medium">{s.label}</td>
+              <td class="align-top">
+                {s.entries.length === 0 ? (
+                  <span class="opacity-50">—</span>
+                ) : (
+                  <ul>
+                    {s.entries.map((e) => (
+                      <li>{e.name}{e.note && <span class="opacity-60"> ({e.note})</span>}</li>
+                    ))}
+                  </ul>
+                )}
+              </td>
+              <td class="align-top text-right">
+                {s.capacity === null ? '' : s.full ? 'voll' : s.capacity - s.count}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  ))}
+  </div>
+</Layout>
