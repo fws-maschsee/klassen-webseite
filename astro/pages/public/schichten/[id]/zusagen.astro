@@ -1,0 +1,124 @@
+---
+import Page from '@levino/shipyard-base/layouts/Page.astro'
+import Schlicht from '../../../../layouts/Schlicht.astro'
+import { klassenConfig } from '../../../../../src/klasse/config.ts'
+import { belegungNachBloecken, standLesen } from '../../../../../src/lib/db/schichten.ts'
+import { besucherLesen } from '../../../../../src/routes/besucher.ts'
+
+export const prerender = false
+
+const id = Astro.params.id ?? ''
+const stand = standLesen(id)
+if (!stand) {
+  return new Response('Diesen Schichtplan gibt es nicht.', { status: 404 })
+}
+
+const { label: klasse } = klassenConfig()
+const besucher = await besucherLesen(Astro.request)
+const Layout = besucher.sub ? Page : Schlicht
+const { list } = stand
+const planLink = `/public/schichten/${list.id}`
+const gesucht = new URL(Astro.request.url).searchParams.get('schicht') ?? ''
+const block = belegungNachBloecken(stand).find((b) => b.shifts.some((s) => s.key === gesucht))
+const schicht = block?.shifts.find((s) => s.key === gesucht)
+const offen = list.status === 'open'
+const voll = Boolean(schicht?.full) && !besucher.admin
+const datum = list.event_date
+  ? new Date(`${list.event_date}T12:00:00Z`).toLocaleDateString('de-DE', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    })
+  : null
+---
+
+<Layout title={list.title}>
+  <div class={besucher.sub ? 'container mx-auto max-w-xl px-4 py-8' : ''}>
+  {besucher.sub && <h1 class="text-2xl font-semibold">{list.title}</h1>}
+  <p class="mb-6 text-sm opacity-70">Schichtplan der {klasse}{datum ? ` · ${datum}` : ''}</p>
+
+  {!schicht ? (
+    <div class="alert alert-warning mb-6" role="alert">Diese Schicht gibt es in diesem Plan nicht (mehr).</div>
+  ) : !offen ? (
+    <div class="alert alert-info mb-6" role="status">Dieser Schichtplan ist geschlossen — eintragen geht nicht mehr.</div>
+  ) : voll ? (
+    <div class="alert alert-warning mb-6" role="alert">Diese Schicht ist leider gerade voll geworden. Such dir bitte eine andere aus.</div>
+  ) : (
+    <section class="card border border-base-300 bg-base-100">
+      <form class="card-body gap-4" method="post" action={`/public/schichten/${list.id}/eintrag`} data-form>
+        <div>
+          {block?.title && <p class="text-sm font-medium opacity-70">{block.title}</p>}
+          <h2 class="card-title text-xl">{schicht.label}</h2>
+        </div>
+        {block?.description && <p class="whitespace-pre-line text-sm opacity-80">{block.description}</p>}
+        <p class="text-sm">
+          {schicht.entries.length === 0
+            ? 'Bisher ist hier noch niemand eingetragen.'
+            : `Schon dabei: ${schicht.entries.map((e) => e.name).join(', ')}.`}
+          {schicht.capacity !== null && ` Noch ${Math.max(schicht.capacity - schicht.count, 0)} von ${schicht.capacity} Plätzen frei.`}
+        </p>
+
+        <input type="hidden" name="aktion" value="eintragen" />
+        <input type="hidden" name="shift" value={schicht.key} />
+        {besucher.sub && besucher.name ? (
+          <div class="grid gap-1">
+            <span class="text-sm">Familie / Name</span>
+            <div class="input w-full flex items-center bg-base-200" aria-readonly="true">{besucher.name}</div>
+          </div>
+        ) : (
+          <label class="grid gap-1">
+            <span class="text-sm">Familie / Name</span>
+            <input class="input w-full" type="text" name="name" required maxlength="80" autocomplete="family-name" autofocus />
+          </label>
+        )}
+        <label class="grid gap-1">
+          <span class="text-sm">Bemerkung (optional)</span>
+          <input class="input w-full" type="text" name="note" maxlength="120" placeholder="z.B. komme zehn Minuten später" />
+        </label>
+        <div class="alert alert-error" role="alert" data-fehler hidden></div>
+        <div class="card-actions justify-between">
+          <a class="btn btn-ghost" href={planLink}>Zurück</a>
+          <button class="btn btn-primary" type="submit" data-submit>Bestätigen</button>
+        </div>
+      </form>
+    </section>
+  )}
+
+  {(!schicht || !offen || voll) && (
+    <a class="btn btn-primary" href={planLink}>Zum Schichtplan</a>
+  )}
+  </div>
+
+  <script is:inline define:vars={{ listId: list.id }}>
+    (() => {
+      const form = document.querySelector('[data-form]')
+      if (!form) return
+      const speicherKey = `schichten:${listId}`
+      const fehler = form.querySelector('[data-fehler]')
+      form.addEventListener('submit', async (ev) => {
+        ev.preventDefault()
+        const knopf = form.querySelector('[data-submit]')
+        knopf.disabled = true
+        try {
+          const r = await fetch(form.action, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+            body: new URLSearchParams(new FormData(form)),
+          })
+          const res = await r.json()
+          if (!res.ok) throw new Error(res.fehler || 'Das hat nicht geklappt.')
+          try {
+            const meine = JSON.parse(localStorage.getItem(speicherKey) || '{}')
+            meine[res.entry.id] = res.entry.edit_token
+            localStorage.setItem(speicherKey, JSON.stringify(meine))
+          } catch {}
+          location.href = `/public/schichten/${listId}?eingetragen=${encodeURIComponent(res.entry.id)}`
+        } catch (e) {
+          fehler.textContent = e instanceof Error ? e.message : 'Das hat nicht geklappt.'
+          fehler.hidden = false
+          knopf.disabled = false
+        }
+      })
+    })()
+  </script>
+</Layout>

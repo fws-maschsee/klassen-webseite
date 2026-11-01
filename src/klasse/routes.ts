@@ -130,6 +130,18 @@ export const GETEILTE_ROUTEN: readonly GeteilteRoute[] = [
 			'Schichtplan („Wer uebernimmt welche Schicht?"). Unter /public/, weil Eltern OHNE Konto eintragen sollen; der Schutz ist der nicht erratbare Schluessel im Pfad, angelegt ueber MCP.',
 	},
 	{
+		pattern: '/public/schichten/[id]/zusagen',
+		entrypoint: geteilt('astro/pages/public/schichten/[id]/zusagen.astro'),
+		grund:
+			'Eine Schicht bestätigen: Klick auf eine Schicht im Plan führt hierher, die Schicht steht im Parameter ?schicht=. Eigene Seite statt Auswahlfeld, damit man sieht, worauf man sich einlässt, bevor man zusagt.',
+	},
+	{
+		pattern: '/public/schichten/[id]/uebersicht',
+		entrypoint: geteilt('astro/pages/public/schichten/[id]/uebersicht.astro'),
+		grund:
+			'Der ganze Schichtplan auf einen Blick: wer wann eingeteilt ist und was noch frei ist, auch zum Ausdrucken für den Aushang am Stand.',
+	},
+	{
 		pattern: '/public/schichten/[id]/stand',
 		entrypoint: geteilt('src/routes/schichten/stand.ts'),
 		grund:

@@ -4,12 +4,29 @@ import { dbTimestamp, openDb } from './index.ts'
 
 export type PlanStatus = 'open' | 'closed'
 
+export type Schicht = { label: string; capacity: number | null }
+
+export type Block = {
+	title: string | null
+	description: string | null
+	capacity: number | null
+	shifts: Schicht[]
+}
+
+export type NeuerBlock = {
+	title?: string | null
+	description?: string | null
+	capacity?: number | null
+	shifts: readonly (string | { label: string; capacity?: number | null })[]
+}
+
 export type Schichtplan = {
 	id: string
 	title: string
 	event_date: string | null
 	description: string | null
 	shifts: string[]
+	blocks: Block[]
 	capacity: number | null
 	status: PlanStatus
 	retention_days: number
@@ -61,7 +78,25 @@ export const berechneLoeschzeit = (
 	return dbTimestamp(new Date(basis.getTime() + retentionDays * TAG_MS))
 }
 
-type PlanZeile = Omit<Schichtplan, 'shifts'> & { shifts: string }
+type PlanZeile = Omit<Schichtplan, 'shifts' | 'blocks'> & {
+	shifts: string
+	blocks: string | null
+}
+
+// Einträge merken sich die Schicht als Text; mit Blocktitel davor bleiben gleiche Uhrzeiten in verschiedenen Blöcken unterscheidbar.
+export const schichtSchluessel = (
+	block: Pick<Block, 'title'>,
+	schicht: Pick<Schicht, 'label'>,
+): string => (block.title ? `${block.title} · ${schicht.label}` : schicht.label)
+
+const flacherBlock = (shifts: string[]): Block[] => [
+	{
+		title: null,
+		description: null,
+		capacity: null,
+		shifts: shifts.map((label) => ({ label, capacity: null })),
+	},
+]
 
 const zeileZuPlan = (z: PlanZeile): Schichtplan => {
 	let shifts: string[] = []
@@ -72,7 +107,32 @@ const zeileZuPlan = (z: PlanZeile): Schichtplan => {
 	} catch {
 		shifts = []
 	}
-	return { ...z, shifts, status: z.status as PlanStatus }
+	let blocks: Block[] | null = null
+	if (z.blocks) {
+		try {
+			const parsed = JSON.parse(z.blocks) as unknown
+			if (Array.isArray(parsed)) blocks = parsed as Block[]
+		} catch {
+			blocks = null
+		}
+	}
+	return {
+		...z,
+		shifts,
+		blocks: blocks ?? flacherBlock(shifts),
+		status: z.status as PlanStatus,
+	}
+}
+
+export const kapazitaetFuer = (
+	plan: Pick<Schichtplan, 'blocks' | 'capacity'>,
+	shift: string,
+): number | null => {
+	for (const b of plan.blocks)
+		for (const s of b.shifts)
+			if (schichtSchluessel(b, s) === shift)
+				return s.capacity ?? b.capacity ?? plan.capacity
+	return plan.capacity
 }
 
 const pruefeSchichten = (shifts: readonly string[]): string[] => {
@@ -83,6 +143,46 @@ const pruefeSchichten = (shifts: readonly string[]): string[] => {
 		)
 	if (bereinigt.length > 30) throw new Error('Höchstens 30 Schichten je Plan.')
 	return bereinigt
+}
+
+const pruefeBloecke = (
+	eingabe: readonly NeuerBlock[],
+): { blocks: Block[]; shifts: string[] } => {
+	const blocks: Block[] = eingabe.map((b) => {
+		const capacity = b.capacity ?? null
+		pruefeCapacity(capacity)
+		const shifts = b.shifts
+			.map((s) =>
+				typeof s === 'string'
+					? { label: s.trim(), capacity: null }
+					: { label: s.label.trim(), capacity: s.capacity ?? null },
+			)
+			.filter((s) => s.label)
+		for (const s of shifts) pruefeCapacity(s.capacity)
+		const title = b.title?.trim() || null
+		if (shifts.length === 0)
+			throw new Error(
+				`Der Block „${title ?? 'ohne Titel'}“ braucht mindestens eine Schicht.`,
+			)
+		return {
+			title,
+			description: b.description?.trim() || null,
+			capacity,
+			shifts,
+		}
+	})
+	if (blocks.length === 0)
+		throw new Error('Ein Schichtplan braucht mindestens einen Block.')
+	const shifts = blocks.flatMap((b) =>
+		b.shifts.map((s) => schichtSchluessel(b, s)),
+	)
+	if (shifts.length > 30) throw new Error('Höchstens 30 Schichten je Plan.')
+	const doppelt = shifts.find((s, i) => shifts.indexOf(s) !== i)
+	if (doppelt)
+		throw new Error(
+			`Die Schicht „${doppelt}“ kommt doppelt vor. Gleiche Uhrzeiten brauchen verschiedene Blocktitel.`,
+		)
+	return { blocks, shifts }
 }
 
 const pruefeDatum = (eventDate: string | null): void => {
@@ -104,7 +204,8 @@ const pruefeCapacity = (capacity: number | null): void => {
 
 export type NeuerPlan = {
 	title: string
-	shifts: readonly string[]
+	shifts?: readonly string[]
+	blocks?: readonly NeuerBlock[] | null
 	event_date?: string | null
 	description?: string | null
 	capacity?: number | null
@@ -125,18 +226,21 @@ export const legePlanAn = (
 	pruefeAufbewahrung(retention)
 	const capacity = eingabe.capacity ?? null
 	pruefeCapacity(capacity)
-	const shifts = pruefeSchichten(eingabe.shifts)
+	const { shifts, blocks } = eingabe.blocks
+		? pruefeBloecke(eingabe.blocks)
+		: { shifts: pruefeSchichten(eingabe.shifts ?? []), blocks: null }
 	const id = neuePlanId()
 	const ts = dbTimestamp(jetzt)
 	db.prepare(
-		`INSERT INTO shift_lists (id, title, event_date, description, shifts, capacity, status, retention_days, delete_at, revision, created_by, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, 0, ?, ?, ?)`,
+		`INSERT INTO shift_lists (id, title, event_date, description, shifts, blocks, capacity, status, retention_days, delete_at, revision, created_by, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, 0, ?, ?, ?)`,
 	).run(
 		id,
 		title,
 		eventDate,
 		eingabe.description?.trim() || null,
 		JSON.stringify(shifts),
+		blocks ? JSON.stringify(blocks) : null,
 		capacity,
 		retention,
 		berechneLoeschzeit(eventDate, retention, jetzt),
@@ -190,6 +294,7 @@ export type PlanAenderung = {
 	event_date?: string | null
 	description?: string | null
 	shifts?: readonly string[]
+	blocks?: readonly NeuerBlock[] | null
 	capacity?: number | null
 	status?: PlanStatus
 	retention_days?: number
@@ -220,15 +325,24 @@ export const aenderePlan = (
 	pruefeAufbewahrung(retention)
 	const capacity = patch.capacity === undefined ? plan.capacity : patch.capacity
 	pruefeCapacity(capacity)
-	const shifts =
-		patch.shifts === undefined ? plan.shifts : pruefeSchichten(patch.shifts)
+	// Neue Blöcke ersetzen die Schichten; eine neue flache Liste hebt die Blöcke auf.
+	const neueSchichten: { shifts: string[]; blocks: Block[] | null } | null =
+		patch.blocks
+			? pruefeBloecke(patch.blocks)
+			: patch.shifts !== undefined
+				? { shifts: pruefeSchichten(patch.shifts), blocks: null }
+				: patch.blocks === null
+					? { shifts: plan.shifts, blocks: null }
+					: null
+	const shifts = neueSchichten ? neueSchichten.shifts : plan.shifts
 	const description =
 		patch.description === undefined
 			? plan.description
 			: patch.description?.trim() || null
 	db.prepare(
 		`UPDATE shift_lists
-		    SET title = ?, event_date = ?, description = ?, shifts = ?, capacity = ?,
+		    SET title = ?, event_date = ?, description = ?, shifts = ?,
+		        blocks = CASE WHEN ? THEN ? ELSE blocks END, capacity = ?,
 		        status = ?, retention_days = ?, delete_at = ?, revision = revision + 1, updated_at = ?
 		  WHERE id = ?`,
 	).run(
@@ -236,6 +350,8 @@ export const aenderePlan = (
 		eventDate,
 		description,
 		JSON.stringify(shifts),
+		neueSchichten ? 1 : 0,
+		neueSchichten?.blocks ? JSON.stringify(neueSchichten.blocks) : null,
 		capacity,
 		patch.status ?? plan.status,
 		retention,
@@ -324,13 +440,14 @@ const pruefePlatz = (
 	handelnde: Handelnde,
 	db: Database,
 ): void => {
-	if (plan.capacity === null || handelnde.admin) return
+	const capacity = kapazitaetFuer(plan, shift)
+	if (capacity === null || handelnde.admin) return
 	const belegt = eintraegeLesen(plan.id, db).filter(
 		(e) => e.shift === shift && e.id !== ausser,
 	).length
-	if (belegt >= plan.capacity)
+	if (belegt >= capacity)
 		throw new Error(
-			`Die Schicht „${shift}“ ist voll (${plan.capacity} Plätze). Such dir bitte eine andere aus.`,
+			`Die Schicht „${shift}“ ist voll (${capacity} Plätze). Such dir bitte eine andere aus.`,
 		)
 }
 
@@ -454,12 +571,18 @@ export type Stand = {
 		| 'event_date'
 		| 'description'
 		| 'shifts'
+		| 'blocks'
 		| 'capacity'
 		| 'status'
 		| 'revision'
 	>
 	entries: Omit<Schichteintrag, 'owner_sub' | 'list_id'>[]
-	counts: { shift: string; count: number; full: boolean }[]
+	counts: {
+		shift: string
+		count: number
+		capacity: number | null
+		full: boolean
+	}[]
 }
 
 export const standLesen = (
@@ -472,10 +595,12 @@ export const standLesen = (
 	const entries = eintraegeLesen(listId, db)
 	const counts = plan.shifts.map((shift) => {
 		const count = entries.filter((e) => e.shift === shift).length
+		const capacity = kapazitaetFuer(plan, shift)
 		return {
 			shift,
 			count,
-			full: plan.capacity !== null && count >= plan.capacity,
+			capacity,
+			full: capacity !== null && count >= capacity,
 		}
 	})
 	return {
@@ -485,6 +610,7 @@ export const standLesen = (
 			event_date: plan.event_date,
 			description: plan.description,
 			shifts: plan.shifts,
+			blocks: plan.blocks,
 			capacity: plan.capacity,
 			status: plan.status,
 			revision: plan.revision,
@@ -496,3 +622,39 @@ export const standLesen = (
 
 export const planUrl = (siteUrl: string, id: string): string =>
 	`${siteUrl.replace(/\/$/, '')}/public/schichten/${id}`
+
+export type SchichtBelegung = {
+	key: string
+	label: string
+	capacity: number | null
+	count: number
+	full: boolean
+	entries: Stand['entries']
+}
+
+export type BlockBelegung = {
+	title: string | null
+	description: string | null
+	shifts: SchichtBelegung[]
+}
+
+export const belegungNachBloecken = (stand: Stand): BlockBelegung[] =>
+	stand.list.blocks.map((b) => ({
+		title: b.title,
+		description: b.description,
+		shifts: b.shifts.map((s) => {
+			const key = schichtSchluessel(b, s)
+			const zaehler = stand.counts.find((c) => c.shift === key)
+			return {
+				key,
+				label: s.label,
+				capacity: zaehler?.capacity ?? null,
+				count: zaehler?.count ?? 0,
+				full: zaehler?.full ?? false,
+				entries: stand.entries.filter((e) => e.shift === key),
+			}
+		}),
+	}))
+
+export const zusagenUrl = (listId: string, shift: string): string =>
+	`/public/schichten/${listId}/zusagen?schicht=${encodeURIComponent(shift)}`
