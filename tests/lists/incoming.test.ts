@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs'
 import type { Database } from 'better-sqlite3'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { upsertGroup } from '../../src/lib/db/groups.ts'
 import { upsertMailingList } from '../../src/lib/db/mailingLists.ts'
 import { upsertMitglied } from '../../src/lib/db/members.ts'
 import type { SendInput } from '../../src/lib/email/transport.ts'
+import type { ResolveTxt } from '../../src/lib/lists/dkim.ts'
 import {
 	checkListSender,
 	handleIncomingListMail,
@@ -11,6 +13,19 @@ import {
 } from '../../src/lib/lists/incoming.ts'
 import { processListBatch } from '../../src/lib/lists/queue.ts'
 import { createTestDb } from '../helpers/db.ts'
+
+const dkimFixture = (name: string): Buffer =>
+	readFileSync(new URL(`../fixtures/dkim/${name}`, import.meta.url))
+
+const fixtureDnsEintraege: Record<string, string> = JSON.parse(
+	dkimFixture('dns.json').toString('utf-8'),
+)
+
+const fixtureDns: ResolveTxt = async (name) => {
+	const eintrag = fixtureDnsEintraege[name]
+	if (!eintrag) throw Object.assign(new Error(name), { code: 'ENOTFOUND' })
+	return [[eintrag]]
+}
 
 let db: Database
 let sent: SendInput[]
@@ -197,6 +212,62 @@ describe('Berechtigung', () => {
 		})
 		expect(result.kind).toBe('enqueued')
 		expect(sent).toHaveLength(2)
+	})
+
+	const SES_ENVELOPE = '0107abc-000000@eu-central-1.amazonses.com'
+
+	const deliverSigned = async (
+		raw: Buffer,
+		resolveTxt: ResolveTxt = fixtureDns,
+	) => {
+		const result = await handleIncomingListMail(
+			raw,
+			{ listName: 'eltern', envelopeFrom: SES_ENVELOPE, resolveTxt },
+			db,
+		)
+		for (;;) {
+			const batch = await processListBatch({ db, transport })
+			if (batch.kind !== 'batch_done') break
+		}
+		return result
+	}
+
+	test('DKIM-signierter From berechtigt bei fremdem Envelope (SES)', async () => {
+		const result = await deliverSigned(dkimFixture('rsa-relaxed.eml'))
+		expect(result.kind).toBe('enqueued')
+		expect(sent.length).toBeGreaterThan(0)
+		expect(sent.map((s) => s.to)).not.toContain('vera@example.org')
+	})
+
+	test('veränderte DKIM-signierte Mail berechtigt nicht', async () => {
+		const raw = Buffer.from(
+			dkimFixture('rsa-relaxed.eml')
+				.toString('latin1')
+				.replace('Donnerstag.', 'Freitag.'),
+			'latin1',
+		)
+		const result = await deliverSigned(raw)
+		expect(result).toMatchObject({ kind: 'rejected' })
+		expect(sent).toHaveLength(0)
+	})
+
+	test('From ohne DKIM berechtigt nicht', async () => {
+		const result = await deliver({
+			envelopeFrom: SES_ENVELOPE,
+			headerFrom: 'Vera Beispiel <vera@example.org>',
+			messageId: '<ohne-dkim@example.org>',
+		})
+		expect(result).toMatchObject({ kind: 'rejected' })
+		expect(sent).toHaveLength(0)
+	})
+
+	test('DNS-Störung bei der DKIM-Prüfung ergibt 503 statt Ablehnung', async () => {
+		const result = await deliverSigned(dkimFixture('ed25519.eml'), async () => {
+			throw Object.assign(new Error('timeout'), { code: 'ETIMEOUT' })
+		})
+		expect(result).toMatchObject({ kind: 'unavailable' })
+		expect(statusForResult(result)).toBe(503)
+		expect(sent).toHaveLength(0)
 	})
 
 	test('unberechtigter Absender wird abgelehnt und nichts verschickt', async () => {

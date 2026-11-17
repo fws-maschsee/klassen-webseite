@@ -1,0 +1,26 @@
+Authentication-Results: mx.cloudflare.net; spf=none; dkim=pass; dmarc=pass
+Received-SPF: none
+DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=example.org;
+ i=@example.org; q=dns/txt; s=ed; t=1794929678; h=from : to : subject :
+ date : message-id : mime-version : content-type;
+ bh=N+sjBCsXoAmruCJgh58p2Evo/Wn6jF4mLWxidAik8gI=;
+ b=uVi6q/kRNtGahwW9ABfsNzTrHMCv1T1aubPr4UliWVk49QDmxulJyYO1JwjK5XifpPYsE
+ EqCBKQMtraxfuxZDw==
+From: Vera Beispiel <vera@example.org>
+To: eltern@klasse-beispiel.lists.example.net
+Subject: =?UTF-8?Q?Elternabend_am_Donnerstag_=E2=80=93_bitte?=
+ =?UTF-8?Q?_zusagen?=
+Date: Mon, 16 Nov 2026 21:54:00 +0100
+Message-ID: <dkim-ed25519@example.org>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+Liebe Eltern,  
+
+der Elternabend	ist am Donnerstag.   
+
+Grüße
+Vera
+
+

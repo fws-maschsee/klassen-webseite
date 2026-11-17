@@ -8,8 +8,10 @@ import {
 	resolveListRecipients,
 } from '../db/mailingLists.ts'
 import { einstellungFuer } from '../db/recipientSettings.ts'
+import type { MailingListRow } from '../db/types.ts'
 import type { AccountCheckReport } from '../versand/kontopruefung.ts'
 import { pruefeKonten } from '../versand/kontopruefung.ts'
+import { pruefeDkimFuerDomain, type ResolveTxt } from './dkim.ts'
 
 export type IncomingResult =
 	| {
@@ -90,6 +92,44 @@ export type IncomingParams = {
 	listName: string
 	envelopeFrom: string
 	messageId?: string | null
+	resolveTxt?: ResolveTxt
+}
+
+type ErmittelterAbsender =
+	| { kind: 'ok'; email: string }
+	| { kind: 'abgewiesen' | 'temperror'; grund: string }
+
+// Envelope zuerst; der From-Header zählt nur mit gültiger DKIM-Signatur seiner eigenen Domain, sonst wäre er frei fälschbar.
+const ermittleAbsender = async (
+	list: MailingListRow,
+	envelopeFrom: string,
+	rawBody: Buffer,
+	fromAdressen: string[],
+	db: Database | undefined,
+	resolveTxt: ResolveTxt | undefined,
+): Promise<ErmittelterAbsender> => {
+	if (isSenderAllowed(list, envelopeFrom, db))
+		return { kind: 'ok', email: normalizeEmail(envelopeFrom) }
+	const kandidat =
+		fromAdressen.length === 1 ? normalizeEmail(fromAdressen[0] ?? '') : ''
+	if (kandidat === '' || !isSenderAllowed(list, kandidat, db))
+		return { kind: 'abgewiesen', grund: 'weder Envelope noch From berechtigt' }
+	const dkim = await pruefeDkimFuerDomain(
+		rawBody,
+		kandidat.slice(kandidat.lastIndexOf('@') + 1),
+		{ resolveTxt },
+	)
+	switch (dkim.kind) {
+		case 'pass':
+			return { kind: 'ok', email: kandidat }
+		case 'temperror':
+			return { kind: 'temperror', grund: dkim.reason }
+		case 'fail':
+			return {
+				kind: 'abgewiesen',
+				grund: `From berechtigt, aber nicht per DKIM bestätigt: ${dkim.reason}`,
+			}
+	}
 }
 
 export const handleIncomingListMail = async (
@@ -116,14 +156,35 @@ export const handleIncomingListMail = async (
 	if (!envelopeFrom.trim()) {
 		return { kind: 'rejected', reason: 'Die Nachricht hat keinen Absender.' }
 	}
-	if (!isSenderAllowed(list, envelopeFrom, db)) {
-		return {
-			kind: 'rejected',
-			reason: `Diese Absenderadresse ist nicht berechtigt, an die Liste "${listName}" zu schreiben.`,
-		}
-	}
 
 	const parsed = await simpleParser(rawBody)
+
+	const ermittelt = await ermittleAbsender(
+		list,
+		envelopeFrom,
+		rawBody,
+		(parsed.from?.value ?? []).map((a) => a.address ?? ''),
+		db,
+		params.resolveTxt,
+	)
+	if (ermittelt.kind !== 'ok') {
+		console.warn('[lists/incoming] Absender abgewiesen', {
+			list: list.address,
+			envelopeFrom: normalizeEmail(envelopeFrom),
+			headerFrom: parsed.from?.value?.[0]?.address ?? null,
+			grund: ermittelt.grund,
+		})
+		return ermittelt.kind === 'temperror'
+			? {
+					kind: 'unavailable',
+					reason: `Die Absenderprüfung ist gerade nicht möglich (${ermittelt.grund}). Die Nachricht wurde NICHT verteilt.`,
+				}
+			: {
+					kind: 'rejected',
+					reason: `Diese Absenderadresse ist nicht berechtigt, an die Liste "${listName}" zu schreiben.`,
+				}
+	}
+	const absender = ermittelt.email
 
 	// mailparser buendelt alle List-*-Header unter dem strukturierten Header `list`.
 	const listHeader = parsed.headers.get('list') as { id?: unknown } | undefined
@@ -148,8 +209,6 @@ export const handleIncomingListMail = async (
 		}
 	}
 
-	// Envelope statt `From:` – mit einem gefälschten `From:` ließe sich sonst gezielt jemand aus der Zustellung nehmen.
-	const absender = normalizeEmail(envelopeFrom)
 	const ohneAbsender =
 		einstellungFuer(list.address, absender, db).ownMail !== 'copy'
 
@@ -203,7 +262,7 @@ export const handleIncomingListMail = async (
 	const { message_id, enqueued, duplicate } = enqueueListMessage(
 		{
 			list_address: list.address,
-			from_email: normalizeEmail(envelopeFrom),
+			from_email: absender,
 			from_name: fromName,
 			subject: parsed.subject ?? '',
 			body_html: html,

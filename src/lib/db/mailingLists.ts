@@ -229,7 +229,7 @@ export const resolveAllowedSenders = (
 	return allowed
 }
 
-// Aufrufer übergeben die Envelope-Adresse, nicht den From-Header: nur der Envelope läuft gegen SPF.
+// Aufrufer übergeben den Envelope oder einen per DMARC bestätigten From-Header, nie den ungeprüften From-Header.
 export const isSenderAllowed = (
 	list: MailingListRow,
 	fromEmail: string,

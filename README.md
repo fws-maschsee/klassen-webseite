@@ -1531,6 +1531,44 @@ Zustellversuch aus `list_outbound` baut damit zeichengleich dieselbe Mail. Und
 zweimal steht der Fuß nie drin: trägt der Rumpf den `mailto:`-Link samt Betreff
 schon, wird nichts angefügt.
 
+## Wer darf auf eine Liste schreiben: Envelope oder DKIM-bestätigter `From:`
+
+Geprüft wird zuerst der Envelope-Absender (`MAIL FROM`). Ist der nicht
+berechtigt, zählt die Adresse aus dem `From:`-Header, aber **nur** mit einer
+gültigen DKIM-Signatur genau ihrer Domain. Ohne diesen zweiten Weg scheiterten
+alle, die über einen Dienst mit eigener Bounce-Domain senden (Amazon SES,
+VERP): Ihr Envelope ist eine Adresse wie `0107…@eu-central-1.amazonses.com`,
+die in keiner Gruppe steht.
+
+Die App prüft DKIM selbst (`src/lib/lists/dkim.ts`, Schlüssel per DNS) und
+verlässt sich **nicht** auf `Authentication-Results` von Cloudflare. Laut
+Cloudflare-Doku stellt Email Routing diesen Header vor den Worker-Aufruf, aber
+[workerd#6740](https://github.com/cloudflare/workerd/issues/6740) meldet, dass
+er bei Catch-all-Routen fehlt — und der Dispatcher ist eine. Fehlt er, wäre
+ein vom Absender mitgeschickter Header nicht von einem echten zu unterscheiden.
+
+Die Regeln:
+
+- `d=` muss **genau** die Domain der `From:`-Adresse sein (strikte
+  DMARC-Ausrichtung). Eine Signatur der Elterndomain einer Subdomain zählt
+  nicht; dafür bräuchte es die Public-Suffix-Liste.
+- Erlaubt sind `rsa-sha256` und `ed25519-sha256`, `h=` muss `from` enthalten,
+  `l=` wird abgelehnt (sonst ließe sich an eine echte Mail Text anhängen).
+- Genau ein `From:`-Header: DKIM signiert den untersten, Mailprogramme zeigen
+  den obersten.
+- DNS-Störung → `503`, der Dispatcher stellt später erneut zu, statt den
+  Absender abzuweisen.
+
+Was das nicht verhindert: Wer eine echte, signierte Mail eines Mitglieds hat,
+kann sie unverändert erneut an eine Liste schicken (DKIM-Replay). Innerhalb
+derselben Liste fängt das die Idempotenz über die Message-ID ab.
+
+Jede Ablehnung schreibt die App mit Envelope, `From:` und Grund als
+`[lists/incoming] Absender abgewiesen` ins Log.
+
+Die Testmails in `tests/fixtures/dkim/` sind mit dkimpy signiert, also einer
+unabhängigen Implementierung; der private Schlüssel ist nicht gespeichert.
+
 ## Nach dem 202 gibt es keinen Bounce mehr
 
 Der Eingang quittiert dem Cloudflare-Worker mit **202**, sobald die Mail in
