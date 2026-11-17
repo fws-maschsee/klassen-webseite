@@ -199,6 +199,34 @@ describe('Berechtigung', () => {
 		expect(sent).toHaveLength(2)
 	})
 
+	test('per DMARC bestätigter From-Header berechtigt bei fremdem Envelope (SES)', async () => {
+		const result = await deliver({
+			envelopeFrom: '0107abc-000000@eu-central-1.amazonses.com',
+			headerFrom: 'Vera Beispiel <vera@example.org>',
+			messageId: '<ses@example.org>',
+			extraHeaders: {
+				'ARC-Authentication-Results':
+					'i=1; mx.cloudflare.net; dkim=pass header.d=example.org; dmarc=pass header.from=example.org; spf=pass smtp.mailfrom=eu-central-1.amazonses.com',
+			},
+		})
+		expect(result.kind).toBe('enqueued')
+		expect(sent.map((s) => s.to)).not.toContain('vera@example.org')
+	})
+
+	test('From-Header ohne DMARC-pass berechtigt nicht', async () => {
+		const result = await deliver({
+			envelopeFrom: '0107abc-000000@eu-central-1.amazonses.com',
+			headerFrom: 'Vera Beispiel <vera@example.org>',
+			messageId: '<ses-fail@example.org>',
+			extraHeaders: {
+				'ARC-Authentication-Results':
+					'i=1; mx.cloudflare.net; dmarc=fail header.from=example.org',
+			},
+		})
+		expect(result).toMatchObject({ kind: 'rejected' })
+		expect(sent).toHaveLength(0)
+	})
+
 	test('unberechtigter Absender wird abgelehnt und nichts verschickt', async () => {
 		const result = await deliver({
 			envelopeFrom: 'anna@example.org',

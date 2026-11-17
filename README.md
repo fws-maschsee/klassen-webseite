@@ -1531,6 +1531,35 @@ Zustellversuch aus `list_outbound` baut damit zeichengleich dieselbe Mail. Und
 zweimal steht der Fuß nie drin: trägt der Rumpf den `mailto:`-Link samt Betreff
 schon, wird nichts angefügt.
 
+## Wer darf auf eine Liste schreiben: Envelope oder bestätigter `From:`
+
+Geprüft wird zuerst der Envelope-Absender (`MAIL FROM`). Ist der nicht
+berechtigt, zählt die Adresse aus dem `From:`-Header, aber **nur**, wenn
+Cloudflare für genau diese Domain `dmarc=pass` bescheinigt hat. Ohne diesen
+zweiten Weg scheiterten alle, die über einen Dienst mit eigener Bounce-Domain
+senden (Amazon SES, VERP): Ihr Envelope ist eine Adresse wie
+`0107…@eu-central-1.amazonses.com`, die in keiner Gruppe steht.
+
+Die Regeln (`src/lib/lists/absender.ts`):
+
+- Ausgewertet wird nur der **oberste** `Authentication-Results`- oder
+  `ARC-Authentication-Results`-Header, und nur mit dem Prüfer
+  `mx.cloudflare.net`. Cloudflare stellt seinen vor alle anderen; ein Header,
+  den der Absender selbst mitschickt, liegt darunter und zählt nie.
+- `header.from` muss genau der Domain der `From:`-Adresse entsprechen
+  (keine Subdomain), und es darf nur eine `From:`-Adresse geben.
+- Fehlt der Header oder steht dort kein `pass`, bleibt es beim Envelope —
+  wie vorher.
+
+Die Annahme dahinter: Cloudflare Email Routing schreibt **jeder** eingehenden
+Mail ein Auth-Ergebnis an den Anfang. Würde es das einmal nicht tun, wäre ein
+vom Absender gefälschter Header der oberste. Die sauberere Lösung ist, dass
+der Dispatcher das DMARC-Ergebnis selbst ermittelt und mitsigniert; das ist
+offen, weil es das Signaturformat in beiden Repos ändert.
+
+Jede Ablehnung schreibt die App mit Envelope, `From:` und DMARC-Befund als
+`[lists/incoming] Absender abgewiesen` ins Log.
+
 ## Nach dem 202 gibt es keinen Bounce mehr
 
 Der Eingang quittiert dem Cloudflare-Worker mit **202**, sobald die Mail in

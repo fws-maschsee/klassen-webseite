@@ -10,6 +10,7 @@ import {
 import { einstellungFuer } from '../db/recipientSettings.ts'
 import type { AccountCheckReport } from '../versand/kontopruefung.ts'
 import { pruefeKonten } from '../versand/kontopruefung.ts'
+import { authentifizierterHeaderAbsender } from './absender.ts'
 
 export type IncomingResult =
 	| {
@@ -116,14 +117,30 @@ export const handleIncomingListMail = async (
 	if (!envelopeFrom.trim()) {
 		return { kind: 'rejected', reason: 'Die Nachricht hat keinen Absender.' }
 	}
-	if (!isSenderAllowed(list, envelopeFrom, db)) {
+
+	const parsed = await simpleParser(rawBody)
+
+	const headerAbsender = authentifizierterHeaderAbsender(
+		parsed.headerLines,
+		(parsed.from?.value ?? []).map((a) => a.address ?? ''),
+	)
+	const absender = isSenderAllowed(list, envelopeFrom, db)
+		? normalizeEmail(envelopeFrom)
+		: headerAbsender !== null && isSenderAllowed(list, headerAbsender, db)
+			? headerAbsender
+			: null
+	if (absender === null) {
+		console.warn('[lists/incoming] Absender abgewiesen', {
+			list: list.address,
+			envelopeFrom: normalizeEmail(envelopeFrom),
+			headerFrom: parsed.from?.value?.[0]?.address ?? null,
+			dmarcAuthentifiziert: headerAbsender !== null,
+		})
 		return {
 			kind: 'rejected',
 			reason: `Diese Absenderadresse ist nicht berechtigt, an die Liste "${listName}" zu schreiben.`,
 		}
 	}
-
-	const parsed = await simpleParser(rawBody)
 
 	// mailparser buendelt alle List-*-Header unter dem strukturierten Header `list`.
 	const listHeader = parsed.headers.get('list') as { id?: unknown } | undefined
@@ -148,8 +165,6 @@ export const handleIncomingListMail = async (
 		}
 	}
 
-	// Envelope statt `From:` – mit einem gefälschten `From:` ließe sich sonst gezielt jemand aus der Zustellung nehmen.
-	const absender = normalizeEmail(envelopeFrom)
 	const ohneAbsender =
 		einstellungFuer(list.address, absender, db).ownMail !== 'copy'
 
@@ -203,7 +218,7 @@ export const handleIncomingListMail = async (
 	const { message_id, enqueued, duplicate } = enqueueListMessage(
 		{
 			list_address: list.address,
-			from_email: normalizeEmail(envelopeFrom),
+			from_email: absender,
 			from_name: fromName,
 			subject: parsed.subject ?? '',
 			body_html: html,
