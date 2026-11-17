@@ -1531,34 +1531,43 @@ Zustellversuch aus `list_outbound` baut damit zeichengleich dieselbe Mail. Und
 zweimal steht der Fuß nie drin: trägt der Rumpf den `mailto:`-Link samt Betreff
 schon, wird nichts angefügt.
 
-## Wer darf auf eine Liste schreiben: Envelope oder bestätigter `From:`
+## Wer darf auf eine Liste schreiben: Envelope oder DKIM-bestätigter `From:`
 
 Geprüft wird zuerst der Envelope-Absender (`MAIL FROM`). Ist der nicht
-berechtigt, zählt die Adresse aus dem `From:`-Header, aber **nur**, wenn
-Cloudflare für genau diese Domain `dmarc=pass` bescheinigt hat. Ohne diesen
-zweiten Weg scheiterten alle, die über einen Dienst mit eigener Bounce-Domain
-senden (Amazon SES, VERP): Ihr Envelope ist eine Adresse wie
-`0107…@eu-central-1.amazonses.com`, die in keiner Gruppe steht.
+berechtigt, zählt die Adresse aus dem `From:`-Header, aber **nur** mit einer
+gültigen DKIM-Signatur genau ihrer Domain. Ohne diesen zweiten Weg scheiterten
+alle, die über einen Dienst mit eigener Bounce-Domain senden (Amazon SES,
+VERP): Ihr Envelope ist eine Adresse wie `0107…@eu-central-1.amazonses.com`,
+die in keiner Gruppe steht.
 
-Die Regeln (`src/lib/lists/absender.ts`):
+Die App prüft DKIM selbst (`src/lib/lists/dkim.ts`, Schlüssel per DNS) und
+verlässt sich **nicht** auf `Authentication-Results` von Cloudflare. Laut
+Cloudflare-Doku stellt Email Routing diesen Header vor den Worker-Aufruf, aber
+[workerd#6740](https://github.com/cloudflare/workerd/issues/6740) meldet, dass
+er bei Catch-all-Routen fehlt — und der Dispatcher ist eine. Fehlt er, wäre
+ein vom Absender mitgeschickter Header nicht von einem echten zu unterscheiden.
 
-- Ausgewertet wird nur der **oberste** `Authentication-Results`- oder
-  `ARC-Authentication-Results`-Header, und nur mit dem Prüfer
-  `mx.cloudflare.net`. Cloudflare stellt seinen vor alle anderen; ein Header,
-  den der Absender selbst mitschickt, liegt darunter und zählt nie.
-- `header.from` muss genau der Domain der `From:`-Adresse entsprechen
-  (keine Subdomain), und es darf nur eine `From:`-Adresse geben.
-- Fehlt der Header oder steht dort kein `pass`, bleibt es beim Envelope —
-  wie vorher.
+Die Regeln:
 
-Die Annahme dahinter: Cloudflare Email Routing schreibt **jeder** eingehenden
-Mail ein Auth-Ergebnis an den Anfang. Würde es das einmal nicht tun, wäre ein
-vom Absender gefälschter Header der oberste. Die sauberere Lösung ist, dass
-der Dispatcher das DMARC-Ergebnis selbst ermittelt und mitsigniert; das ist
-offen, weil es das Signaturformat in beiden Repos ändert.
+- `d=` muss **genau** die Domain der `From:`-Adresse sein (strikte
+  DMARC-Ausrichtung). Eine Signatur der Elterndomain einer Subdomain zählt
+  nicht; dafür bräuchte es die Public-Suffix-Liste.
+- Erlaubt sind `rsa-sha256` und `ed25519-sha256`, `h=` muss `from` enthalten,
+  `l=` wird abgelehnt (sonst ließe sich an eine echte Mail Text anhängen).
+- Genau ein `From:`-Header: DKIM signiert den untersten, Mailprogramme zeigen
+  den obersten.
+- DNS-Störung → `503`, der Dispatcher stellt später erneut zu, statt den
+  Absender abzuweisen.
 
-Jede Ablehnung schreibt die App mit Envelope, `From:` und DMARC-Befund als
+Was das nicht verhindert: Wer eine echte, signierte Mail eines Mitglieds hat,
+kann sie unverändert erneut an eine Liste schicken (DKIM-Replay). Innerhalb
+derselben Liste fängt das die Idempotenz über die Message-ID ab.
+
+Jede Ablehnung schreibt die App mit Envelope, `From:` und Grund als
 `[lists/incoming] Absender abgewiesen` ins Log.
+
+Die Testmails in `tests/fixtures/dkim/` sind mit dkimpy signiert, also einer
+unabhängigen Implementierung; der private Schlüssel ist nicht gespeichert.
 
 ## Nach dem 202 gibt es keinen Bounce mehr
 
